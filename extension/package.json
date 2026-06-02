@@ -48,7 +48,8 @@
     "permissions": [
       "storage",
       "tabs",
-      "tabGroups"
+      "tabGroups",
+      "alarms"
     ]
   }
 }

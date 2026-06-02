@@ -9,6 +9,9 @@ const DEFAULT_STYLE: TabGroupStyleOptions = {
   collapsedByDefault: false
 }
 
+const SYNC_INTERVAL_MINUTES = 1
+const BACKEND_URL = "http://127.0.0.1:38471"
+
 // 获取所有标签页
 const fetchAllTabs = async (): Promise<TabData[]> => {
   const tabs = await chrome.tabs.query({})
@@ -20,6 +23,21 @@ const fetchAllTabs = async (): Promise<TabData[]> => {
     active: tab.active,
     pinned: tab.pinned
   }))
+}
+
+const syncToBackend = async () => {
+  try {
+    const tabs = await fetchAllTabs()
+    const res = await fetch(`${BACKEND_URL}/tabs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(tabs)
+    })
+    const data = await res.json()
+    console.log("同步到后端:", data)
+  } catch (err) {
+    console.error("同步失败:", err)
+  }
 }
 
 // 保存标签数据到 IndexedDB
@@ -88,9 +106,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 })
 
 // 监听标签变化事件
-chrome.tabs.onCreated.addListener(() => saveTabsData())
-chrome.tabs.onRemoved.addListener(() => saveTabsData())
-chrome.tabs.onUpdated.addListener(() => saveTabsData())
+chrome.tabs.onCreated.addListener(() => { saveTabsData(); syncToBackend() })
+chrome.tabs.onRemoved.addListener(() => { saveTabsData(); syncToBackend() })
+chrome.tabs.onUpdated.addListener(() => { saveTabsData(); syncToBackend() })
+
+// 定时同步到后端
+chrome.alarms.create("syncTabs", { periodInMinutes: SYNC_INTERVAL_MINUTES })
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "syncTabs") syncToBackend()
+})
 
 // 初始保存
 saveTabsData()
