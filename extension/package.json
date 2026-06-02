@@ -1,0 +1,54 @@
+{
+  "name": "extension",
+  "displayName": "Extension",
+  "version": "0.0.1",
+  "description": "暂无",
+  "author": "ywxx252324",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "@plasmohq/storage": "^1.15.0",
+    "@radix-ui/react-slot": "^1.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.17.0",
+    "plasmo": "0.90.5",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "4.1.1",
+    "@types/chrome": "0.0.258",
+    "@types/node": "20.11.5",
+    "@types/react": "18.2.48",
+    "@types/react-dom": "18.2.18",
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.15",
+    "prettier": "3.2.4",
+    "tailwindcss": "3",
+    "typescript": "5.3.3"
+  },
+  "plasmo": {
+    "devUrl": "http://localhost:3000",
+    "headless": "dev",
+    "entrypoints": [
+      "src/background.ts",
+      "src/popup.tsx"
+    ]
+  },
+  "manifest": {
+    "host_permissions": [
+      "https://*/*"
+    ],
+    "permissions": [
+      "storage",
+      "tabs",
+      "tabGroups"
+    ]
+  }
+}

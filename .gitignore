@@ -1,0 +1,18 @@
+# === 前端 Extension 忽略项 ===
+extension/.plasmo/
+extension/build/
+extension/node_modules/
+extension/.env*
+extension/*.local
+
+# === 后端 Python 忽略项 ===
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.env
+
+# === 系统与编辑器残渣 ===
+.DS_Store
+.vscode/
