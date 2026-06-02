@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react"
+import { Settings } from "lucide-react"
 import type { TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
 import "./style.css"
+
+const openDashboard = () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
+}
 
 function IndexPopup() {
   const [tabs, setTabs] = useState<TabData[]>([])
@@ -24,7 +29,17 @@ function IndexPopup() {
   return (
     <div className="p-4 max-h-96 overflow-y-auto" style={{ minWidth: 500, width: 500 }}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold">TabKeep</h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-lg font-semibold">TabKeep</h3>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            onClick={openDashboard}
+            title="打开仪表盘">
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
         <div className="flex gap-2">
           <Button
             size="sm"
