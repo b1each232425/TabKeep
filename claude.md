@@ -29,11 +29,21 @@ TabKeep/
 ├── backend/                  # FastAPI 后端
 │   ├── routers/              # 路由（按功能模块划分）
 │   │   ├── __init__.py
-│   │   └── tabs.py          # 标签相关路由
+│   │   ├── tabs.py          # 标签相关路由
+│   │   └── classify.py      # 配置同步 + LLM 分类路由
 │   ├── schemas/              # Pydantic 模型（数据格式定义）
 │   │   ├── __init__.py
-│   │   └── tab.py           # 标签数据结构
-│   ├── models/               # 数据库模型（如使用 ORM）
+│   │   ├── tab.py           # 标签数据结构
+│   │   ├── config.py        # 模型配置 + 分类定义
+│   │   └── classify.py      # 分类请求/响应模型
+│   ├── services/             # 业务逻辑层
+│   │   ├── __init__.py
+│   │   ├── llm.py           # OpenAI SDK 封装
+│   │   ├── classifier.py    # 分类 prompt + 响应解析
+│   │   └── storage.py       # 全局配置 + 内存状态（data/config.json 持久化）
+│   ├── data/                # 运行时数据（不提交）
+│   │   └── config.json
+│   ├── logger.py            # loguru 中心化配置
 │   ├── main.py              # FastAPI 主入口（仅注册路由 + 中间件）
 │   └── requirements.txt
 │
@@ -70,6 +80,58 @@ TabKeep/
   - `routers/tabs.py` → `/tabs` 相关接口
   - 使用 `APIRouter` 分组路由
 - **main.py**：只负责注册中间件、注册路由、健康检查，不放业务逻辑
+
+### 类型注解（Python Backend）
+
+**所有 Python 函数（公共 + 私有）必须带完整的参数和返回类型注解**。类型注解不参与运行时，仅用于 IDE 提示和类型检查。
+
+#### 语法规范
+
+- **用 Python 3.10+ 内置泛型语法**，不要从 `typing` 导入旧写法：
+  - ✅ `list[dict]`、`dict[str, int]`、`tuple[int, str]`
+  - ❌ `List[Dict]`、`Dict[str, int]`、`Tuple[int, str]`
+- **可空类型用 `X | None`**，不要 `Optional[X]`：
+  - ✅ `def get_user() -> User | None:`
+  - ❌ `def get_user() -> Optional[User]:`
+- **异步生成器 / 上下文管理器用 `collections.abc`**：
+  - ✅ `async def lifespan(_app: FastAPI) -> AsyncIterator[None]:`
+  - ❌ `async def lifespan(_app: FastAPI):`
+
+#### 示例
+
+```python
+# routers/tabs.py
+@router.post("/", summary="接收 Extension 发送的标签数据")
+def receive_tabs(tabs: list[TabData]) -> dict[str, int]:
+    tabs_storage.clear()
+    tabs_storage.extend(tabs)
+    return {"received": len(tabs), "total": len(tabs_storage)}
+
+
+# services/classifier.py
+async def classify_tabs(
+    model_config: ModelConfig,
+    categories: list[TabCategory],
+    tabs: list[TabData],
+) -> tuple[dict[int, str], str]:
+    messages = build_messages(categories, tabs)
+    raw = await chat_completion(model_config, messages)
+    return parse_classification(raw), raw
+```
+
+#### 适用范围
+
+- ✅ 所有 `def` / `async def` 函数（公共 + `_` 前缀私有）
+- ✅ FastAPI 路由处理函数（`@router.get/post` 等）
+- ✅ Pydantic 模型字段（已自带类型，不需要重复）
+- ❌ 模块级常量、变量不强求
+- ❌ 第三方库返回的复杂类型（用 `# type: ignore` 兜底）
+
+#### 不强求的场景
+
+- 配置脚本、单文件 demo
+- 类型实在写不出来（如高度动态的代码）
+- 第三方库未提供类型 stub
 
 ### 接口类型定义（src/types/index.ts）
 

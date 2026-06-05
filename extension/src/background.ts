@@ -102,8 +102,49 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "CREATE_TAB_GROUPS") {
     createTabGroups(msg.style)
     sendResponse({ success: true })
+  } else if (msg.type === "CLASSIFY_TABS") {
+    classifyCurrentWindowTabs().then(sendResponse)
+    return true
   }
 })
+
+const classifyCurrentWindowTabs = async () => {
+  const tabs = await chrome.tabs.query({ currentWindow: true })
+  const tabDataList: TabData[] = tabs.map(tab => ({
+    id: tab.id,
+    title: tab.title,
+    url: tab.url,
+    favIconUrl: tab.favIconUrl,
+    active: tab.active,
+    pinned: tab.pinned
+  }))
+  if (tabDataList.length === 0) {
+    console.log("[TabKeep] 当前窗口无标签页")
+    return { error: "无标签页" }
+  }
+  try {
+    const res = await fetch(`${BACKEND_URL}/classify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tabs: tabDataList })
+    })
+    const data = await res.json()
+    if (data.error) {
+      console.error("[TabKeep] 后端分类失败：", data.error)
+      return data
+    }
+    console.log("[TabKeep] LLM 原始响应：", data.raw)
+    console.log("[TabKeep] 分类结果：")
+    for (const tab of tabDataList) {
+      const cat = data.result?.[tab.id] ?? "未分类"
+      console.log(`  [${tab.id}] ${tab.title || tab.url} → ${cat}`)
+    }
+    return data
+  } catch (err) {
+    console.error("[TabKeep] 请求后端失败：", err)
+    return { error: String(err) }
+  }
+}
 
 // 监听标签变化事件
 chrome.tabs.onCreated.addListener(() => { saveTabsData(); syncToBackend() })

@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Sparkles,
   Trash2
 } from "lucide-react"
 import type {
@@ -21,6 +22,27 @@ import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
 import "./style.css"
+
+const BACKEND_URL = "http://127.0.0.1:38471"
+
+const syncConfigToBackend = async (
+  modelConfig: ModelConfig | null,
+  tabCategories: TabCategory[]
+) => {
+  try {
+    const res = await fetch(`${BACKEND_URL}/config/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelConfig, tabCategories })
+    })
+    const data = await res.json()
+    if (!data.ok) {
+      console.warn("[TabKeep] 同步配置到后端失败：", data)
+    }
+  } catch (err) {
+    console.warn("[TabKeep] 同步配置到后端异常：", err)
+  }
+}
 
 const COLORS: TabGroupColor[] = [
   "grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"
@@ -208,6 +230,7 @@ function ModelApiSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ modelConfig: config })
+    syncConfigToBackend(config, [])
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -283,6 +306,7 @@ function CategoriesSection() {
   const [savedCategories, setSavedCategories] = useState<TabCategory[]>([])
   const [draftCategories, setDraftCategories] = useState<TabCategory[]>([])
   const [saved, setSaved] = useState(false)
+  const [classifying, setClassifying] = useState(false)
   const [newName, setNewName] = useState("")
   const [newDescription, setNewDescription] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -301,6 +325,7 @@ function CategoriesSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ tabCategories: draftCategories })
+    syncConfigToBackend(null, draftCategories)
     setSavedCategories(draftCategories)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
@@ -363,6 +388,21 @@ function CategoriesSection() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={classifying}
+            onClick={async () => {
+              setClassifying(true)
+              try {
+                await chrome.runtime.sendMessage({ type: "CLASSIFY_TABS" })
+              } finally {
+                setClassifying(false)
+              }
+            }}>
+            <Sparkles className="h-4 w-4 mr-1" />
+            {classifying ? "分类中..." : "AI 分组测试"}
+          </Button>
           <Button size="sm" onClick={save}>
             {saved ? "已保存" : "保存设置"}
           </Button>

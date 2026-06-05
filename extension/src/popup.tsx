@@ -48,11 +48,19 @@ function IndexPopup() {
             {showGrouped ? "原始" : "整理"}
           </Button>
           {showGrouped && (
-            <Button
-              size="sm"
-              onClick={() => chrome.runtime.sendMessage({ type: "CREATE_TAB_GROUPS" })}>
-              执行分组
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onClick={() => chrome.runtime.sendMessage({ type: "CREATE_TAB_GROUPS" })}>
+                执行分组
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => chrome.runtime.sendMessage({ type: "CLASSIFY_TABS" })}>
+                AI 分组
+              </Button>
+            </>
           )}
         </div>
       </div>
