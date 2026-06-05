@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Settings } from "lucide-react"
+import { Settings, Sparkles } from "lucide-react"
 import type { TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
@@ -14,6 +14,7 @@ function IndexPopup() {
   const [tabs, setTabs] = useState<TabData[]>([])
   const [loading, setLoading] = useState(true)
   const [showGrouped, setShowGrouped] = useState(false)
+  const [aiGrouping, setAiGrouping] = useState(false)
 
   useEffect(() => {
     loadFromIDB<TabData>().then((data) => {
@@ -57,8 +58,17 @@ function IndexPopup() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => chrome.runtime.sendMessage({ type: "CLASSIFY_TABS" })}>
-                AI 分组
+                disabled={aiGrouping}
+                onClick={async () => {
+                  setAiGrouping(true)
+                  try {
+                    await chrome.runtime.sendMessage({ type: "CLASSIFY_AND_GROUP_TABS" })
+                  } finally {
+                    setAiGrouping(false)
+                  }
+                }}>
+                <Sparkles className="h-4 w-4 mr-1" />
+                {aiGrouping ? "分组中..." : "AI 分组"}
               </Button>
             </>
           )}

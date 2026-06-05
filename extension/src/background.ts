@@ -1,7 +1,7 @@
 /// <reference types="chrome" />
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { saveToIDB } from "./utils/indexedDB"
-import type { TabData, TabGroupStyleOptions } from "./types"
+import type { TabData, TabGroupColor, TabGroupStyleOptions } from "./types"
 
 const DEFAULT_STYLE: TabGroupStyleOptions = {
   defaultColor: "blue",
@@ -51,7 +51,46 @@ const saveTabsData = async () => {
   }
 }
 
-// 按域名创建 Tab Group（当前窗口）
+// 通用建组核心：把 {tabId: groupName} 实际建到 chrome.tabGroups
+interface GroupingOptions {
+  defaultColor: TabGroupColor
+  collapsedByDefault: boolean
+}
+
+async function applyGrouping(
+  classification: Record<number, string>,
+  options: GroupingOptions
+) {
+  const byCategory = new Map<string, number[]>()
+  for (const [tabIdStr, groupName] of Object.entries(classification)) {
+    const ids = byCategory.get(groupName) ?? []
+    ids.push(Number(tabIdStr))
+    byCategory.set(groupName, ids)
+  }
+
+  const allTabs = await chrome.tabs.query({ currentWindow: true })
+  const validTabIds = new Set(
+    allTabs.filter(t => !t.pinned).map(t => t.id).filter(Boolean)
+  )
+
+  for (const [groupName, tabIds] of byCategory) {
+    const valid = tabIds.filter(id => validTabIds.has(id))
+    if (valid.length < 2) continue
+    try {
+      const groupId = await chrome.tabs.group({ tabIds: valid })
+      await chrome.tabGroups.update(groupId, {
+        title: groupName,
+        color: options.defaultColor,
+        collapsed: options.collapsedByDefault
+      })
+      console.log(`[TabKeep] 已建组 "${groupName}" (${valid.length} 个 tab)`)
+    } catch (e) {
+      console.warn(`[TabKeep] 建组 "${groupName}" 失败:`, e)
+    }
+  }
+}
+
+// 按域名建组（当前窗口）—— 薄壳：算分类后调 applyGrouping
 async function createTabGroups(style: Partial<TabGroupStyleOptions> = {}) {
   const options = { ...DEFAULT_STYLE, ...style }
 
@@ -59,38 +98,18 @@ async function createTabGroups(style: Partial<TabGroupStyleOptions> = {}) {
     const allTabs = await fetchAllTabs()
     const grouped = groupTabsByDomain(allTabs)
 
-    // 按域名创建 Tab Group（包括"其他"组）
-    const groupPromises = grouped.map(async (group) => {
-      if (group.tabs.length < 2) return null
-
-      const tabIds = group.tabs.map(t => t.id).filter(id => id !== undefined) as number[]
-      if (tabIds.length === 0) return null
-
-      const groupId = await chrome.tabs.group({ tabIds })
-
-      if (groupId) {
-        try {
-          if (chrome.tabGroups) {
-            const updateResult = await chrome.tabGroups.update(groupId, {
-              title: group.domain,
-              color: options.defaultColor,
-              collapsed: options.collapsedByDefault
-            })
-            console.log(`Update result for "${group.domain}":`, updateResult)
-          } else {
-            console.warn(`chrome.tabGroups not available, skipping title for ${group.domain}`)
-          }
-        } catch (e) {
-          console.warn("更新 Tab Group 样式失败:", group.domain, e)
-        }
-      } else {
-        console.warn("Failed to create group for:", group.domain)
+    const classification: Record<number, string> = {}
+    for (const group of grouped) {
+      if (group.isOther) continue
+      for (const tab of group.tabs) {
+        if (tab.id !== undefined) classification[tab.id] = group.domain
       }
+    }
 
-      return groupId
+    await applyGrouping(classification, {
+      defaultColor: options.defaultColor,
+      collapsedByDefault: options.collapsedByDefault
     })
-
-    await Promise.all(groupPromises)
     console.log("Tab Group 创建完成")
   } catch (err) {
     console.error("创建 Tab Group 失败:", err)
@@ -104,6 +123,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ success: true })
   } else if (msg.type === "CLASSIFY_TABS") {
     classifyCurrentWindowTabs().then(sendResponse)
+    return true
+  } else if (msg.type === "CLASSIFY_AND_GROUP_TABS") {
+    classifyAndGroupCurrentWindowTabs(msg.style).then(sendResponse)
     return true
   }
 })
@@ -144,6 +166,27 @@ const classifyCurrentWindowTabs = async () => {
     console.error("[TabKeep] 请求后端失败：", err)
     return { error: String(err) }
   }
+}
+
+// 调 LLM 分类后真的建组
+async function classifyAndGroupCurrentWindowTabs(
+  style: Partial<TabGroupStyleOptions> = {}
+) {
+  const options = { ...DEFAULT_STYLE, ...style }
+  const result = await classifyCurrentWindowTabs()
+  if (result?.error || !result?.result) return result
+
+  const classification = result.result as Record<number, string>
+  const filtered: Record<number, string> = {}
+  for (const [id, cat] of Object.entries(classification)) {
+    if (cat !== "未分类") filtered[Number(id)] = cat
+  }
+
+  await applyGrouping(filtered, {
+    defaultColor: options.defaultColor,
+    collapsedByDefault: options.collapsedByDefault
+  })
+  return result
 }
 
 // 监听标签变化事件
