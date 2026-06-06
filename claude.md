@@ -10,18 +10,24 @@ TabKeep 是一个 Chrome 浏览器扩展，用于收集、整理浏览器标签�
 TabKeep/
 ├── extension/                 # Chrome 扩展（Plasmo 框架）
 │   ├── src/
-│   │   ├── background.ts     # 后台脚本：标签监听、同步、分组
-│   │   ├── popup.tsx         # 弹出窗口 UI
+│   │   ├── background.ts     # 后台脚本：标签监听、同步、分组、收藏转发
+│   │   ├── popup.tsx         # 弹出窗口 UI（含 ☆ / ★ 收藏按钮）
+│   │   ├── options.tsx       # 仪表盘 UI（含「笔记集成」Section）
+│   │   ├── content/extract.ts  # Plasmo content script：用 Defuddle 提取页面正文
 │   │   ├── types/
-│   │   │   └── index.ts      # 类型定义
+│   │   │   ├── index.ts      # 类型 re-export
+│   │   │   ├── tab.ts        # TabData / GroupedTab / TabCategory 等
+│   │   │   ├── model.ts      # ModelConfig
+│   │   │   └── note.ts       # NoteAdapterConfig / NotebookInfo / SaveTabResult
 │   │   ├── utils/
 │   │   │   ├── indexedDB.ts  # IndexedDB 存储工具
 │   │   │   └── tabUtils.ts   # 标签分组工具函数
 │   │   ├── components/
 │   │   │   └── ui/           # shadcn/ui 组件
 │   │   │       └── button.tsx
-│   │   └── lib/
-│   │       └── utils.ts      # 工具函数（cn() 等）
+│   │   ├── lib/
+│   │   │   └── utils.ts      # 工具函数（cn() 等）
+│   │   └── globals.d.ts      # *.css 副作用导入声明（修 Plasmo tsconfig 缺漏）
 │   ├── package.json
 │   ├── tailwind.config.js
 │   └── style.css
@@ -30,19 +36,28 @@ TabKeep/
 │   ├── routers/              # 路由（按功能模块划分）
 │   │   ├── __init__.py
 │   │   ├── tabs.py          # 标签相关路由
-│   │   └── classify.py      # 配置同步 + LLM 分类路由
+│   │   ├── classify.py      # 配置同步 + LLM 分类路由
+│   │   └── notes.py         # 笔记集成路由（test / notebooks / save）
 │   ├── schemas/              # Pydantic 模型（数据格式定义）
 │   │   ├── __init__.py
 │   │   ├── tab.py           # 标签数据结构
-│   │   ├── config.py        # 模型配置 + 分类定义
+│   │   ├── config.py        # 模型配置 + 分类定义 + 笔记适配器配置
 │   │   └── classify.py      # 分类请求/响应模型
 │   ├── services/             # 业务逻辑层
 │   │   ├── __init__.py
 │   │   ├── llm.py           # OpenAI SDK 封装
 │   │   ├── classifier.py    # 分类 prompt + 响应解析
-│   │   └── storage.py       # 全局配置 + 内存状态（data/config.json 持久化）
+│   │   ├── storage.py       # 全局配置 + 内存状态（data/config.json 持久化）
+│   │   └── note/            # 笔记适配器（可插拔，Protocol 模式）
+│   │       ├── __init__.py
+│   │       ├── base.py      # NoteAdapter Protocol + 通用 dataclass
+│   │       ├── siyuan.py    # SiYuanAdapter（HTTP @ :6806）
+│   │       ├── obsidian.py  # ObsidianAdapter（占位 stub）
+│   │       ├── local.py     # LocalFileAdapter（写 data/notes/）
+│   │       └── factory.py   # build_note_adapter(config)
 │   ├── data/                # 运行时数据（不提交）
-│   │   └── config.json
+│   │   ├── config.json
+│   │   └── notes/           # LocalFileAdapter 写入的 markdown（不提交）
 │   ├── logger.py            # loguru 中心化配置
 │   ├── main.py              # FastAPI 主入口（仅注册路由 + 中间件）
 │   └── requirements.txt
@@ -176,13 +191,37 @@ type TabGroupColor = "grey" | "blue" | "red" | "yellow" | "green" | "pink" | "pu
 ## Extension 权限说明
 
 ```json
-"permissions": ["storage", "tabs", "tabGroups", "alarms"]
+"permissions": ["storage", "tabs", "tabGroups", "alarms", "activeTab", "scripting"]
+"host_permissions": ["<all_urls>"]
 ```
 
 - **storage**: 使用 chrome.storage.local 存储配置
 - **tabs**: 获取标签页信息
 - **tabGroups**: 创建和管理 Tab Group
 - **alarms**: 定时任务（同步到后端）
+- **activeTab / scripting**: 备用，备用以备以后用 `chrome.scripting.executeScript`
+- **`<all_urls>`**: Plasmo content script（`src/content/extract.ts`）需要在所有页面注入以调用 Defuddle 提取正文
+
+### 全文收藏流程
+
+```
+popup 点 ★ (SAVE_TAB_FULL)
+  → background.ts
+    → chrome.tabs.sendMessage(tabId, { type: "EXTRACT_CONTENT" })
+    → content/extract.ts (Defuddle 处理 document，返回 markdown + meta)
+    → POST /notes/save { title, url, content, excerpt, ... }
+  → routers/notes.py
+    → SiYuanAdapter.save()  /  LocalFileAdapter.save()
+    → 若有 content：
+        · SiYuan + 无 target_doc → createDocWithMd (整个 markdown 写入)
+        · SiYuan + 有 target_doc → insertBlock (markdown 自动按 \n 切多 block)
+        · LocalFile → append 到 data/notes/<target>.md
+      若无 content：回退到「仅链接」路径
+```
+
+- **大小上限**：200K 字符（`MAX_CONTENT_CHARS`），超出截断 + 末尾标注 `> _(内容已截断)_`
+- **Defuddle 输出**：`contentMarkdown` 优先，回退到 `content`（HTML）
+- **边界**：chrome:// 内部页 / PDF / 受限页面 `sendMessage` 抛错 → 提示「无法访问 content script」
 
 ## 后端 API 设计
 

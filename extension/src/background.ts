@@ -127,8 +127,108 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg.type === "CLASSIFY_AND_GROUP_TABS") {
     classifyAndGroupCurrentWindowTabs(msg.style).then(sendResponse)
     return true
+  } else if (msg.type === "SAVE_TAB_TO_NOTE") {
+    saveTabToNote(msg.tab).then(sendResponse)
+    return true
+  } else if (msg.type === "SAVE_TAB_FULL") {
+    saveTabToNoteFull(msg.tab).then(sendResponse)
+    return true
   }
 })
+
+const MAX_CONTENT_CHARS = 200_000
+
+const saveTabToNote = async (tab: TabData) => {
+  console.log(`[TabKeep] 收藏(链接) tab=${tab.id} title=${tab.title} url=${tab.url}`)
+  try {
+    const res = await fetch(`${BACKEND_URL}/notes/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: tab.title ?? "",
+        url: tab.url ?? "",
+        notebook_id: "",
+        target_doc: null
+      })
+    })
+    const data = await res.json()
+    if (data.ok) {
+      console.log(`[TabKeep] 收藏(链接) ok: ${tab.title}`)
+    } else {
+      console.warn(`[TabKeep] 收藏(链接) 失败: ${data.error}`)
+    }
+    return data
+  } catch (err) {
+    console.error("[TabKeep] 收藏请求失败:", err)
+    return { ok: false, error: String(err) }
+  }
+}
+
+const saveTabToNoteFull = async (tab: TabData) => {
+  console.log(`[TabKeep] 收藏(全文) 开始 tab=${tab.id} title=${tab.title} url=${tab.url}`)
+  if (tab.id === undefined) {
+    const err = "tab 没有 id"
+    console.error(`[TabKeep] 收藏(全文) 失败: ${err}`)
+    return { ok: false, error: err }
+  }
+
+  console.log(`[TabKeep] 收藏(全文) 第 1 步: 向 tab ${tab.id} content script 发 EXTRACT_CONTENT`)
+  let extract
+  try {
+    extract = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_CONTENT" })
+    console.log(`[TabKeep] 收藏(全文) content script 响应:`, extract)
+  } catch (e) {
+    const err = "提取失败：无法访问页面 content script（可能是 chrome:// 内部页或 PDF）"
+    console.error(`[TabKeep] 收藏(全文) ${err}:`, e)
+    return { ok: false, error: err }
+  }
+  if (!extract?.ok) {
+    const err = `提取失败：${extract?.error ?? "未知错误"}`
+    console.warn(`[TabKeep] 收藏(全文) ${err}`)
+    return { ok: false, error: err }
+  }
+
+  const raw = extract.data.contentMarkdown || extract.data.content || ""
+  const truncated = raw.length > MAX_CONTENT_CHARS
+  const content = truncated ? raw.slice(0, MAX_CONTENT_CHARS) + "\n\n> _(内容已截断)_" : raw
+  console.log(
+    `[TabKeep] 收藏(全文) 提取结果: title=${extract.data.title} ` +
+      `raw_len=${raw.length} content_len=${content.length} truncated=${truncated} ` +
+      `wordCount=${extract.data.wordCount}`
+  )
+
+  if (content.length === 0) {
+    console.warn("[TabKeep] 收藏(全文) 提取为空，回退到仅链接模式")
+  }
+
+  const body = {
+    title: tab.title ?? extract.data.title ?? "",
+    url: tab.url ?? "",
+    content: content || undefined,
+    excerpt: extract.data.description || extract.data.author || undefined,
+    notebook_id: "",
+    target_doc: null
+  }
+  console.log(`[TabKeep] 收藏(全文) 第 2 步: POST /notes/save body=`, body)
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/notes/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+    const data = await res.json()
+    if (data.ok) {
+      console.log(`[TabKeep] 收藏(全文) ok: ${tab.title} (${content.length} 字符${truncated ? " 已截断" : ""}) doc=${data.note_id}`)
+    } else {
+      console.warn(`[TabKeep] 收藏(全文) 后端失败: ${data.error}`)
+    }
+    return data
+  } catch (err) {
+    console.error("[TabKeep] 收藏(全文) 请求后端失败:", err)
+    return { ok: false, error: String(err) }
+  }
+}
 
 const classifyCurrentWindowTabs = async () => {
   const tabs = await chrome.tabs.query({ currentWindow: true })

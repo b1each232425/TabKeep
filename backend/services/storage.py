@@ -4,13 +4,13 @@ import threading
 from pathlib import Path
 
 from logger import logger
-from schemas.config import ModelConfig, SyncConfigRequest, TabCategory
+from schemas.config import ModelConfig, NoteAdapterConfig, SyncConfigRequest, TabCategory
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parent.parent / "data"
 CONFIG_FILE = DATA_DIR / "config.json"
 
 _lock = threading.Lock()
-_state: dict = {"modelConfig": None, "tabCategories": []}
+_state: dict = {"modelConfig": None, "tabCategories": [], "noteAdapter": None}
 
 
 def init() -> None:
@@ -22,10 +22,12 @@ def init() -> None:
             data = json.load(f)
         _state["modelConfig"] = data.get("modelConfig")
         _state["tabCategories"] = data.get("tabCategories", [])
+        _state["noteAdapter"] = data.get("noteAdapter")
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"config.json 损坏或读取失败 ({e})，回退到空状态")
         _state["modelConfig"] = None
         _state["tabCategories"] = []
+        _state["noteAdapter"] = None
 
 
 def _persist() -> None:
@@ -42,9 +44,16 @@ def get_tab_categories() -> list[TabCategory]:
     return [TabCategory(**c) for c in _state.get("tabCategories", [])]
 
 
+def get_note_adapter() -> NoteAdapterConfig | None:
+    data = _state.get("noteAdapter")
+    return NoteAdapterConfig(**data) if data else None
+
+
 def sync_config(req: SyncConfigRequest) -> None:
     with _lock:
         if req.modelConfig is not None:
             _state["modelConfig"] = req.modelConfig.model_dump()
         _state["tabCategories"] = [c.model_dump() for c in req.tabCategories]
+        if req.noteAdapter is not None:
+            _state["noteAdapter"] = req.noteAdapter.model_dump()
         _persist()

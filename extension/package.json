@@ -14,6 +14,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "defuddle": "^0.18.1",
     "lucide-react": "^1.17.0",
     "plasmo": "0.90.5",
     "react": "18.2.0",
@@ -42,14 +43,21 @@
     ]
   },
   "manifest": {
+    "manifest_version": 3,
+    "name": "TabKeep",
     "host_permissions": [
-      "https://*/*"
+      "<all_urls>"
     ],
     "permissions": [
       "storage",
       "tabs",
       "tabGroups",
-      "alarms"
-    ]
+      "alarms",
+      "activeTab",
+      "scripting"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    }
   }
 }

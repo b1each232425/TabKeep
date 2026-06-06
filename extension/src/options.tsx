@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import {
   BookOpen,
   Brain,
+  CheckCircle2,
   Folder,
   LayoutDashboard,
   Pencil,
@@ -13,6 +14,8 @@ import {
 } from "lucide-react"
 import type {
   ModelConfig,
+  NoteAdapterConfig,
+  NotebookInfo,
   TabCategory,
   TabData,
   TabGroupColor,
@@ -27,13 +30,14 @@ const BACKEND_URL = "http://127.0.0.1:38471"
 
 const syncConfigToBackend = async (
   modelConfig: ModelConfig | null,
-  tabCategories: TabCategory[]
+  tabCategories: TabCategory[],
+  noteAdapter: NoteAdapterConfig | null
 ) => {
   try {
     const res = await fetch(`${BACKEND_URL}/config/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelConfig, tabCategories })
+      body: JSON.stringify({ modelConfig, tabCategories, noteAdapter })
     })
     const data = await res.json()
     if (!data.ok) {
@@ -64,7 +68,7 @@ const DEFAULT_MODEL_CONFIG: ModelConfig = {
   apiKey: ""
 }
 
-type Section = "overview" | "categories" | "modelApi"
+type Section = "overview" | "categories" | "modelApi" | "notes"
 
 function OverviewSection() {
   const [tabs, setTabs] = useState<TabData[]>([])
@@ -230,7 +234,7 @@ function ModelApiSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ modelConfig: config })
-    syncConfigToBackend(config, [])
+    syncConfigToBackend(config, [], null)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -325,7 +329,7 @@ function CategoriesSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ tabCategories: draftCategories })
-    syncConfigToBackend(null, draftCategories)
+    syncConfigToBackend(null, draftCategories, null)
     setSavedCategories(draftCategories)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
@@ -524,6 +528,219 @@ function CategoriesSection() {
   )
 }
 
+const DEFAULT_NOTE_ADAPTER: NoteAdapterConfig = {
+  provider: "local"
+}
+
+function NotesSection() {
+  const [config, setConfig] = useState<NoteAdapterConfig>(DEFAULT_NOTE_ADAPTER)
+  const [saved, setSaved] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [notebooks, setNotebooks] = useState<NotebookInfo[]>([])
+
+  useEffect(() => {
+    chrome.storage.local.get("noteAdapter").then((stored) => {
+      if (stored.noteAdapter) {
+        setConfig({ ...DEFAULT_NOTE_ADAPTER, ...stored.noteAdapter })
+      }
+    })
+  }, [])
+
+  const save = async () => {
+    await chrome.storage.local.set({ noteAdapter: config })
+    syncConfigToBackend(null, [], config)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  const reset = () => {
+    setConfig(DEFAULT_NOTE_ADAPTER)
+  }
+
+  const test = async () => {
+    setTesting(true)
+    setTestResult(null)
+    setNotebooks([])
+    console.log("[TabKeep] 测试连接开始", { provider: config.provider, endpoint: config.endpoint })
+    try {
+      const res = await fetch(`${BACKEND_URL}/notes/test`, { method: "POST" })
+      console.log("[TabKeep] /notes/test HTTP", res.status, res.statusText)
+      if (!res.ok) {
+        const text = await res.text()
+        const err = `后端 HTTP ${res.status}：${text.slice(0, 200)}`
+        console.error("[TabKeep] 测试连接 HTTP 失败", err)
+        setTestResult(err)
+        return
+      }
+      const data = await res.json()
+      console.log("[TabKeep] /notes/test 响应", data)
+      if (data.ok) {
+        setTestResult(`连接成功 (provider=${data.provider})`)
+        console.log("[TabKeep] 测试连接 ok, 拉笔记本列表")
+        const nbRes = await fetch(`${BACKEND_URL}/notes/notebooks`)
+        console.log("[TabKeep] /notes/notebooks HTTP", nbRes.status)
+        if (!nbRes.ok) {
+          const text = await nbRes.text()
+          const err = `拉笔记本失败 HTTP ${nbRes.status}：${text.slice(0, 200)}`
+          console.error("[TabKeep]", err)
+          setTestResult((prev) => `${prev}\n${err}`)
+          return
+        }
+        const nbData = await nbRes.json()
+        console.log("[TabKeep] 笔记本列表", nbData)
+        setNotebooks(Array.isArray(nbData) ? nbData : [])
+      } else {
+        const errMsg = data.error ?? "未知错误"
+        console.warn("[TabKeep] 测试连接 fail:", errMsg)
+        setTestResult(`连接失败：${errMsg}`)
+      }
+    } catch (err) {
+      const errMsg = String(err)
+      console.error("[TabKeep] 测试连接 fetch 异常:", err)
+      setTestResult(
+        `请求失败：${errMsg}\n\n排查：\n1) 后端是否启动：${BACKEND_URL}\n2) 浏览器能否访问该 URL\n3) CORS / 端口冲突`
+      )
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const isLocal = config.provider === "local"
+  const isObsidian = config.provider === "obsidian"
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-semibold">笔记集成</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          配置后可在 popup 点 ☆ 把当前标签页收藏到笔记系统
+        </p>
+      </header>
+
+      <section className="border border-border rounded-lg p-4 space-y-4 max-w-xl">
+        <div>
+          <label className="text-sm text-muted-foreground block mb-1">Provider</label>
+          <select
+            className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+            value={config.provider}
+            onChange={(e) =>
+              setConfig({ ...config, provider: e.target.value as NoteAdapterConfig["provider"] })
+            }>
+            <option value="local">本地 Markdown（写到 data/notes/，零依赖）</option>
+            <option value="siyuan">思源笔记（HTTP API @ :6806，需 Token）</option>
+            <option value="obsidian">Obsidian（即将推出）</option>
+          </select>
+        </div>
+
+        {!isLocal && (
+          <>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">Endpoint</label>
+              <input
+                type="text"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="http://127.0.0.1:6806"
+                value={config.endpoint ?? ""}
+                onChange={(e) => setConfig({ ...config, endpoint: e.target.value })}
+                disabled={isObsidian}
+              />
+            </div>
+            {!isObsidian && (
+              <div>
+                <label className="text-sm text-muted-foreground block mb-1">Token</label>
+                <input
+                  type="password"
+                  className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                  placeholder="思源：设置 → 关于 → API token"
+                  value={config.token ?? ""}
+                  onChange={(e) => setConfig({ ...config, token: e.target.value })}
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                默认笔记本 ID（可选）
+              </label>
+              <input
+                type="text"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="留空则每次收藏时新建"
+                value={config.defaultNotebook ?? ""}
+                onChange={(e) => setConfig({ ...config, defaultNotebook: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                默认目标文档（可选）
+              </label>
+              <input
+                type="text"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="留空 = 每次新建；填 = 追加到此文档"
+                value={config.defaultTargetDoc ?? ""}
+                onChange={(e) => setConfig({ ...config, defaultTargetDoc: e.target.value })}
+              />
+            </div>
+          </>
+        )}
+
+        {isLocal && (
+          <p className="text-xs text-muted-foreground">
+            本地模式无需配置，收藏会写入 <code>data/notes/inbox.md</code>（可在 dataDir 下查看）。
+          </p>
+        )}
+        {isObsidian && (
+          <p className="text-xs text-muted-foreground">
+            Obsidian 适配器尚未实现（占位）。后续版本接入 Local REST API 插件。
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 pt-2">
+          <Button size="sm" onClick={save} disabled={isObsidian}>
+            {saved ? "已保存" : "保存设置"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={test} disabled={testing}>
+            {testing ? "测试中..." : "测试连接"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={reset}>
+            <RotateCcw className="h-4 w-4 mr-1" />
+            重置
+          </Button>
+        </div>
+
+        {testResult && (
+          <p
+            className={`text-xs ${
+              testResult.startsWith("连接成功") ? "text-green-600" : "text-red-600"
+            }`}>
+            {testResult}
+          </p>
+        )}
+
+        {notebooks.length > 0 && (
+          <div className="border-t border-border pt-3">
+            <p className="text-xs text-muted-foreground mb-2">笔记本列表：</p>
+            <ul className="space-y-1">
+              {notebooks.map((nb) => (
+                <li
+                  key={nb.id}
+                  className="text-xs flex items-center gap-2 cursor-pointer hover:bg-accent/30 px-2 py-1 rounded"
+                  onClick={() => setConfig({ ...config, defaultNotebook: nb.id })}>
+                  <CheckCircle2 className="h-3 w-3 text-muted-foreground" />
+                  <span className="font-medium">{nb.name}</span>
+                  <code className="text-[10px] text-muted-foreground">{nb.id}</code>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[10px] text-muted-foreground mt-2">点击笔记本可填入「默认笔记本 ID」</p>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
 function IndexOptions() {
   const [section, setSection] = useState<Section>("overview")
 
@@ -531,7 +748,7 @@ function IndexOptions() {
     { id: "overview", label: "概览", icon: LayoutDashboard },
     { id: "categories", label: "分组", icon: Folder },
     { id: "modelApi", label: "模型 API", icon: Brain },
-    { id: "overview", label: "笔记集成", icon: BookOpen, disabled: true }
+    { id: "notes", label: "笔记集成", icon: BookOpen }
   ]
 
   return (
@@ -576,6 +793,7 @@ function IndexOptions() {
           {section === "overview" && <OverviewSection />}
           {section === "categories" && <CategoriesSection />}
           {section === "modelApi" && <ModelApiSection />}
+          {section === "notes" && <NotesSection />}
         </div>
       </main>
     </div>

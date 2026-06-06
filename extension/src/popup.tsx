@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Settings, Sparkles } from "lucide-react"
+import { Bookmark, BookmarkCheck, Settings, Sparkles, Star, StarOff } from "lucide-react"
 import type { TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
@@ -10,11 +10,14 @@ const openDashboard = () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
 }
 
+type SaveStatus = "extracting" | "saving" | "ok" | "error"
+
 function IndexPopup() {
   const [tabs, setTabs] = useState<TabData[]>([])
   const [loading, setLoading] = useState(true)
   const [showGrouped, setShowGrouped] = useState(false)
   const [aiGrouping, setAiGrouping] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<Record<number, SaveStatus>>({})
 
   useEffect(() => {
     loadFromIDB<TabData>().then((data) => {
@@ -26,6 +29,38 @@ function IndexPopup() {
   }, [])
 
   const groupedTabs = groupTabsByDomain(tabs)
+
+  const handleSave = async (tab: TabData) => {
+    if (tab.id === undefined) return
+    const tabId = tab.id
+    setSaveStatus((s) => ({ ...s, [tabId]: "saving" }))
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "SAVE_TAB_TO_NOTE", tab })
+      setSaveStatus((s) => ({ ...s, [tabId]: res?.ok ? "ok" : "error" }))
+      if (!res?.ok) {
+        alert(`收藏失败：${res?.error ?? "未知错误"}\n请先在仪表盘配置笔记集成。`)
+      }
+    } catch (err) {
+      setSaveStatus((s) => ({ ...s, [tabId]: "error" }))
+      alert(`收藏失败：${String(err)}`)
+    }
+  }
+
+  const handleSaveFull = async (tab: TabData) => {
+    if (tab.id === undefined) return
+    const tabId = tab.id
+    setSaveStatus((s) => ({ ...s, [tabId]: "extracting" }))
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "SAVE_TAB_FULL", tab })
+      setSaveStatus((s) => ({ ...s, [tabId]: res?.ok ? "ok" : "error" }))
+      if (!res?.ok) {
+        alert(`全文收藏失败：${res?.error ?? "未知错误"}`)
+      }
+    } catch (err) {
+      setSaveStatus((s) => ({ ...s, [tabId]: "error" }))
+      alert(`全文收藏失败：${String(err)}`)
+    }
+  }
 
   return (
     <div className="p-4 max-h-96 overflow-y-auto" style={{ minWidth: 500, width: 500 }}>
@@ -75,6 +110,15 @@ function IndexPopup() {
         </div>
       </div>
 
+      <div className="text-xs text-gray-500 mb-2 flex items-center gap-3">
+        <span className="flex items-center gap-1">
+          <Bookmark className="h-3 w-3" /> 仅链接
+        </span>
+        <span className="flex items-center gap-1">
+          <Star className="h-3 w-3" /> 全文（用 Defuddle 提取）
+        </span>
+      </div>
+
       {loading ? (
         <p className="text-sm text-gray-500">加载中...</p>
       ) : showGrouped ? (
@@ -121,26 +165,66 @@ function IndexPopup() {
         <>
           <p className="text-sm text-gray-600 mb-3">共 {tabs.length} 个标签页</p>
           <div className="space-y-1">
-            {tabs.map((tab) => (
-              <div key={tab.id} className="flex items-center gap-2 py-1 border-b border-gray-100">
-                {tab.favIconUrl && (
-                  <img
-                    src={tab.favIconUrl}
-                    className="w-3 h-3 flex-shrink-0"
-                    style={{ width: 12, height: 12 }}
-                    alt=""
-                    onError={(e) => e.currentTarget.classList.add("hidden")}
-                  />
-                )}
-                <a
-                  href={tab.url}
-                  target="_blank"
-                  className="flex-1 text-xs truncate text-blue-600 hover:underline"
-                  title={tab.url}>
-                  {tab.title || "无标题"}
-                </a>
-              </div>
-            ))}
+            {tabs.map((tab) => {
+              const status = tab.id !== undefined ? saveStatus[tab.id] : undefined
+              const busy = status === "saving" || status === "extracting"
+              const LinkIcon = status === "ok" ? BookmarkCheck : Bookmark
+              const FullIcon = status === "ok" ? StarOff : Star
+              return (
+                <div key={tab.id} className="flex items-center gap-2 py-1 border-b border-gray-100">
+                  {tab.favIconUrl && (
+                    <img
+                      src={tab.favIconUrl}
+                      className="w-3 h-3 flex-shrink-0"
+                      style={{ width: 12, height: 12 }}
+                      alt=""
+                      onError={(e) => e.currentTarget.classList.add("hidden")}
+                    />
+                  )}
+                  <a
+                    href={tab.url}
+                    target="_blank"
+                    className="flex-1 text-xs truncate text-blue-600 hover:underline"
+                    title={tab.url}>
+                    {tab.title || "无标题"}
+                  </a>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    disabled={busy}
+                    onClick={() => handleSave(tab)}
+                    title={status === "ok" ? "已收藏链接" : "仅链接收藏"}>
+                    <LinkIcon
+                      className={`h-3 w-3 ${
+                        status === "ok"
+                          ? "text-green-600"
+                          : status === "error"
+                          ? "text-red-600"
+                          : ""
+                      }`}
+                    />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    disabled={busy}
+                    onClick={() => handleSaveFull(tab)}
+                    title={status === "extracting" ? "提取中..." : "全文收藏（含正文）"}>
+                    <FullIcon
+                      className={`h-3 w-3 ${
+                        status === "ok"
+                          ? "text-green-600"
+                          : status === "error"
+                          ? "text-red-600"
+                          : "text-amber-500"
+                      } ${status === "extracting" ? "animate-pulse" : ""}`}
+                    />
+                  </Button>
+                </div>
+              )
+            })}
           </div>
         </>
       )}

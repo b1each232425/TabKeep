@@ -13,6 +13,9 @@ venv/
 env/
 .env
 
+# === 后端运行时数据（config.json 含明文 apiKey/token，不提交） ===
+backend/data/
+
 # === 系统与编辑器残渣 ===
 .DS_Store
 .vscode/

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers.tabs import router as tabs_router
 from routers.classify import router as classify_router
+from routers.notes import router as notes_router
 from services import storage
 
 
@@ -29,6 +30,7 @@ app.add_middleware(
 # 注册路由
 app.include_router(tabs_router)
 app.include_router(classify_router)
+app.include_router(notes_router)
 
 
 @app.get("/", summary="健康检查")
