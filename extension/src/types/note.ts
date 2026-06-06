@@ -12,6 +12,14 @@ export interface NotebookInfo {
   name: string
 }
 
+export interface DocNode {
+  id: string
+  name: string
+  path: string
+  type: string
+  children: DocNode[]
+}
+
 export interface SaveTabResult {
   ok: boolean
   note_id?: string

@@ -7,7 +7,7 @@ from logger import logger
 from schemas.config import NoteAdapterConfig
 from services import storage
 from services.note import build_note_adapter
-from services.note.base import NotebookInfo, SaveRequest, SaveResult
+from services.note.base import DocNode, NotebookInfo, SaveRequest, SaveResult
 
 router = APIRouter(prefix="/notes", tags=["笔记集成"])
 
@@ -52,6 +52,26 @@ async def get_notebooks() -> list[NotebookInfo]:
     except Exception as e:
         logger.exception(f"/notes/notebooks 失败: {e}")
         raise
+
+
+@router.get("/notebooks/{notebook_id}/docs", summary="列出笔记本内的文档树（仅 SiYuan 真实返回）")
+async def get_notebook_docs(notebook_id: str) -> list[DocNode]:
+    config = storage.get_note_adapter()
+    if not config:
+        logger.warning(f"/notes/notebooks/{notebook_id}/docs: 未配置 noteAdapter")
+        return []
+    adapter = build_note_adapter(config)
+    if not hasattr(adapter, "list_docs"):
+        logger.info(
+            f"/notes/notebooks/{notebook_id}/docs: provider={adapter.name} 不支持文档树，返回空"
+        )
+        return []
+    logger.info(f"GET /notes/notebooks/{notebook_id}/docs: provider={adapter.name}")
+    try:
+        return await adapter.list_docs(notebook_id)
+    except Exception as e:
+        logger.exception(f"/notes/notebooks/{notebook_id}/docs 失败: {e}")
+        return []
 
 
 @router.post("/save", summary="保存单条标签到笔记系统", response_model=SaveResult)

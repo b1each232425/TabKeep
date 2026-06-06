@@ -133,10 +133,48 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg.type === "SAVE_TAB_FULL") {
     saveTabToNoteFull(msg.tab).then(sendResponse)
     return true
+  } else if (msg.type === "EXTRACT_CONTENT_FOR_PICKER") {
+    extractContentForPicker(msg.tab).then(sendResponse)
+    return true
   }
 })
 
 const MAX_CONTENT_CHARS = 200_000
+
+const extractContentForPicker = async (
+  tab: TabData
+): Promise<{ ok: boolean; content?: string; error?: string }> => {
+  console.log(`[TabKeep] extract-for-picker 开始 tab=${tab.id} title=${tab.title}`)
+  if (tab.id === undefined) {
+    return { ok: false, error: "tab 没有 id" }
+  }
+
+  let extract: any = await trySendMessage(tab.id)
+  if (!extract) {
+    const err = "提取失败：无法访问页面 content script（请刷新该标签页后重试，或避开 chrome:// 内部页 / PDF）"
+    console.error(`[TabKeep] extract-for-picker ${err}`)
+    return { ok: false, error: err }
+  }
+  if (!extract.ok) {
+    return { ok: false, error: extract.error ?? "提取失败" }
+  }
+  const raw: string = extract.data.contentMarkdown || extract.data.content || ""
+  const truncated = raw.length > MAX_CONTENT_CHARS
+  const content = truncated ? raw.slice(0, MAX_CONTENT_CHARS) + "\n\n> _(内容已截断)_" : raw
+  console.log(
+    `[TabKeep] extract-for-picker ok raw_len=${raw.length} content_len=${content.length} truncated=${truncated}`
+  )
+  return { ok: true, content }
+}
+
+const trySendMessage = async (tabId: number): Promise<any> => {
+  try {
+    const res: any = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_CONTENT" })
+    return res
+  } catch (e) {
+    return null
+  }
+}
 
 const saveTabToNote = async (tab: TabData) => {
   console.log(`[TabKeep] 收藏(链接) tab=${tab.id} title=${tab.title} url=${tab.url}`)
@@ -173,7 +211,7 @@ const saveTabToNoteFull = async (tab: TabData) => {
   }
 
   console.log(`[TabKeep] 收藏(全文) 第 1 步: 向 tab ${tab.id} content script 发 EXTRACT_CONTENT`)
-  let extract
+  let extract: any
   try {
     extract = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_CONTENT" })
     console.log(`[TabKeep] 收藏(全文) content script 响应:`, extract)

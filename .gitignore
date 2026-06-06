@@ -19,3 +19,4 @@ backend/data/
 # === 系统与编辑器残渣 ===
 .DS_Store
 .vscode/
+保存效果.md

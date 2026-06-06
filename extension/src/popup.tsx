@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react"
-import { Bookmark, BookmarkCheck, Settings, Sparkles, Star, StarOff } from "lucide-react"
-import type { TabData } from "./types"
+import { Bookmark, BookmarkCheck, ChevronDown, ChevronRight, Settings, Sparkles, Star, StarOff, X } from "lucide-react"
+import type { DocNode, NotebookInfo, TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
 import "./style.css"
+
+const BACKEND_URL = "http://127.0.0.1:38471"
+const MAX_CONTENT_CHARS = 200_000
 
 const openDashboard = () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
@@ -12,12 +15,20 @@ const openDashboard = () => {
 
 type SaveStatus = "extracting" | "saving" | "ok" | "error"
 
+type Pending = {
+  tab: TabData
+  full: boolean
+  content: string | undefined
+  extractError?: string
+} | null
+
 function IndexPopup() {
   const [tabs, setTabs] = useState<TabData[]>([])
   const [loading, setLoading] = useState(true)
   const [showGrouped, setShowGrouped] = useState(false)
   const [aiGrouping, setAiGrouping] = useState(false)
   const [saveStatus, setSaveStatus] = useState<Record<number, SaveStatus>>({})
+  const [pending, setPending] = useState<Pending>(null)
 
   useEffect(() => {
     loadFromIDB<TabData>().then((data) => {
@@ -30,36 +41,45 @@ function IndexPopup() {
 
   const groupedTabs = groupTabsByDomain(tabs)
 
-  const handleSave = async (tab: TabData) => {
+  const handleSave = async (tab: TabData, full: boolean) => {
     if (tab.id === undefined) return
     const tabId = tab.id
-    setSaveStatus((s) => ({ ...s, [tabId]: "saving" }))
-    try {
-      const res = await chrome.runtime.sendMessage({ type: "SAVE_TAB_TO_NOTE", tab })
-      setSaveStatus((s) => ({ ...s, [tabId]: res?.ok ? "ok" : "error" }))
-      if (!res?.ok) {
-        alert(`收藏失败：${res?.error ?? "未知错误"}\n请先在仪表盘配置笔记集成。`)
+
+    let content: string | undefined
+    let extractError: string | undefined
+    if (full) {
+      setSaveStatus((s) => ({ ...s, [tabId]: "extracting" }))
+      try {
+        const res = await chrome.runtime.sendMessage({ type: "EXTRACT_CONTENT_FOR_PICKER", tab })
+        if (res?.ok && res.content) {
+          content = res.content
+        } else {
+          content = undefined
+          extractError = res?.error ?? "EXTRACT_CONTENT_FOR_PICKER 返回异常"
+          console.warn(`[TabKeep] 提取失败: ${extractError}`)
+        }
+      } catch (e) {
+        content = undefined
+        extractError = `消息到 background 失败: ${String(e)}（可能扩展需要重新加载）`
+        console.warn(`[TabKeep] ${extractError}`)
       }
-    } catch (err) {
-      setSaveStatus((s) => ({ ...s, [tabId]: "error" }))
-      alert(`收藏失败：${String(err)}`)
     }
+
+    setSaveStatus((s) => ({ ...s, [tabId]: "saving" }))
+    setPending({ tab, full, content, extractError })
   }
 
-  const handleSaveFull = async (tab: TabData) => {
-    if (tab.id === undefined) return
-    const tabId = tab.id
-    setSaveStatus((s) => ({ ...s, [tabId]: "extracting" }))
-    try {
-      const res = await chrome.runtime.sendMessage({ type: "SAVE_TAB_FULL", tab })
-      setSaveStatus((s) => ({ ...s, [tabId]: res?.ok ? "ok" : "error" }))
-      if (!res?.ok) {
-        alert(`全文收藏失败：${res?.error ?? "未知错误"}`)
-      }
-    } catch (err) {
-      setSaveStatus((s) => ({ ...s, [tabId]: "error" }))
-      alert(`全文收藏失败：${String(err)}`)
+  const handleModalClose = () => {
+    if (pending) {
+      setSaveStatus((s) => ({ ...s, [pending.tab.id!]: "error" }))
     }
+    setPending(null)
+  }
+
+  const handleModalSaved = (ok: boolean, _error?: string) => {
+    if (!pending) return
+    setSaveStatus((s) => ({ ...s, [pending.tab.id!]: ok ? "ok" : "error" }))
+    setPending(null)
   }
 
   return (
@@ -193,7 +213,7 @@ function IndexPopup() {
                     variant="ghost"
                     className="h-6 w-6"
                     disabled={busy}
-                    onClick={() => handleSave(tab)}
+                    onClick={() => handleSave(tab, false)}
                     title={status === "ok" ? "已收藏链接" : "仅链接收藏"}>
                     <LinkIcon
                       className={`h-3 w-3 ${
@@ -210,7 +230,7 @@ function IndexPopup() {
                     variant="ghost"
                     className="h-6 w-6"
                     disabled={busy}
-                    onClick={() => handleSaveFull(tab)}
+                    onClick={() => handleSave(tab, true)}
                     title={status === "extracting" ? "提取中..." : "全文收藏（含正文）"}>
                     <FullIcon
                       className={`h-3 w-3 ${
@@ -228,7 +248,286 @@ function IndexPopup() {
           </div>
         </>
       )}
+
+      {pending && (
+        <NotebookPickerModal
+          tab={pending.tab}
+          content={pending.content}
+          extractError={pending.extractError}
+          onClose={handleModalClose}
+          onSaved={handleModalSaved}
+        />
+      )}
     </div>
+  )
+}
+
+type Selected = { notebookId: string; docId?: string } | null
+
+function NotebookPickerModal({
+  tab,
+  content,
+  extractError,
+  onClose,
+  onSaved,
+}: {
+  tab: TabData
+  content: string | undefined
+  extractError?: string
+  onClose: () => void
+  onSaved: (ok: boolean, error?: string) => void
+}) {
+  const [notebooks, setNotebooks] = useState<NotebookInfo[]>([])
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [docsByNotebook, setDocsByNotebook] = useState<Record<string, DocNode[]>>({})
+  const [docsLoading, setDocsLoading] = useState<Set<string>>(new Set())
+  const [selected, setSelected] = useState<Selected>(null)
+  const [loadingNotebooks, setLoadingNotebooks] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${BACKEND_URL}/notes/notebooks`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        setNotebooks(Array.isArray(data) ? data : [])
+        setLoadingNotebooks(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(String(e))
+        setLoadingNotebooks(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const toggleExpand = async (notebookId: string) => {
+    if (expanded.has(notebookId)) {
+      setExpanded((s) => {
+        const n = new Set(s)
+        n.delete(notebookId)
+        return n
+      })
+      return
+    }
+    if (!docsByNotebook[notebookId]) {
+      setDocsLoading((s) => new Set(s).add(notebookId))
+      try {
+        const res = await fetch(`${BACKEND_URL}/notes/notebooks/${notebookId}/docs`)
+        const data = await res.json()
+        setDocsByNotebook((m) => ({ ...m, [notebookId]: Array.isArray(data) ? data : [] }))
+      } catch (e) {
+        setDocsByNotebook((m) => ({ ...m, [notebookId]: [] }))
+        setError(`加载文档树失败: ${String(e)}`)
+      } finally {
+        setDocsLoading((s) => {
+          const n = new Set(s)
+          n.delete(notebookId)
+          return n
+        })
+      }
+    }
+    setExpanded((s) => new Set(s).add(notebookId))
+  }
+
+  const handleConfirm = async () => {
+    if (!selected) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch(`${BACKEND_URL}/notes/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: tab.title ?? "",
+          url: tab.url ?? "",
+          content: content || undefined,
+          notebook_id: selected.notebookId,
+          target_doc: selected.docId ?? null,
+        }),
+      })
+      const data = await res.json()
+      if (!data.ok) {
+        setError(data.error || "保存失败")
+        setSaving(false)
+        return
+      }
+      onSaved(true)
+    } catch (e) {
+      setError(String(e))
+      setSaving(false)
+    }
+  }
+
+  const handleSelectDoc = (notebookId: string, docId: string) => {
+    setSelected({ notebookId, docId })
+  }
+
+  const handleSelectNotebook = (notebookId: string) => {
+    setSelected({ notebookId })
+  }
+
+  const statusText = !selected
+    ? "请选择目标"
+    : selected.docId
+    ? "→ 追加到选中文档"
+    : "→ 在笔记本根新建 doc"
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-2">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="p-3 border-b flex items-center justify-between">
+          <h4 className="text-sm font-semibold truncate pr-2">
+            收藏「{tab.title || "无标题"}」
+          </h4>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+            title="关闭">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="px-3 py-2 border-b text-xs text-gray-600 flex items-center gap-2 flex-wrap">
+          <span
+            className={`px-1.5 py-0.5 rounded ${
+              content ? "bg-amber-100 text-amber-800" : "bg-gray-100"
+            }`}>
+            {content ? `全文 (${content.length} 字)` : "仅链接"}
+          </span>
+          <span className="truncate text-gray-500 flex-1" title={tab.url}>
+            {tab.url}
+          </span>
+        </div>
+        {extractError && !content && (
+          <div className="px-3 py-1.5 text-xs text-red-700 bg-red-50 border-b border-red-100">
+            ⚠ 提取失败: {extractError}
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-2 text-sm">
+          {loadingNotebooks ? (
+            <p className="text-gray-500 text-center py-4">加载笔记本...</p>
+          ) : error && notebooks.length === 0 ? (
+            <p className="text-red-600 py-2 text-center">{error}</p>
+          ) : notebooks.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">
+              没有笔记本
+              <br />
+              <span className="text-xs text-gray-400">
+                请在仪表盘配置笔记适配器（当前可能不是 SiYuan）
+              </span>
+            </p>
+          ) : (
+            notebooks.map((nb) => (
+              <div key={nb.id}>
+                <div className="flex items-center gap-1 py-0.5 hover:bg-gray-50">
+                  <button
+                    className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-700"
+                    onClick={() => toggleExpand(nb.id)}
+                    title="展开文档">
+                    {docsLoading.has(nb.id) ? (
+                      <span className="text-xs">...</span>
+                    ) : expanded.has(nb.id) ? (
+                      <ChevronDown className="h-3 w-3" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3" />
+                    )}
+                  </button>
+                  <button
+                    className={`flex-1 text-left px-1 py-1 rounded truncate ${
+                      selected?.notebookId === nb.id && !selected?.docId
+                        ? "bg-blue-100 text-blue-800"
+                        : "hover:bg-gray-100"
+                    }`}
+                    onClick={() => handleSelectNotebook(nb.id)}
+                    title={`在 ${nb.name} 下新建 doc`}>
+                    <span className="mr-1">📘</span>
+                    {nb.name}
+                  </button>
+                </div>
+                {expanded.has(nb.id) && (
+                  <div className="ml-5 border-l border-gray-200">
+                    {docsByNotebook[nb.id] === undefined ? null :
+                     docsByNotebook[nb.id].length === 0 ? (
+                      <p className="text-xs text-gray-400 py-1 pl-2">（空，没有子文档）</p>
+                    ) : (
+                      <DocTree
+                        nodes={docsByNotebook[nb.id]}
+                        depth={1}
+                        selected={selected?.notebookId === nb.id ? selected : null}
+                        onSelect={(docId) => handleSelectDoc(nb.id, docId)}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {error && notebooks.length > 0 && (
+          <div className="px-3 py-1 text-xs text-red-600 border-t">{error}</div>
+        )}
+
+        <div className="p-2 border-t flex items-center justify-between">
+          <p className="text-xs text-gray-500 truncate pr-2">{statusText}</p>
+          <div className="flex gap-2 flex-shrink-0">
+            <Button size="sm" variant="outline" onClick={onClose} disabled={saving}>
+              取消
+            </Button>
+            <Button size="sm" onClick={handleConfirm} disabled={!selected || saving}>
+              {saving ? "保存中..." : "确认收藏"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DocTree({
+  nodes,
+  depth,
+  selected,
+  onSelect,
+}: {
+  nodes: DocNode[]
+  depth: number
+  selected: Selected
+  onSelect: (docId: string) => void
+}) {
+  return (
+    <>
+      {nodes.map((node) => (
+        <div key={node.id}>
+          <button
+            className={`w-full text-left px-1 py-1 rounded truncate ${
+              selected?.docId === node.id
+                ? "bg-blue-100 text-blue-800"
+                : "hover:bg-gray-100"
+            }`}
+            style={{ paddingLeft: depth * 8 }}
+            onClick={() => onSelect(node.id)}
+            title={node.path}>
+            <span className="mr-1">{node.type === "Container" ? "📁" : "📄"}</span>
+            {node.name}
+          </button>
+          {node.children.length > 0 && (
+            <DocTree
+              nodes={node.children}
+              depth={depth + 1}
+              selected={selected}
+              onSelect={onSelect}
+            />
+          )}
+        </div>
+      ))}
+    </>
   )
 }
 

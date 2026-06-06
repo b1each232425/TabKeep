@@ -10,6 +10,16 @@ class NotebookInfo(BaseModel):
     name: str
 
 
+class DocNode(BaseModel):
+    """思源笔记内的一个文档节点（容器/页）。"""
+
+    id: str
+    name: str
+    path: str
+    type: str
+    children: list["DocNode"] = []
+
+
 class SaveRequest(BaseModel):
     title: str
     url: str

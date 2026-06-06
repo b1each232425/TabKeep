@@ -5,7 +5,7 @@ import httpx
 from loguru import logger
 
 from schemas.config import NoteAdapterConfig
-from services.note.base import NotebookInfo, SaveRequest, SaveResult
+from services.note.base import DocNode, NotebookInfo, SaveRequest, SaveResult
 
 
 class SiYuanAdapter:
@@ -111,19 +111,56 @@ class SiYuanAdapter:
         )
 
         try:
-            if has_full and not target_doc:
-                doc_id = await self._create_doc_with_content(notebook_id, req.title, req.url, req.content or "")
-            elif has_full and target_doc:
+            if not target_doc:
+                # 笔记本根：在该笔记本下新建一个 doc（全文内容已包含在 doc body）
+                if has_full:
+                    doc_id = await self._create_doc_with_content(notebook_id, req.title, req.url, req.content or "")
+                else:
+                    doc_id = await self._create_doc(notebook_id, req.title, req.url)
+            elif has_full:
                 doc_id = await self._append_to_doc(target_doc, req.content or "")
-            elif target_doc:
-                doc_id = await self._append_to_doc(target_doc, f"- [{req.title}]({req.url})\n")
             else:
-                doc_id = await self._create_doc(notebook_id, req.title, req.url)
+                doc_id = await self._append_to_doc(target_doc, f"- [{req.title}]({req.url})\n")
         except (httpx.HTTPError, RuntimeError, OSError) as e:
             logger.exception(f"siyuan save 失败: {e}")
             return SaveResult(ok=False, error=str(e))
         logger.info(f"siyuan save ok url={req.url} full={has_full} doc={doc_id}")
         return SaveResult(ok=True, note_id=doc_id)
+
+    async def list_docs(self, notebook_id: str) -> list[DocNode]:
+        """列出笔记本内的文档树。SiYuan 平铺返回，按 path 拼嵌套。"""
+        logger.info(f"siyuan list_docs notebook={notebook_id}")
+        data = await self._post("/api/filetree/listDocsByNotebook", {"notebook": notebook_id})
+        if data.get("code") != 0:
+            raise RuntimeError(
+                f"siyuan listDocsByNotebook 失败: code={data.get('code')} msg={data.get('msg')!r}"
+            )
+        flat = data.get("data", {}).get("files", [])
+        tree = self._build_doc_tree(flat)
+        logger.info(f"siyuan list_docs ok: {len(flat)} 个文档，拼出 {len(tree)} 个根节点")
+        return tree
+
+    @staticmethod
+    def _build_doc_tree(flat: list[dict]) -> list[DocNode]:
+        """SiYuan 的 listDocsByNotebook 是平铺的（按 path 排序），按 path 拼嵌套树。"""
+        by_path: dict[str, DocNode] = {}
+        for f in flat:
+            by_path[f["path"]] = DocNode(
+                id=f["id"],
+                name=f["name"],
+                path=f["path"],
+                type=f.get("type", "Page"),
+                children=[],
+            )
+        roots: list[DocNode] = []
+        for f in flat:
+            node = by_path[f["path"]]
+            parent_path = "/".join(f["path"].split("/")[:-1])
+            if parent_path and parent_path in by_path:
+                by_path[parent_path].children.append(node)
+            else:
+                roots.append(node)
+        return roots
 
     async def _create_doc_with_content(self, notebook_id: str, title: str, url: str, content: str) -> str:
         doc_name = f"{_safe_name(title)[:50]}-{date.today().isoformat()}"
