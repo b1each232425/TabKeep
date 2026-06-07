@@ -57,7 +57,8 @@
       "tabGroups",
       "alarms",
       "activeTab",
-      "scripting"
+      "scripting",
+      "notifications"
     ],
     "background": {
       "service_worker": "background.js"

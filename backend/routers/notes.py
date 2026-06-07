@@ -114,3 +114,37 @@ class ProviderInfo(BaseModel):
     id: str
     name: str
     description: str
+
+
+class SummarizeRequest(BaseModel):
+    title: str
+    url: str
+    content: str
+
+
+class SummarizeResponse(BaseModel):
+    ok: bool
+    summary_markdown: str | None = None
+    error: str | None = None
+
+
+@router.post("/summarize", response_model=SummarizeResponse, summary="用 LLM 把网页正文总结成 markdown 摘要")
+async def summarize(req: SummarizeRequest) -> SummarizeResponse:
+    logger.info(
+        f"POST /notes/summarize title={req.title!r} url={req.url!r} content_len={len(req.content)}"
+    )
+    from services.summarizer import summarize_content
+
+    cfg = storage.get_model_config()
+    if not cfg or not cfg.model or not cfg.baseURL or not cfg.apiKey:
+        logger.warning("/notes/summarize: modelConfig 不完整")
+        return SummarizeResponse(ok=False, error="modelConfig 不完整,先在仪表盘配置 LLM")
+    if not req.content.strip():
+        logger.warning("/notes/summarize: content 为空")
+        return SummarizeResponse(ok=False, error="content 为空,无法摘要")
+    try:
+        md, _ = await summarize_content(cfg, req.title, req.url, req.content)
+        return SummarizeResponse(ok=True, summary_markdown=md)
+    except Exception as e:
+        logger.exception(f"/notes/summarize 失败: {e}")
+        return SummarizeResponse(ok=False, error=f"LLM 调用失败: {type(e).__name__}: {e}")

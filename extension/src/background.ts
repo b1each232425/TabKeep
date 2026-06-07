@@ -136,6 +136,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg.type === "EXTRACT_CONTENT_FOR_PICKER") {
     extractContentForPicker(msg.tab).then(sendResponse)
     return true
+  } else if (msg.type === "SUMMARIZE_CONTENT") {
+    summarizeContent(msg.tab, msg.content).then(sendResponse)
+    return true
+  } else if (msg.type === "SUMMARIZE_AND_SAVE") {
+    summarizeAndSave(msg.tab, msg.content, msg.notebookId, msg.targetDoc).then(sendResponse)
+    return true
   }
 })
 
@@ -173,6 +179,112 @@ const trySendMessage = async (tabId: number): Promise<any> => {
     return res
   } catch (e) {
     return null
+  }
+}
+
+const summarizeContent = async (
+  tab: TabData,
+  content: string
+): Promise<{ ok: boolean; summary_markdown?: string; error?: string }> => {
+  console.log(
+    `[TabKeep] summarize 开始 tab=${tab.id} title=${tab.title} content_len=${content.length}`
+  )
+  if (!content.trim()) {
+    return { ok: false, error: "content 为空,无法摘录" }
+  }
+  try {
+    const res = await fetch(`${BACKEND_URL}/notes/summarize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: tab.title ?? "",
+        url: tab.url ?? "",
+        content
+      })
+    })
+    const data = await res.json()
+    if (data.ok && data.summary_markdown) {
+      console.log(
+        `[TabKeep] summarize ok title=${tab.title} summary_chars=${data.summary_markdown.length}`
+      )
+      return { ok: true, summary_markdown: data.summary_markdown }
+    }
+    const err = data.error ?? "summarize 响应异常"
+    console.warn(`[TabKeep] summarize fail: ${err}`)
+    return { ok: false, error: err }
+  } catch (e) {
+    console.error("[TabKeep] summarize 异常:", e)
+    return { ok: false, error: String(e) }
+  }
+}
+
+const summarizeAndSave = async (
+  tab: TabData,
+  content: string,
+  notebookId: string,
+  targetDoc: string | null
+): Promise<{ ok: boolean; note_id?: string; error?: string; stage?: string }> => {
+  console.log(
+    `[TabKeep] summarizeAndSave 开始 tab=${tab.id} title=${tab.title} ` +
+      `content_len=${content.length} notebook=${notebookId} target_doc=${targetDoc}`
+  )
+  if (!notebookId) {
+    return { ok: false, error: "未指定 notebook", stage: "save" }
+  }
+  const sum = await summarizeContent(tab, content)
+  if (!sum.ok || !sum.summary_markdown) {
+    notifyUser("🪄 摘录失败", sum.error ?? "LLM 摘录失败")
+    return { ok: false, error: sum.error ?? "摘录失败", stage: "summarize" }
+  }
+  console.log(
+    `[TabKeep] summarizeAndSave 摘录完成 ${sum.summary_markdown.length} 字, 立即写笔记`
+  )
+  try {
+    const res = await fetch(`${BACKEND_URL}/notes/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: tab.title ?? "",
+        url: tab.url ?? "",
+        content: sum.summary_markdown,
+        notebook_id: notebookId,
+        target_doc: targetDoc
+      })
+    })
+    const data = await res.json()
+    if (data.ok) {
+      console.log(`[TabKeep] summarizeAndSave ok tab=${tab.id} doc=${data.note_id}`)
+      const target = targetDoc ? "已追加到文档" : "已新建 doc"
+      notifyUser(
+        "✅ 摘录已保存",
+        `${tab.title ?? "无标题"} → ${target} (${sum.summary_markdown.length} 字)`
+      )
+      return { ok: true, note_id: data.note_id }
+    }
+    const err = data.error ?? "保存失败"
+    console.warn(`[TabKeep] summarizeAndSave save fail: ${err}`)
+    notifyUser("❌ 收藏失败", err)
+    return { ok: false, error: err, stage: "save" }
+  } catch (e) {
+    console.error("[TabKeep] summarizeAndSave save 异常:", e)
+    notifyUser("❌ 收藏失败", String(e))
+    return { ok: false, error: String(e), stage: "save" }
+  }
+}
+
+const notifyUser = (title: string, message: string) => {
+  try {
+    // plasmo 每次 build 都会改 icon hash,直接硬编码会失效。
+    // 用占位 URL 喂给 TS 类型;Chrome 实际显示会用扩展 toolbar 图标。
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icon128.plasmo.c11f39af.png"),
+      title,
+      message,
+      priority: 1
+    })
+  } catch (e) {
+    console.warn(`[TabKeep] 通知失败: ${e}`)
   }
 }
 
