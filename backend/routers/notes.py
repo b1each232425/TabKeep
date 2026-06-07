@@ -1,3 +1,18 @@
+"""
+/notes/* 路由 —— 笔记集成全部接口。
+
+- GET  /adapters                       列 provider 选项
+- GET  /config                         读当前 noteAdapter
+- POST /test                           连通性测试
+- GET  /notebooks                      列笔记本
+- GET  /notebooks/{id}/docs            笔记本内文档树
+- POST /save                           保存一条 tab 到笔记
+- POST /summarize                      LLM 摘录网页正文
+
+按职能分两段:
+  1. 基础配置 / 测试 / 列表(轻)
+  2. save / summarize(走真实 adapter / LLM)
+"""
 from typing import Any
 
 from fastapi import APIRouter
@@ -12,12 +27,16 @@ from services.note.base import DocNode, NotebookInfo, SaveRequest, SaveResult
 router = APIRouter(prefix="/notes", tags=["笔记集成"])
 
 
+# ─────────────────────────────────────────────────────────────
+# 1. 基础信息 + 配置 + 测试 + 列表
+# ─────────────────────────────────────────────────────────────
 @router.get("/adapters", summary="列出可用的笔记适配器 provider")
 def list_adapters() -> list[dict[str, str]]:
+    """前端"笔记集成"section 用来渲染 provider 下拉。"""
     return [
-        {"id": "local", "name": "本地 Markdown", "description": "写到 data/notes/ 目录，纯本地，零依赖"},
-        {"id": "siyuan", "name": "思源笔记", "description": "HTTP API @ :6806，需 Token"},
-        {"id": "obsidian", "name": "Obsidian", "description": "即将推出（占位 stub）"},
+        {"id": "local", "name": "本地 Markdown", "description": "写到 data/notes/ 目录,纯本地,零依赖"},
+        {"id": "siyuan", "name": "思源笔记", "description": "HTTP API @ :6806,需 Token"},
+        {"id": "obsidian", "name": "Obsidian", "description": "即将推出(占位 stub)"},
     ]
 
 
@@ -28,6 +47,7 @@ def get_config() -> NoteAdapterConfig | None:
 
 @router.post("/test", summary="测试当前 adapter 连通性")
 async def test_connection() -> dict[str, Any]:
+    """前端"测试连接"按钮直接调。返回 ok + provider + 可选 error。"""
     logger.info("POST /notes/test")
     config = storage.get_note_adapter()
     if not config:
@@ -39,7 +59,7 @@ async def test_connection() -> dict[str, Any]:
     return {"ok": ok, "provider": adapter.name, "error": err}
 
 
-@router.get("/notebooks", summary="列出笔记本（仅 SiYuan 真实返回，local 返回占位）")
+@router.get("/notebooks", summary="列出笔记本(仅 SiYuan 真实返回,local 返回占位)")
 async def get_notebooks() -> list[NotebookInfo]:
     config = storage.get_note_adapter()
     if not config:
@@ -54,8 +74,11 @@ async def get_notebooks() -> list[NotebookInfo]:
         raise
 
 
-@router.get("/notebooks/{notebook_id}/docs", summary="列出笔记本内的文档树（仅 SiYuan 真实返回）")
+@router.get("/notebooks/{notebook_id}/docs", summary="列出笔记本内的文档树(仅 SiYuan 真实返回)")
 async def get_notebook_docs(notebook_id: str) -> list[DocNode]:
+    """弹窗里展开笔记本时调一次。SiYuan / Local / Obsidian 行为不同:
+    - SiYuan 真实拼嵌套树
+    - 其他 provider 没实现 list_docs → 返回空数组(弹窗显示"无子文档")"""
     config = storage.get_note_adapter()
     if not config:
         logger.warning(f"/notes/notebooks/{notebook_id}/docs: 未配置 noteAdapter")
@@ -63,7 +86,7 @@ async def get_notebook_docs(notebook_id: str) -> list[DocNode]:
     adapter = build_note_adapter(config)
     if not hasattr(adapter, "list_docs"):
         logger.info(
-            f"/notes/notebooks/{notebook_id}/docs: provider={adapter.name} 不支持文档树，返回空"
+            f"/notes/notebooks/{notebook_id}/docs: provider={adapter.name} 不支持文档树,返回空"
         )
         return []
     logger.info(f"GET /notes/notebooks/{notebook_id}/docs: provider={adapter.name}")
@@ -74,8 +97,17 @@ async def get_notebook_docs(notebook_id: str) -> list[DocNode]:
         return []
 
 
+# ─────────────────────────────────────────────────────────────
+# 2. save: 走真实 adapter
+# ─────────────────────────────────────────────────────────────
 @router.post("/save", summary="保存单条标签到笔记系统", response_model=SaveResult)
 async def save_tab(req: SaveRequest) -> SaveResult:
+    """
+    主入口。前端 popup / 弹窗的"确认收藏"按钮直接调这个。
+    - effective_notebook: 优先用请求里的,缺省用 config.defaultNotebook,再缺省报错
+    - effective_target: 同上
+    - content 字段复用:存全文 / 存 LLM 摘录(走同一条路径)
+    """
     content_len = len(req.content) if req.content else 0
     logger.info(
         f"POST /notes/save title={req.title!r} url={req.url!r} "
@@ -84,7 +116,7 @@ async def save_tab(req: SaveRequest) -> SaveResult:
     config = storage.get_note_adapter()
     if not config:
         logger.warning("/notes/save: 未配置 noteAdapter")
-        return SaveResult(ok=False, error="未配置 noteAdapter，请先在「笔记集成」里设置")
+        return SaveResult(ok=False, error="未配置 noteAdapter,请先在「笔记集成」里设置")
 
     effective_notebook = req.notebook_id or config.defaultNotebook or ""
     effective_target = req.target_doc or config.defaultTargetDoc
@@ -110,26 +142,27 @@ async def save_tab(req: SaveRequest) -> SaveResult:
     return result
 
 
-class ProviderInfo(BaseModel):
-    id: str
-    name: str
-    description: str
-
-
+# ─────────────────────────────────────────────────────────────
+# 3. summarize: LLM 摘录
+# ─────────────────────────────────────────────────────────────
 class SummarizeRequest(BaseModel):
     title: str
     url: str
-    content: str
+    content: str                       # markdown 全文(由前端 content script 提取后传来)
 
 
 class SummarizeResponse(BaseModel):
     ok: bool
-    summary_markdown: str | None = None
+    summary_markdown: str | None = None  # 清洗后的纯 markdown,可直接进笔记
     error: str | None = None
 
 
-@router.post("/summarize", response_model=SummarizeResponse, summary="用 LLM 把网页正文总结成 markdown 摘要")
+@router.post("/summarize", response_model=SummarizeResponse, summary="用 LLM 把网页正文总结成 markdown 摘录")
 async def summarize(req: SummarizeRequest) -> SummarizeResponse:
+    """
+    端到端摘录:content 是前端 defuddle 提取的 markdown,这里送 LLM 拿 markdown 摘录。
+    失败时 error 字段填好(不 raise 500),让前端 fire-and-forget 模式能拿到错误。
+    """
     logger.info(
         f"POST /notes/summarize title={req.title!r} url={req.url!r} content_len={len(req.content)}"
     )
@@ -141,10 +174,10 @@ async def summarize(req: SummarizeRequest) -> SummarizeResponse:
         return SummarizeResponse(ok=False, error="modelConfig 不完整,先在仪表盘配置 LLM")
     if not req.content.strip():
         logger.warning("/notes/summarize: content 为空")
-        return SummarizeResponse(ok=False, error="content 为空,无法摘要")
+        return SummarizeResponse(ok=False, error="content 为空,无法摘录")
     try:
         md, _ = await summarize_content(cfg, req.title, req.url, req.content)
         return SummarizeResponse(ok=True, summary_markdown=md)
     except Exception as e:
         logger.exception(f"/notes/summarize 失败: {e}")
-        return SummarizeResponse(ok=False, error=f"LLM 调用失败: {type(e).__name__}: {e}")
+        return SummarizeResponse(ok=False, error=f"LLM 调用失败:{type(e).__name__}:{e}")

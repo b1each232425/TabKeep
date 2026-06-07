@@ -1,3 +1,13 @@
+// 仪表盘页面 —— `chrome-extension://<id>/options.html`。
+//
+// 按职能分 6 段:
+//   1. imports + 常量 + 配置同步工具
+//   2. OverviewSection     概览(标签数 / 域名分布 / Tab Group 样式)
+//   3. ModelApiSection     模型 API 配置
+//   4. CategoriesSection   自定义分类组(LLM 分类用)
+//   5. NotesSection        笔记集成(provider / endpoint / token / 默认目标 / 测试连接)
+//   6. IndexOptions        整体壳:左侧导航 + 右侧选中 section
+
 import { useEffect, useState } from "react"
 import {
   BookOpen,
@@ -26,6 +36,10 @@ import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
 import "./style.css"
 
+
+// ─────────────────────────────────────────────────────────────
+// 1. 常量 + 工具
+// ─────────────────────────────────────────────────────────────
 const BACKEND_URL = "http://127.0.0.1:38471"
 
 /**
@@ -50,10 +64,10 @@ const syncConfigToBackend = async (partial: {
     })
     const data = await res.json()
     if (!data.ok) {
-      console.warn("[TabKeep] 同步配置到后端失败：", data)
+      console.warn("[TabKeep] 同步配置到后端失败:", data)
     }
   } catch (err) {
-    console.warn("[TabKeep] 同步配置到后端异常：", err)
+    console.warn("[TabKeep] 同步配置到后端异常:", err)
   }
 }
 
@@ -77,14 +91,23 @@ const DEFAULT_MODEL_CONFIG: ModelConfig = {
   apiKey: ""
 }
 
+const DEFAULT_NOTE_ADAPTER: NoteAdapterConfig = {
+  provider: "local"
+}
+
 type Section = "overview" | "categories" | "modelApi" | "notes"
 
+
+// ─────────────────────────────────────────────────────────────
+// 2. OverviewSection — 概览
+// ─────────────────────────────────────────────────────────────
 function OverviewSection() {
   const [tabs, setTabs] = useState<TabData[]>([])
   const [loading, setLoading] = useState(true)
   const [style, setStyle] = useState<TabGroupStyleOptions>(DEFAULT_STYLE)
   const [saved, setSaved] = useState(false)
 
+  // 启动:从 IDB 拉 tabs + 从 chrome.storage 拉 style
   const loadData = async () => {
     setLoading(true)
     const data = await loadFromIDB<TabData>()
@@ -102,6 +125,7 @@ function OverviewSection() {
   }, [])
 
   const groupedTabs = groupTabsByDomain(tabs)
+  // 可分组数:每组 ≥ 2 的 tab 数(Chrome 不让 < 2 tab 建组)
   const groupableCount = groupedTabs.reduce(
     (sum, g) => sum + (g.tabs.length >= 2 ? g.tabs.length : 0),
     0
@@ -127,6 +151,7 @@ function OverviewSection() {
         </Button>
       </header>
 
+      {/* 三块统计卡片 */}
       <section className="grid grid-cols-3 gap-4">
         <div className="border border-border rounded-lg p-4">
           <p className="text-xs text-muted-foreground">标签页总数</p>
@@ -142,6 +167,7 @@ function OverviewSection() {
         </div>
       </section>
 
+      {/* Tab Group 样式配置 */}
       <section className="border border-border rounded-lg p-4 space-y-4">
         <h2 className="text-lg font-medium">Tab Group 默认样式</h2>
 
@@ -203,6 +229,7 @@ function OverviewSection() {
         </div>
       </section>
 
+      {/* 域名分布 */}
       <section className="border border-border rounded-lg p-4">
         <h2 className="text-lg font-medium mb-3">域名分布</h2>
         {loading ? (
@@ -218,7 +245,7 @@ function OverviewSection() {
                 <span className="flex-1 truncate">{group.domain}</span>
                 <span className="text-xs text-muted-foreground">
                   {group.tabs.length} 个
-                  {group.tabs.length >= 2 ? "（可分组）" : ""}
+                  {group.tabs.length >= 2 ? "(可分组)" : ""}
                 </span>
               </div>
             ))}
@@ -229,10 +256,15 @@ function OverviewSection() {
   )
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// 3. ModelApiSection — 模型 API
+// ─────────────────────────────────────────────────────────────
 function ModelApiSection() {
   const [config, setConfig] = useState<ModelConfig>(DEFAULT_MODEL_CONFIG)
   const [saved, setSaved] = useState(false)
 
+  // 启动:从 chrome.storage 读已有配置
   useEffect(() => {
     chrome.storage.local.get("modelConfig").then((stored) => {
       if (stored.modelConfig) {
@@ -257,7 +289,7 @@ function ModelApiSection() {
       <header>
         <h1 className="text-2xl font-semibold">模型 API</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          为后续接入大模型模块准备，配置后会在调用 LLM 时使用
+          为后续接入大模型模块准备,配置后会在调用 LLM 时使用
         </p>
       </header>
 
@@ -315,13 +347,19 @@ function ModelApiSection() {
   )
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// 4. CategoriesSection — 自定义分类组
+// ─────────────────────────────────────────────────────────────
 function CategoriesSection() {
+  // saved 是已保存的"基线"(加载时 / save 后),draft 是用户当前编辑的
   const [savedCategories, setSavedCategories] = useState<TabCategory[]>([])
   const [draftCategories, setDraftCategories] = useState<TabCategory[]>([])
   const [saved, setSaved] = useState(false)
   const [classifying, setClassifying] = useState(false)
   const [newName, setNewName] = useState("")
   const [newDescription, setNewDescription] = useState("")
+  // 编辑态:editingId 非空时,该项进入编辑模式,editName/editDescription 是该行临时输入
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
@@ -344,6 +382,7 @@ function CategoriesSection() {
     setTimeout(() => setSaved(false), 1500)
   }
 
+  // 重置:把 draft 还原到上次保存的版本
   const reset = () => {
     setDraftCategories(savedCategories)
     setNewName("")
@@ -386,7 +425,7 @@ function CategoriesSection() {
   }
 
   const removeCategory = (cat: TabCategory) => {
-    if (!window.confirm(`确认删除「${cat.name}」？`)) return
+    if (!window.confirm(`确认删除「${cat.name}」?`)) return
     setDraftCategories(draftCategories.filter((c) => c.id !== cat.id))
     if (editingId === cat.id) setEditingId(null)
   }
@@ -397,7 +436,7 @@ function CategoriesSection() {
         <div>
           <h1 className="text-2xl font-semibold">分组</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            自定义分组类别（暂未对接实际分类逻辑）
+            自定义分组类别(暂未对接实际分类逻辑)
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -427,6 +466,7 @@ function CategoriesSection() {
       </header>
 
       <section className="border border-border rounded-lg p-4 space-y-4 max-w-3xl">
+        {/* 新增输入区 */}
         <div className="space-y-2">
           <div>
             <label className="text-sm text-muted-foreground block mb-1">
@@ -443,7 +483,7 @@ function CategoriesSection() {
           </div>
           <div>
             <label className="text-sm text-muted-foreground block mb-1">
-              描述（可选）
+              描述(可选)
             </label>
             <input
               type="text"
@@ -464,9 +504,10 @@ function CategoriesSection() {
           </Button>
         </div>
 
+        {/* 列表:编辑态 / 显示态 */}
         <div className="border-t border-border pt-4">
           {draftCategories.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无分组，点击上方添加</p>
+            <p className="text-sm text-muted-foreground">暂无分组,点击上方添加</p>
           ) : (
             <ul className="grid grid-cols-2 gap-2">
               {draftCategories.map((cat) =>
@@ -484,7 +525,7 @@ function CategoriesSection() {
                     <input
                       type="text"
                       className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
-                      placeholder="描述（可选）"
+                      placeholder="描述(可选)"
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                     />
@@ -537,10 +578,10 @@ function CategoriesSection() {
   )
 }
 
-const DEFAULT_NOTE_ADAPTER: NoteAdapterConfig = {
-  provider: "local"
-}
 
+// ─────────────────────────────────────────────────────────────
+// 5. NotesSection — 笔记集成
+// ─────────────────────────────────────────────────────────────
 function NotesSection() {
   const [config, setConfig] = useState<NoteAdapterConfig>(DEFAULT_NOTE_ADAPTER)
   const [saved, setSaved] = useState(false)
@@ -567,6 +608,10 @@ function NotesSection() {
     setConfig(DEFAULT_NOTE_ADAPTER)
   }
 
+  /**
+   * 测试当前 adapter 连通性;成功后顺手拉笔记本列表填到下面的列表里,
+   * 让用户能直接点列表项把 notebook id 填到"默认笔记本"输入框。
+   */
   const test = async () => {
     setTesting(true)
     setTestResult(null)
@@ -577,7 +622,7 @@ function NotesSection() {
       console.log("[TabKeep] /notes/test HTTP", res.status, res.statusText)
       if (!res.ok) {
         const text = await res.text()
-        const err = `后端 HTTP ${res.status}：${text.slice(0, 200)}`
+        const err = `后端 HTTP ${res.status}:${text.slice(0, 200)}`
         console.error("[TabKeep] 测试连接 HTTP 失败", err)
         setTestResult(err)
         return
@@ -591,7 +636,7 @@ function NotesSection() {
         console.log("[TabKeep] /notes/notebooks HTTP", nbRes.status)
         if (!nbRes.ok) {
           const text = await nbRes.text()
-          const err = `拉笔记本失败 HTTP ${nbRes.status}：${text.slice(0, 200)}`
+          const err = `拉笔记本失败 HTTP ${nbRes.status}:${text.slice(0, 200)}`
           console.error("[TabKeep]", err)
           setTestResult((prev) => `${prev}\n${err}`)
           return
@@ -602,13 +647,13 @@ function NotesSection() {
       } else {
         const errMsg = data.error ?? "未知错误"
         console.warn("[TabKeep] 测试连接 fail:", errMsg)
-        setTestResult(`连接失败：${errMsg}`)
+        setTestResult(`连接失败:${errMsg}`)
       }
     } catch (err) {
       const errMsg = String(err)
       console.error("[TabKeep] 测试连接 fetch 异常:", err)
       setTestResult(
-        `请求失败：${errMsg}\n\n排查：\n1) 后端是否启动：${BACKEND_URL}\n2) 浏览器能否访问该 URL\n3) CORS / 端口冲突`
+        `请求失败:${errMsg}\n\n排查:\n1) 后端是否启动:${BACKEND_URL}\n2) 浏览器能否访问该 URL\n3) CORS / 端口冲突`
       )
     } finally {
       setTesting(false)
@@ -636,12 +681,13 @@ function NotesSection() {
             onChange={(e) =>
               setConfig({ ...config, provider: e.target.value as NoteAdapterConfig["provider"] })
             }>
-            <option value="local">本地 Markdown（写到 data/notes/，零依赖）</option>
-            <option value="siyuan">思源笔记（HTTP API @ :6806，需 Token）</option>
-            <option value="obsidian">Obsidian（即将推出）</option>
+            <option value="local">本地 Markdown(写到 data/notes/,零依赖)</option>
+            <option value="siyuan">思源笔记(HTTP API @ :6806,需 Token)</option>
+            <option value="obsidian">Obsidian(即将推出)</option>
           </select>
         </div>
 
+        {/* local 模式不需要 endpoint / token;obsidian 模式 endpoint disabled(未实现) */}
         {!isLocal && (
           <>
             <div>
@@ -661,7 +707,7 @@ function NotesSection() {
                 <input
                   type="password"
                   className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
-                  placeholder="思源：设置 → 关于 → API token"
+                  placeholder="思源:设置 → 关于 → API token"
                   value={config.token ?? ""}
                   onChange={(e) => setConfig({ ...config, token: e.target.value })}
                 />
@@ -669,7 +715,7 @@ function NotesSection() {
             )}
             <div>
               <label className="text-sm text-muted-foreground block mb-1">
-                默认笔记本 ID（可选）
+                默认笔记本 ID(可选)
               </label>
               <input
                 type="text"
@@ -681,12 +727,12 @@ function NotesSection() {
             </div>
             <div>
               <label className="text-sm text-muted-foreground block mb-1">
-                默认目标文档（可选）
+                默认目标文档(可选)
               </label>
               <input
                 type="text"
                 className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
-                placeholder="留空 = 每次新建；填 = 追加到此文档"
+                placeholder="留空 = 每次新建;填 = 追加到此文档"
                 value={config.defaultTargetDoc ?? ""}
                 onChange={(e) => setConfig({ ...config, defaultTargetDoc: e.target.value })}
               />
@@ -696,12 +742,12 @@ function NotesSection() {
 
         {isLocal && (
           <p className="text-xs text-muted-foreground">
-            本地模式无需配置，收藏会写入 <code>data/notes/inbox.md</code>（可在 dataDir 下查看）。
+            本地模式无需配置,收藏会写入 <code>data/notes/inbox.md</code>(可在 dataDir 下查看)。
           </p>
         )}
         {isObsidian && (
           <p className="text-xs text-muted-foreground">
-            Obsidian 适配器尚未实现（占位）。后续版本接入 Local REST API 插件。
+            Obsidian 适配器尚未实现(占位)。后续版本接入 Local REST API 插件。
           </p>
         )}
 
@@ -727,9 +773,10 @@ function NotesSection() {
           </p>
         )}
 
+        {/* 笔记本列表:测试成功后显示,点击填入"默认笔记本"输入框 */}
         {notebooks.length > 0 && (
           <div className="border-t border-border pt-3">
-            <p className="text-xs text-muted-foreground mb-2">笔记本列表：</p>
+            <p className="text-xs text-muted-foreground mb-2">笔记本列表:</p>
             <ul className="space-y-1">
               {notebooks.map((nb) => (
                 <li
@@ -750,6 +797,10 @@ function NotesSection() {
   )
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// 6. IndexOptions — 整体壳
+// ─────────────────────────────────────────────────────────────
 function IndexOptions() {
   const [section, setSection] = useState<Section>("overview")
 
@@ -762,6 +813,7 @@ function IndexOptions() {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
+      {/* 左侧导航 */}
       <aside className="w-56 border-r border-border flex flex-col">
         <div className="p-4 border-b border-border">
           <h2 className="text-lg font-semibold">TabKeep</h2>
@@ -797,6 +849,7 @@ function IndexOptions() {
         </nav>
       </aside>
 
+      {/* 右侧:渲染选中的 section */}
       <main className="flex-1 overflow-y-auto p-6">
         <div className="max-w-3xl mx-auto">
           {section === "overview" && <OverviewSection />}

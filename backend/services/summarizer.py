@@ -1,3 +1,17 @@
+"""
+网页重点摘录:用 LLM 把网页正文转成"原文 blockquote + 要点 + 配图"的 markdown。
+
+按职能三段:
+  1. build_messages()        — 拼 system / user 两条消息
+  2. parse_summary_markdown  — 清洗 LLM 输出(去 <think> 块 / 去 code fence)
+  3. summarize_content()     — 顶层入口,返回 (cleaned_markdown, raw)
+
+设计取舍:
+  - 不强制 JSON 输出,让 LLM 直接出 markdown 文本,省去结构化解析
+  - prompt 强制三段结构("## 重点摘录" / "## 关键要点" / "## 配图")
+  - 16K 字符上限:超过部分截断 + 末尾加注记;平衡 token 数和保留信息
+  - blockquote `> ...` 严格保留原文,不加 LLM 点评(用户要的是原文)
+"""
 import re
 
 from loguru import logger
@@ -5,13 +19,17 @@ from loguru import logger
 from schemas.config import ModelConfig
 from services.llm import chat_completion
 
+# 16K 字符 ≈ 8K token,适合主流模型;再大会爆 token
 MAX_INPUT_CHARS = 16_000
 
-_FENCE_RE = re.compile(r"^```(?:markdown|md)?\s*|\s*```$", re.MULTILINE)
-_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
-
+# ─────────────────────────────────────────────────────────────
+# 1. Prompt 构造
+# ─────────────────────────────────────────────────────────────
 def build_messages(title: str, url: str, content: str) -> list[dict[str, str]]:
+    """
+    拼 system + user 两条消息。content 超 MAX_INPUT_CHARS 会截断并加注记。
+    """
     truncated = content[:MAX_INPUT_CHARS]
     note = "\n\n(注: 内容超过 16K 字符已截断)" if len(content) > MAX_INPUT_CHARS else ""
     return [
@@ -48,17 +66,36 @@ def build_messages(title: str, url: str, content: str) -> list[dict[str, str]]:
     ]
 
 
+# ─────────────────────────────────────────────────────────────
+# 2. 响应解析
+# ─────────────────────────────────────────────────────────────
+# 清洗:和 classifier.py 共享同一思路(去 <think> 块和 ``` 围栏)
+_FENCE_RE = re.compile(r"^```(?:markdown|md)?\s*|\s*```$", re.MULTILINE)
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
 def parse_summary_markdown(raw: str) -> str:
-    """清洗 LLM 响应, 提取纯 markdown 摘要。"""
+    """
+    清洗 LLM 响应:去除 <think> 思考块 + markdown code fence,返回纯 markdown 字符串。
+    """
     cleaned = _THINK_RE.sub("", raw)
     cleaned = _FENCE_RE.sub("", cleaned).strip()
     return cleaned
 
 
+# ─────────────────────────────────────────────────────────────
+# 3. 顶层入口
+# ─────────────────────────────────────────────────────────────
 async def summarize_content(
     cfg: ModelConfig, title: str, url: str, content: str
 ) -> tuple[str, str]:
-    """返回 (cleaned_markdown, raw_response)。"""
+    """
+    端到端跑一次摘录:
+    1. 构造 prompt
+    2. 调 LLM
+    3. 清洗输出
+    返回 (cleaned_markdown, raw_response)。
+    """
     raw = await chat_completion(cfg, build_messages(title, url, content))
     md = parse_summary_markdown(raw)
     logger.info(f"摘要生成 ok title={title!r} md_chars={len(md)}")

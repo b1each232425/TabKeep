@@ -1,3 +1,13 @@
+"""
+LLM 调用统一封装。
+
+整个后端所有需要调大模型的地方(分类 / 摘要)都通过这一个 chat_completion() 走。
+- 用 OpenAI 兼容协议,所以 modelConfig.baseURL 可以指向 OpenAI / DeepSeek / MiniMax 等
+- 默认 temperature=0(确定性输出,适合分类/摘要)
+- 启用 thinking mode(adapteive):让模型先生成 <think> 块再正式回答
+  - 上游 caller 需要在解析前用 _THINK_RE 去除 <think> 部分
+- 统一捕获鉴权 / 限流 / 网络 / API 错误,让上层用 try/except 处理
+"""
 import json
 import time
 
@@ -7,7 +17,18 @@ from openai import APIConnectionError, APIError, AsyncOpenAI, AuthenticationErro
 from schemas.config import ModelConfig
 
 
+# ─────────────────────────────────────────────────────────────
+# 唯一公开函数:所有 LLM 调用的入口
+# ─────────────────────────────────────────────────────────────
 async def chat_completion(config: ModelConfig, messages: list[dict]) -> str:
+    """
+    给定 LLM 配置和消息列表,返回模型输出的 content 字符串。
+
+    错误处理:
+    - AuthenticationError → 401 / key 无效,直接 raise(调用方应 catch)
+    - RateLimitError → 限流,直接 raise
+    - APIConnectionError / APIError → 网络或服务端问题,直接 raise
+    """
     logger.info(f"LLM input:\n{json.dumps(messages, ensure_ascii=False, indent=2)}")
     client = AsyncOpenAI(
         api_key=config.apiKey,
@@ -19,6 +40,7 @@ async def chat_completion(config: ModelConfig, messages: list[dict]) -> str:
             model=config.model,
             messages=messages,
             temperature=0,
+            # 让模型走"先思考再回答"模式;上游解析时要去掉 <think> 块
             extra_body={"thinking": {"type": "adaptive"}},
         )
     except AuthenticationError as e:

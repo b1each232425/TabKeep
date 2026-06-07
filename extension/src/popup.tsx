@@ -1,3 +1,11 @@
+// Popup UI —— 弹窗主页面,500px 宽。
+//
+// 按职能分 4 段:
+//   1. imports + 常量 + 类型
+//   2. IndexPopup 主组件:tab 列表 / 按钮 / 弹窗触发
+//   3. NotebookPickerModal:选笔记本 + 文档树 + 保存按钮
+//   4. DocTree 递归子组件
+
 import { useEffect, useState } from "react"
 import { Bookmark, BookmarkCheck, ChevronDown, ChevronRight, Settings, Sparkles, Star, StarOff, X } from "lucide-react"
 import type { DocNode, NotebookInfo, TabData } from "./types"
@@ -6,34 +14,45 @@ import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
 import "./style.css"
 
+
+// ─────────────────────────────────────────────────────────────
+// 1. 常量 + 类型
+// ─────────────────────────────────────────────────────────────
 const BACKEND_URL = "http://127.0.0.1:38471"
 const MAX_CONTENT_CHARS = 200_000
 
-const openDashboard = () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
-}
-
+// 单个 tab 当前保存状态(驱动按钮的图标颜色 / 是否转圈 / 禁用)
 type SaveStatus = "extracting" | "summarizing" | "saving" | "ok" | "error"
-
+// 三档收藏模式
 type SaveMode = "link" | "full" | "summary"
-
+// 弹窗状态
 type Pending = {
   tab: TabData
-  full: boolean
-  summary: boolean
+  full: boolean          // true 表示有 content(全文 / 摘录)
+  summary: boolean       // 标记当前是否"摘录模式"(用于弹窗 badge / 预览区)
   content: string | undefined
   extractError?: string
   summarizeError?: string
 } | null
 
+const openDashboard = () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// 2. IndexPopup 主组件
+// ─────────────────────────────────────────────────────────────
 function IndexPopup() {
+  // 状态
   const [tabs, setTabs] = useState<TabData[]>([])
   const [loading, setLoading] = useState(true)
-  const [showGrouped, setShowGrouped] = useState(false)
-  const [aiGrouping, setAiGrouping] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<Record<number, SaveStatus>>({})
-  const [pending, setPending] = useState<Pending>(null)
+  const [showGrouped, setShowGrouped] = useState(false)        // "原始" vs "整理" 视图切换
+  const [aiGrouping, setAiGrouping] = useState(false)          // AI 分组按钮 loading
+  const [saveStatus, setSaveStatus] = useState<Record<number, SaveStatus>>({})  // 每个 tab id 一份状态
+  const [pending, setPending] = useState<Pending>(null)        // 弹窗状态
 
+  // 启动:从 IDB 拉 tab 列表
   useEffect(() => {
     loadFromIDB<TabData>().then((data) => {
       if (data) {
@@ -45,6 +64,13 @@ function IndexPopup() {
 
   const groupedTabs = groupTabsByDomain(tabs)
 
+  /**
+   * 三档收藏的入口(☆/★/🪄)。
+   * 流程:
+   *   1. link  → 直接弹窗(无 content)
+   *   2. full  → 让 background extract content,弹窗(有 content)
+   *   3. summary → 让 background extract content,弹窗(有 content 但 summary 推迟到弹窗内的按钮触发)
+   */
   const handleSave = async (tab: TabData, mode: SaveMode) => {
     if (tab.id === undefined) return
     const tabId = tab.id
@@ -65,12 +91,12 @@ function IndexPopup() {
           console.warn(`[TabKeep] 提取失败: ${extractError}`)
         }
       } catch (e) {
-        extractError = `消息到 background 失败: ${String(e)}（可能扩展需要重新加载）`
+        extractError = `消息到 background 失败: ${String(e)}(可能扩展需要重新加载)`
         console.warn(`[TabKeep] ${extractError}`)
       }
     }
 
-    // summary 模式不在 popup 阶段调 LLM,推迟到弹窗内"AI 摘要并保存"按钮
+    // summary 模式不在 popup 阶段调 LLM,推迟到弹窗内"重点摘录并保存"按钮
     // 这样用户能先选好目标再决定是否要等 LLM
 
     setSaveStatus((s) => ({ ...s, [tabId]: "saving" }))
@@ -84,6 +110,7 @@ function IndexPopup() {
     })
   }
 
+  // 弹窗关闭(右上角 ✕)
   const handleModalClose = () => {
     if (pending) {
       setSaveStatus((s) => ({ ...s, [pending.tab.id!]: "error" }))
@@ -91,6 +118,7 @@ function IndexPopup() {
     setPending(null)
   }
 
+  // 弹窗保存回调
   const handleModalSaved = (ok: boolean, _error?: string) => {
     if (!pending) return
     setSaveStatus((s) => ({ ...s, [pending.tab.id!]: ok ? "ok" : "error" }))
@@ -99,6 +127,7 @@ function IndexPopup() {
 
   return (
     <div className="p-4 max-h-96 overflow-y-auto" style={{ minWidth: 500, width: 500 }}>
+      {/* ── 顶部条:标题 + 工具按钮 ── */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1">
           <h3 className="text-lg font-semibold">TabKeep</h3>
@@ -145,20 +174,23 @@ function IndexPopup() {
         </div>
       </div>
 
+      {/* ── 图例 ── */}
       <div className="text-xs text-gray-500 mb-2 flex items-center gap-3">
         <span className="flex items-center gap-1">
           <Bookmark className="h-3 w-3" /> 仅链接
         </span>
         <span className="flex items-center gap-1">
-          <Star className="h-3 w-3" /> 全文（用 Defuddle 提取）
+          <Star className="h-3 w-3" /> 全文(用 Defuddle 提取)
         </span>
       </div>
 
+      {/* ── 视图切换:加载中 / 整理视图 / 原始视图 ── */}
       {loading ? (
         <p className="text-sm text-gray-500">加载中...</p>
       ) : showGrouped ? (
+        // 整理视图:按域分组
         <>
-          <p className="text-sm text-gray-600 mb-3">共 {tabs.length} 个标签页，{groupedTabs.length} 个域名</p>
+          <p className="text-sm text-gray-600 mb-3">共 {tabs.length} 个标签页,{groupedTabs.length} 个域名</p>
           <div className="space-y-2">
             {groupedTabs.map((group) => (
               <div key={group.domain} className="border border-gray-200 rounded-lg p-2">
@@ -197,6 +229,7 @@ function IndexPopup() {
           </div>
         </>
       ) : (
+        // 原始视图:每个 tab 一行,带 ☆ / ★ / 🪄 三个按钮
         <>
           <p className="text-sm text-gray-600 mb-3">共 {tabs.length} 个标签页</p>
           <div className="space-y-1">
@@ -223,6 +256,7 @@ function IndexPopup() {
                     title={tab.url}>
                     {tab.title || "无标题"}
                   </a>
+                  {/* ☆ 仅链接 */}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -240,13 +274,14 @@ function IndexPopup() {
                       }`}
                     />
                   </Button>
+                  {/* ★ 全文 */}
                   <Button
                     size="icon"
                     variant="ghost"
                     className="h-6 w-6"
                     disabled={busy}
                     onClick={() => handleSave(tab, "full")}
-                    title={status === "extracting" ? "提取中..." : "全文收藏（含正文）"}>
+                    title={status === "extracting" ? "提取中..." : "全文收藏(含正文)"}>
                     <FullIcon
                       className={`h-3 w-3 ${
                         status === "ok"
@@ -257,6 +292,7 @@ function IndexPopup() {
                       } ${status === "extracting" ? "animate-pulse" : ""}`}
                     />
                   </Button>
+                  {/* 🪄 重点摘录 */}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -268,7 +304,7 @@ function IndexPopup() {
                         ? "LLM 摘录中..."
                         : status === "extracting"
                         ? "提取中..."
-                        : "重点摘录（LLM 提取 + 保留配图）"
+                        : "重点摘录(LLM 提取 + 保留配图)"
                     }>
                     <Sparkles
                       className={`h-3 w-3 ${
@@ -291,6 +327,7 @@ function IndexPopup() {
         </>
       )}
 
+      {/* ── 弹窗:有 pending 时挂载 ── */}
       {pending && (
         <NotebookPickerModal
           tab={pending.tab}
@@ -315,6 +352,10 @@ function IndexPopup() {
   )
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// 3. 笔记本选择弹窗
+// ─────────────────────────────────────────────────────────────
 type Selected = { notebookId: string; docId?: string } | null
 
 function NotebookPickerModal({
@@ -340,9 +381,10 @@ function NotebookPickerModal({
   onSummaryUpdate: (summary: boolean) => void
   onSummarizeErrorUpdate: (err: string | undefined) => void
 }) {
+  // 状态
   const [notebooks, setNotebooks] = useState<NotebookInfo[]>([])
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [docsByNotebook, setDocsByNotebook] = useState<Record<string, DocNode[]>>({})
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())         // 哪些笔记本已展开
+  const [docsByNotebook, setDocsByNotebook] = useState<Record<string, DocNode[]>>({})  // 缓存:nbId → 子文档树
   const [docsLoading, setDocsLoading] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<Selected>(null)
   const [loadingNotebooks, setLoadingNotebooks] = useState(true)
@@ -350,6 +392,7 @@ function NotebookPickerModal({
   const [summarizing, setSummarizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 拉笔记本列表(挂载时一次)
   useEffect(() => {
     let cancelled = false
     fetch(`${BACKEND_URL}/notes/notebooks`)
@@ -369,6 +412,7 @@ function NotebookPickerModal({
     }
   }, [])
 
+  // 展开 / 收起笔记本:第一次展开时拉子文档树(惰性加载)
   const toggleExpand = async (notebookId: string) => {
     if (expanded.has(notebookId)) {
       setExpanded((s) => {
@@ -398,6 +442,7 @@ function NotebookPickerModal({
     setExpanded((s) => new Set(s).add(notebookId))
   }
 
+  // 共享 POST /notes/save(全文 / 摘录走同一个,把 content 替换掉就行)
   const postSave = async (bodyContent: string | undefined) => {
     setError(null)
     const res = await fetch(`${BACKEND_URL}/notes/save`, {
@@ -419,6 +464,7 @@ function NotebookPickerModal({
     return true
   }
 
+  // "📄 全文保存" / "再次保存(摘录)" 按钮:直接 POST 当前 content
   const handleConfirm = async () => {
     if (!selected) return
     setSaving(true)
@@ -435,6 +481,8 @@ function NotebookPickerModal({
     }
   }
 
+  // "🪄 重点摘录并保存" 按钮:fire-and-forget 派给 background,弹窗立即关
+  // (background 跑完会用 chrome.notifications 通知用户)
   const handleSummarize = async () => {
     if (!selected) {
       setError("请先选择目标")
@@ -483,6 +531,7 @@ function NotebookPickerModal({
     setSelected({ notebookId })
   }
 
+  // 底部状态文字
   const statusText = !selected
     ? "请选择目标"
     : selected.docId
@@ -492,6 +541,7 @@ function NotebookPickerModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-2">
       <div className="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[80vh] flex flex-col">
+        {/* ── 标题栏 + 关闭 ── */}
         <div className="p-3 border-b flex items-center justify-between">
           <h4 className="text-sm font-semibold truncate pr-2">
             收藏「{tab.title || "无标题"}」
@@ -504,6 +554,7 @@ function NotebookPickerModal({
           </button>
         </div>
 
+        {/* ── 模式 badge + URL ── */}
         <div className="px-3 py-2 border-b text-xs text-gray-600 flex items-center gap-2 flex-wrap">
           <span
             className={`px-1.5 py-0.5 rounded ${
@@ -523,6 +574,8 @@ function NotebookPickerModal({
             {tab.url}
           </span>
         </div>
+
+        {/* ── 错误 banner(提取 / 摘录失败)── */}
         {extractError && !content && (
           <div className="px-3 py-1.5 text-xs text-red-700 bg-red-50 border-b border-red-100">
             ⚠ 提取失败: {extractError}
@@ -533,6 +586,8 @@ function NotebookPickerModal({
             ⚠ 摘录失败,请改用「📄 全文保存」或重试: {summarizeError}
           </div>
         )}
+
+        {/* ── 全文预览(摘录前用户能扫一眼)── */}
         {content && !summary && !summarizing && (
           <details className="border-b bg-amber-50/50">
             <summary className="px-3 py-1 text-xs font-medium cursor-pointer text-amber-800 select-none">
@@ -544,6 +599,8 @@ function NotebookPickerModal({
             </pre>
           </details>
         )}
+
+        {/* ── LLM 跑中(只在前端 await 期间显示,新流程里基本不会看到)── */}
         {summarizing && (
           <div className="px-3 py-3 text-xs text-purple-700 bg-purple-50 border-b border-purple-100 flex items-center gap-2">
             <Sparkles className="h-3 w-3 animate-pulse" />
@@ -551,6 +608,7 @@ function NotebookPickerModal({
           </div>
         )}
 
+        {/* ── 笔记本树 ── */}
         <div className="flex-1 overflow-y-auto p-2 text-sm">
           {loadingNotebooks ? (
             <p className="text-gray-500 text-center py-4">加载笔记本...</p>
@@ -561,7 +619,7 @@ function NotebookPickerModal({
               没有笔记本
               <br />
               <span className="text-xs text-gray-400">
-                请在仪表盘配置笔记适配器（当前可能不是 SiYuan）
+                请在仪表盘配置笔记适配器(当前可能不是 SiYuan)
               </span>
             </p>
           ) : (
@@ -596,7 +654,7 @@ function NotebookPickerModal({
                   <div className="ml-5 border-l border-gray-200">
                     {docsByNotebook[nb.id] === undefined ? null :
                      docsByNotebook[nb.id].length === 0 ? (
-                      <p className="text-xs text-gray-400 py-1 pl-2">（空，没有子文档）</p>
+                      <p className="text-xs text-gray-400 py-1 pl-2">(空,没有子文档)</p>
                     ) : (
                       <DocTree
                         nodes={docsByNotebook[nb.id]}
@@ -612,16 +670,19 @@ function NotebookPickerModal({
           )}
         </div>
 
+        {/* ── 中部错误(有 notebooks 但单条加载失败)── */}
         {error && notebooks.length > 0 && (
           <div className="px-3 py-1 text-xs text-red-600 border-t">{error}</div>
         )}
 
+        {/* ── 底部按钮 ── */}
         <div className="p-2 border-t flex items-center justify-between">
           <p className="text-xs text-gray-500 truncate pr-2">{statusText}</p>
           <div className="flex gap-2 flex-shrink-0">
             <Button size="sm" variant="outline" onClick={onClose} disabled={saving || summarizing}>
               取消
             </Button>
+            {/* 全文模式才出现"📄 全文保存"二级入口(避开和"🪄"主按钮冲突) */}
             {content && !summary && (
               <Button
                 size="sm"
@@ -632,6 +693,7 @@ function NotebookPickerModal({
                 📄 全文保存
               </Button>
             )}
+            {/* 主按钮:三种文案三档行为 */}
             <Button
               size="sm"
               onClick={summary ? handleConfirm : handleSummarize}
@@ -657,6 +719,10 @@ function NotebookPickerModal({
   )
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// 4. DocTree 递归子组件
+// ─────────────────────────────────────────────────────────────
 function DocTree({
   nodes,
   depth,
