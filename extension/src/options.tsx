@@ -28,16 +28,25 @@ import "./style.css"
 
 const BACKEND_URL = "http://127.0.0.1:38471"
 
-const syncConfigToBackend = async (
-  modelConfig: ModelConfig | null,
-  tabCategories: TabCategory[],
-  noteAdapter: NoteAdapterConfig | null
-) => {
+/**
+ * 把已修改的字段增量同步到后端。
+ * 后端用 Pydantic model_fields_set 判断"前端是否传了这个字段"——未传则保留原值,
+ * 避免在保存 modelConfig 时把 tabCategories 清空。
+ */
+const syncConfigToBackend = async (partial: {
+  modelConfig?: ModelConfig
+  tabCategories?: TabCategory[]
+  noteAdapter?: NoteAdapterConfig
+}) => {
+  const body: Record<string, unknown> = {}
+  if (partial.modelConfig !== undefined) body.modelConfig = partial.modelConfig
+  if (partial.tabCategories !== undefined) body.tabCategories = partial.tabCategories
+  if (partial.noteAdapter !== undefined) body.noteAdapter = partial.noteAdapter
   try {
     const res = await fetch(`${BACKEND_URL}/config/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelConfig, tabCategories, noteAdapter })
+      body: JSON.stringify(body)
     })
     const data = await res.json()
     if (!data.ok) {
@@ -234,7 +243,7 @@ function ModelApiSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ modelConfig: config })
-    syncConfigToBackend(config, [], null)
+    syncConfigToBackend({ modelConfig: config })
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -329,7 +338,7 @@ function CategoriesSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ tabCategories: draftCategories })
-    syncConfigToBackend(null, draftCategories, null)
+    syncConfigToBackend({ tabCategories: draftCategories })
     setSavedCategories(draftCategories)
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
@@ -549,7 +558,7 @@ function NotesSection() {
 
   const save = async () => {
     await chrome.storage.local.set({ noteAdapter: config })
-    syncConfigToBackend(null, [], config)
+    syncConfigToBackend({ noteAdapter: config })
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }

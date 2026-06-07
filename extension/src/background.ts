@@ -450,7 +450,46 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "syncTabs") syncToBackend()
 })
 
-// 初始保存
+/**
+ * 启动时从 chrome.storage.local 把所有配置推给后端。
+ * 防止后端 config.json 丢失 / 损坏 / 后端重启后内存为空时,后端没有这些配置。
+ * 后端 sync_config 走合并模式,只覆盖前端发的字段,所以这里把所有键都发一遍是安全的。
+ */
+const restoreConfigToBackend = async () => {
+  try {
+    const stored = await chrome.storage.local.get([
+      "modelConfig",
+      "tabCategories",
+      "noteAdapter"
+    ])
+    const body: Record<string, unknown> = {}
+    if (stored.modelConfig) body.modelConfig = stored.modelConfig
+    if (Array.isArray(stored.tabCategories)) body.tabCategories = stored.tabCategories
+    if (stored.noteAdapter) body.noteAdapter = stored.noteAdapter
+    if (Object.keys(body).length === 0) {
+      console.log("[TabKeep] 启动恢复: chrome.storage.local 无配置,跳过")
+      return
+    }
+    const res = await fetch(`${BACKEND_URL}/config/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    })
+    const data = await res.json()
+    if (data.ok) {
+      console.log(
+        `[TabKeep] 启动恢复: 已把本地配置推给后端 (${Object.keys(body).join(", ")})`
+      )
+    } else {
+      console.warn(`[TabKeep] 启动恢复失败: ${data.error}`)
+    }
+  } catch (e) {
+    console.warn(`[TabKeep] 启动恢复异常: ${e}`)
+  }
+}
+
+// 初始保存 + 配置恢复
 saveTabsData()
+restoreConfigToBackend()
 
 console.log("TabKeep background loaded")

@@ -50,10 +50,17 @@ def get_note_adapter() -> NoteAdapterConfig | None:
 
 
 def sync_config(req: SyncConfigRequest) -> None:
+    """合并式同步：前端每次只发它修改过的字段,未发送的字段保持后端原值。
+
+    用 Pydantic 的 `model_fields_set` 区分"未传"和"传了空"——前端不传某个字段
+    时,即使 schema 有默认值也不会出现在 fields_set 里,后端就不覆盖。
+    """
     with _lock:
-        if req.modelConfig is not None:
-            _state["modelConfig"] = req.modelConfig.model_dump()
-        _state["tabCategories"] = [c.model_dump() for c in req.tabCategories]
-        if req.noteAdapter is not None:
-            _state["noteAdapter"] = req.noteAdapter.model_dump()
+        sent = req.model_fields_set
+        if "modelConfig" in sent:
+            _state["modelConfig"] = req.modelConfig.model_dump() if req.modelConfig else None
+        if "tabCategories" in sent:
+            _state["tabCategories"] = [c.model_dump() for c in (req.tabCategories or [])]
+        if "noteAdapter" in sent:
+            _state["noteAdapter"] = req.noteAdapter.model_dump() if req.noteAdapter else None
         _persist()
