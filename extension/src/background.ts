@@ -24,7 +24,8 @@ import type { TabData, TabGroupColor, TabGroupStyleOptions } from "./types"
 // 1. 常量
 // ─────────────────────────────────────────────────────────────
 const DEFAULT_STYLE: TabGroupStyleOptions = {
-  defaultColor: "blue",
+  colorMode: "random",
+  uniformColor: "blue",
   useDomainAsTitle: true,
   collapsedByDefault: false
 }
@@ -32,6 +33,11 @@ const SYNC_INTERVAL_MINUTES = 1
 const BACKEND_URL = "http://127.0.0.1:38471"
 // 全文 / 摘录时前端能接受的最大字符数(超长截断)
 const MAX_CONTENT_CHARS = 200_000
+
+// 9 种 chrome tab group 颜色(从 types.TabGroupColor 复一份常量,方便在 background 引用)
+const COLOR_PALETTE: TabGroupColor[] = [
+  "grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"
+]
 
 
 // ─────────────────────────────────────────────────────────────
@@ -83,18 +89,95 @@ const saveTabsData = async () => {
 // 3. Tab Group 建组
 // ─────────────────────────────────────────────────────────────
 interface GroupingOptions {
-  defaultColor: TabGroupColor
+  colorMode: "random" | "uniform"
+  uniformColor: TabGroupColor
   collapsedByDefault: boolean
+}
+
+/**
+ * 字符串 → 32 位 hash(FNV-1a)。stable,无依赖。
+ * 给 group name 一个稳定数字 seed,驱动稳定的 Fisher-Yates 打乱。
+ */
+function fnv1aHash(str: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
+}
+
+/**
+ * 种子 PRNG(mulberry32)。给定同一 seed 产出同一序列。
+ * 用于"按名字稳定随机"。
+ */
+function mulberry32(seed: number) {
+  let s = seed >>> 0
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0
+    let t = s
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * 构造一个长度为 n 的颜色序列,满足:
+ *   - n ≤ 9:9 色全 unique 不重复
+ *   - 9 < n ≤ 27:尽量保证每种颜色最多出现 3 次(超出 n 时保不齐有颜色出现 4 次,不严格)
+ *   - n > 27:不再严格保 3,顺序循环填
+ * 之后用 seed 对序列做 Fisher-Yates 打乱 → 同名(经排序后)在序列同一槽位,得到同色。
+ */
+function buildColorSequence(n: number, seed: number): TabGroupColor[] {
+  if (n <= 0) return []
+  const counts: Record<string, number> = {}
+  for (const c of COLOR_PALETTE) counts[c] = 0
+  const seq: TabGroupColor[] = []
+
+  // 第 1 步:贪心填,直到填满 n
+  let cursor = 0
+  let safety = 0
+  while (seq.length < n && safety < n * 4) {
+    const c = COLOR_PALETTE[cursor % COLOR_PALETTE.length]
+    const canAdd =
+      counts[c] < 3 || // 严格 ≤ 3
+      seq.length >= COLOR_PALETTE.length * 3 // 已超过 27,放弃约束继续填
+    if (canAdd) {
+      seq.push(c)
+      counts[c]++
+    }
+    cursor++
+    safety++
+  }
+  // 兜底:极少数情况下因 cursor 漏过所有 < 3 的槽(理论上不会),用循环填
+  while (seq.length < n) {
+    seq.push(COLOR_PALETTE[seq.length % COLOR_PALETTE.length])
+  }
+
+  // 第 2 步:稳定打乱 → 同名稳定同色
+  const rand = mulberry32(seed)
+  for (let i = seq.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[seq[i], seq[j]] = [seq[j], seq[i]]
+  }
+  return seq
 }
 
 /**
  * 把 {tabId: groupName} 真正建到 chrome.tabGroups。
  * - 过滤掉 pinned / <2 个的组(Chrome 不让 <2 tab 的组)
  * - 单个 group 失败不影响其他
+ * - 颜色分配:由 options.colorMode 决定
+ *     - "uniform":所有组用 options.uniformColor
+ *     - "random":按排序后的 groupNames 哈希出 seed,生成颜色序列,按数组顺序取
+ * - 幂等:每次调用前,先把当前窗口里"title 出现在 expectedDomains 里"的 group 解散
+ *   (TabKeep 自己建的),用户手动建的不动
  */
 async function applyGrouping(
   classification: Record<number, string>,
-  options: GroupingOptions
+  options: GroupingOptions,
+  expectedDomains: Set<string> = new Set()
 ) {
   const byCategory = new Map<string, number[]>()
   for (const [tabIdStr, groupName] of Object.entries(classification)) {
@@ -108,17 +191,60 @@ async function applyGrouping(
     allTabs.filter(t => !t.pinned).map(t => t.id).filter(Boolean)
   )
 
+  // 1) 先过滤掉 <2 tab 的 group(Chrome 不让建),按 groupName 排序后定颜色序列
+  const eligibleNames: string[] = []
+  const eligibleIds: Map<string, number[]> = new Map()
   for (const [groupName, tabIds] of byCategory) {
     const valid = tabIds.filter(id => validTabIds.has(id))
     if (valid.length < 2) continue
+    eligibleNames.push(groupName)
+    eligibleIds.set(groupName, valid)
+  }
+  eligibleNames.sort() // 排序让"同名同色"在不同次建组时一致
+
+  // 2) 幂等:解散当前窗口里 TabKeep 自己建的 group(title ∈ expectedDomains)
+  if (expectedDomains.size > 0) {
+    const existingGroups = await chrome.tabGroups.query({})
+    for (const g of existingGroups) {
+      if (g.title && expectedDomains.has(g.title)) {
+        // 这个 group 是 TabKeep 上一次(或前几次)建的 → 解散
+        const memberTabs = await chrome.tabs.query({ groupId: g.id })
+        const memberIds = memberTabs
+          .map(t => t.id)
+          .filter((id): id is number => id !== undefined)
+        if (memberIds.length > 0) {
+          try {
+            await chrome.tabs.ungroup(memberIds)
+            console.log(`[TabKeep] 清理旧 group "${g.title}" (${memberIds.length} 个 tab)`)
+          } catch (e) {
+            console.warn(`[TabKeep] 清理旧 group "${g.title}" 失败:`, e)
+          }
+        }
+      }
+    }
+  }
+
+  // 3) 颜色序列(只在 random 模式算)
+  const colorSeq =
+    options.colorMode === "random"
+      ? buildColorSequence(eligibleNames.length, fnv1aHash(eligibleNames.join("|")))
+      : null
+
+  for (let i = 0; i < eligibleNames.length; i++) {
+    const groupName = eligibleNames[i]
+    const valid = eligibleIds.get(groupName)!
+    const color: TabGroupColor =
+      options.colorMode === "random"
+        ? colorSeq![i]
+        : options.uniformColor
     try {
       const groupId = await chrome.tabs.group({ tabIds: valid })
       await chrome.tabGroups.update(groupId, {
         title: groupName,
-        color: options.defaultColor,
+        color,
         collapsed: options.collapsedByDefault
       })
-      console.log(`[TabKeep] 已建组 "${groupName}" (${valid.length} 个 tab)`)
+      console.log(`[TabKeep] 已建组 "${groupName}" (${valid.length} 个 tab, 颜色 ${color})`)
     } catch (e) {
       console.warn(`[TabKeep] 建组 "${groupName}" 失败:`, e)
     }
@@ -137,17 +263,25 @@ async function createTabGroups(style: Partial<TabGroupStyleOptions> = {}) {
     const grouped = groupTabsByDomain(allTabs)
 
     const classification: Record<number, string> = {}
+    // 收集所有"TabKeep 这次应该建的 domain"(给 applyGrouping 当清理依据)
+    const expectedDomains = new Set<string>()
     for (const group of grouped) {
       if (group.isOther) continue
+      expectedDomains.add(group.domain)
       for (const tab of group.tabs) {
         if (tab.id !== undefined) classification[tab.id] = group.domain
       }
     }
 
-    await applyGrouping(classification, {
-      defaultColor: options.defaultColor,
-      collapsedByDefault: options.collapsedByDefault
-    })
+    await applyGrouping(
+      classification,
+      {
+        colorMode: options.colorMode,
+        uniformColor: options.uniformColor,
+        collapsedByDefault: options.collapsedByDefault
+      },
+      expectedDomains
+    )
     console.log("Tab Group 创建完成")
   } catch (err) {
     console.error("创建 Tab Group 失败:", err)
@@ -524,8 +658,26 @@ async function classifyAndGroupCurrentWindowTabs(
     if (cat !== "未分类") filtered[Number(id)] = cat
   }
 
+  // AI 分类路径:category 是 LLM 自由文字,无法用 title 判定旧 group。
+  // 走粗暴策略 —— 把当前窗口所有 group 全部解散,再由 applyGrouping 重建。
+  const existingGroups = await chrome.tabGroups.query({})
+  for (const g of existingGroups) {
+    const memberTabs = await chrome.tabs.query({ groupId: g.id })
+    const memberIds = memberTabs
+      .map(t => t.id)
+      .filter((id): id is number => id !== undefined)
+    if (memberIds.length > 0) {
+      try {
+        await chrome.tabs.ungroup(memberIds)
+      } catch (e) {
+        console.warn(`[TabKeep] AI 分组: 清理 group "${g.title}" 失败:`, e)
+      }
+    }
+  }
+
   await applyGrouping(filtered, {
-    defaultColor: options.defaultColor,
+    colorMode: options.colorMode,
+    uniformColor: options.uniformColor,
     collapsedByDefault: options.collapsedByDefault
   })
   return result

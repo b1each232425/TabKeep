@@ -80,7 +80,8 @@ const COLOR_LABEL: Record<TabGroupColor, string> = {
 }
 
 const DEFAULT_STYLE: TabGroupStyleOptions = {
-  defaultColor: "blue",
+  colorMode: "random",
+  uniformColor: "blue",
   useDomainAsTitle: true,
   collapsedByDefault: false
 }
@@ -171,20 +172,39 @@ function OverviewSection() {
       <section className="border border-border rounded-lg p-4 space-y-4">
         <h2 className="text-lg font-medium">Tab Group 默认样式</h2>
 
-        <div>
-          <label className="text-sm text-muted-foreground block mb-1">默认颜色</label>
-          <select
-            className="w-40 h-9 px-2 rounded-md border border-input bg-background text-sm"
-            value={style.defaultColor}
-            onChange={(e) =>
-              setStyle({ ...style, defaultColor: e.target.value as TabGroupColor })
-            }>
-            {COLORS.map((c) => (
-              <option key={c} value={c}>
-                {COLOR_LABEL[c]}
-              </option>
-            ))}
-          </select>
+        <div className="space-y-3">
+          {/* 颜色模式 */}
+          <div>
+            <label className="text-sm text-muted-foreground block mb-1">颜色模式</label>
+            <select
+              className="w-52 h-9 px-2 rounded-md border border-input bg-background text-sm"
+              value={style.colorMode}
+              onChange={(e) =>
+                setStyle({ ...style, colorMode: e.target.value as "random" | "uniform" })
+              }>
+              <option value="random">按域名随机(≤9 组不重复,≤18 组每色最多 3 次)</option>
+              <option value="uniform">统一颜色</option>
+            </select>
+          </div>
+
+          {/* uniform 模式才显示的色板选择 */}
+          {style.colorMode === "uniform" && (
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">统一颜色</label>
+              <select
+                className="w-40 h-9 px-2 rounded-md border border-input bg-background text-sm"
+                value={style.uniformColor}
+                onChange={(e) =>
+                  setStyle({ ...style, uniformColor: e.target.value as TabGroupColor })
+                }>
+                {COLORS.map((c) => (
+                  <option key={c} value={c}>
+                    {COLOR_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

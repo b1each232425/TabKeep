@@ -38,7 +38,11 @@ export interface TabGroupConfig {
 
 // 仪表盘"概览"页可配置的样式(存 chrome.storage.local)
 export interface TabGroupStyleOptions {
-  defaultColor: TabGroupColor
+  // 颜色分配模式:
+  //   - "random":按域名哈希生成 9 色打乱序列,保证 ≤9 组不重复 / ≤18 组每色最多 3 次
+  //   - "uniform":所有组用同一颜色(uniformColor 字段指定)
+  colorMode: "random" | "uniform"
+  uniformColor: TabGroupColor
   useDomainAsTitle: boolean
   collapsedByDefault: boolean
 }
