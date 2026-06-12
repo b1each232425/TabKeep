@@ -11,8 +11,6 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from schemas.config import NoteAdapterConfig
-
 
 # ─────────────────────────────────────────────────────────────
 # 数据模型
@@ -24,12 +22,9 @@ class NotebookInfo(BaseModel):
 
 
 class DocNode(BaseModel):
-    """思源笔记内的一个文档节点(容器文件夹 / 文档页)。
-
-    children 递归,后端 list_docs 时把扁平列表按 path 拼成嵌套树。
-    """
-    id: str                          # 块 id(给 SiYuan insertBlock 用)
-    name: str                        # 文档名(不含 .sy)
+    """笔记系统内的一个文档节点(容器文件夹 / 文档页)。"""
+    id: str                          # 块 id / 相对文件路径
+    name: str                        # 文档名
     path: str                        # 人类可读路径,显示用
     type: str                        # "Container" 文件夹 | "Page" 文档
     children: list["DocNode"] = []   # 递归子节点
@@ -42,7 +37,8 @@ class SaveRequest(BaseModel):
     excerpt: str | None = None        # 短摘要(给 SiYuan 当 alias)
     content: str | None = None       # markdown 正文(全文或 LLM 摘录都走这个字段)
     notebook_id: str                 # 必填,目标笔记本
-    target_doc: str | None = None    # 目标文档 id;None = 在笔记本根新建 doc
+    target_doc: str | None = None    # 目标文档 id;None = 在 notebook 根新建 doc
+    mode: str = "link"               # "link" | "full" | "summary"
 
 
 class SaveResult(BaseModel):
@@ -63,9 +59,9 @@ class NoteAdapter(Protocol):
         ...
 
     async def list_notebooks(self) -> list[NotebookInfo]:
-        """列出所有笔记本。仅 SiYuan 真实返回,Local 返回占位。"""
+        """列出所有笔记本。"""
         ...
 
     async def save(self, req: SaveRequest) -> SaveResult:
-        """保存一条 tab 到笔记。target_doc 缺省 = 在 notebook 根新建 doc。"""
+        """保存一条 tab 到笔记。target_doc 缺省 = 新建文档。"""
         ...

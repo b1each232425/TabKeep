@@ -18,6 +18,7 @@
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { saveToIDB } from "./utils/indexedDB"
 import type { TabData, TabGroupColor, TabGroupStyleOptions } from "./types"
+import { apiFetch, captureWithDesktop, ensureApiToken } from "./config/api"
 
 
 // ─────────────────────────────────────────────────────────────
@@ -30,7 +31,6 @@ const DEFAULT_STYLE: TabGroupStyleOptions = {
   collapsedByDefault: false
 }
 const SYNC_INTERVAL_MINUTES = 1
-const BACKEND_URL = "http://127.0.0.1:38471"
 // 全文 / 摘录时前端能接受的最大字符数(超长截断)
 const MAX_CONTENT_CHARS = 200_000
 
@@ -61,7 +61,7 @@ const fetchAllTabs = async (): Promise<TabData[]> => {
 const syncToBackend = async () => {
   try {
     const tabs = await fetchAllTabs()
-    const res = await fetch(`${BACKEND_URL}/tabs`, {
+    const res = await apiFetch("/tabs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(tabs)
@@ -384,7 +384,7 @@ const summarizeContent = async (
     return { ok: false, error: "content 为空,无法摘录" }
   }
   try {
-    const res = await fetch(`${BACKEND_URL}/notes/summarize`, {
+    const res = await apiFetch("/notes/summarize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -413,6 +413,55 @@ const summarizeContent = async (
  * 端到端:LLM 摘录 + 立即写笔记。fire-and-forget,pupup 关闭也照常跑。
  * 完成后用 chrome.notifications 弹桌面通知告诉用户结果。
  */
+type SaveBackendParams = {
+  tab: TabData
+  mode: "link" | "full" | "summary"
+  content?: string
+  excerpt?: string
+  notebookId: string
+  targetDoc: string | null
+}
+
+const saveThroughAvailableBackend = async ({
+  tab,
+  mode,
+  content,
+  excerpt,
+  notebookId,
+  targetDoc,
+}: SaveBackendParams): Promise<{ ok: boolean; note_id?: string; error?: string }> => {
+  const title = tab.title ?? ""
+  const url = tab.url ?? ""
+  const desktopSaved = await captureWithDesktop({
+    source: "tabkeep",
+    mode,
+    title,
+    url,
+    contentMarkdown: content,
+    excerpt,
+    favIconUrl: tab.favIconUrl,
+    capturedAt: new Date().toISOString(),
+  })
+  if (desktopSaved) {
+    return { ok: true, note_id: "openwiki-desktop" }
+  }
+
+  const res = await apiFetch("/notes/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title,
+      url,
+      content: content || undefined,
+      excerpt,
+      notebook_id: notebookId,
+      target_doc: targetDoc,
+      mode,
+    })
+  })
+  return res.json()
+}
+
 const summarizeAndSave = async (
   tab: TabData,
   content: string,
@@ -426,49 +475,65 @@ const summarizeAndSave = async (
   if (!notebookId) {
     return { ok: false, error: "未指定 notebook", stage: "save" }
   }
-  // 第 1 步:LLM 摘录
+
   const sum = await summarizeContent(tab, content)
   if (!sum.ok || !sum.summary_markdown) {
-    notifyUser("🪄 摘录失败", sum.error ?? "LLM 摘录失败")
-    return { ok: false, error: sum.error ?? "摘录失败", stage: "summarize" }
+    const reason = sum.error ?? "LLM 摘录失败"
+    console.warn(`[TabKeep] 摘录失败,尝试回退保存全文: ${reason}`)
+    try {
+      const fallback = await saveThroughAvailableBackend({
+        tab,
+        mode: "full",
+        content,
+        notebookId,
+        targetDoc,
+      })
+      if (fallback.ok) {
+        notifyUser("摘录失败,已保存全文", `${tab.title ?? "无标题"} → 全文已保存`)
+        return { ok: true, note_id: fallback.note_id, stage: "fallback-full" }
+      }
+      notifyUser("摘录失败", `${reason}; 全文保存也失败:${fallback.error ?? "未知错误"}`)
+      return { ok: false, error: fallback.error ?? reason, stage: "fallback-full" }
+    } catch (e) {
+      notifyUser("摘录失败", `${reason}; 全文保存也失败:${String(e)}`)
+      return { ok: false, error: String(e), stage: "fallback-full" }
+    }
   }
+
   console.log(
     `[TabKeep] summarizeAndSave 摘录完成 ${sum.summary_markdown.length} 字, 立即写笔记`
   )
-  // 第 2 步:写笔记(摘录当 content 走同一条 /notes/save 路径)
   try {
-    const res = await fetch(`${BACKEND_URL}/notes/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: tab.title ?? "",
-        url: tab.url ?? "",
-        content: sum.summary_markdown,
-        notebook_id: notebookId,
-        target_doc: targetDoc
-      })
+    const data = await saveThroughAvailableBackend({
+      tab,
+      mode: "summary",
+      content: sum.summary_markdown,
+      notebookId,
+      targetDoc,
     })
-    const data = await res.json()
     if (data.ok) {
       console.log(`[TabKeep] summarizeAndSave ok tab=${tab.id} doc=${data.note_id}`)
-      const target = targetDoc ? "已追加到文档" : "已新建 doc"
+      const target = data.note_id === "openwiki-desktop"
+        ? "已保存到 OpenWiki 桌面端"
+        : targetDoc
+        ? "已追加到文档"
+        : "已新建 doc"
       notifyUser(
-        "✅ 摘录已保存",
+        "摘录已保存",
         `${tab.title ?? "无标题"} → ${target} (${sum.summary_markdown.length} 字)`
       )
       return { ok: true, note_id: data.note_id }
     }
     const err = data.error ?? "保存失败"
     console.warn(`[TabKeep] summarizeAndSave save fail: ${err}`)
-    notifyUser("❌ 收藏失败", err)
+    notifyUser("收藏失败", err)
     return { ok: false, error: err, stage: "save" }
   } catch (e) {
     console.error("[TabKeep] summarizeAndSave save 异常:", e)
-    notifyUser("❌ 收藏失败", String(e))
+    notifyUser("收藏失败", String(e))
     return { ok: false, error: String(e), stage: "save" }
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // 7. 桌面通知
@@ -504,17 +569,12 @@ const notifyUser = (title: string, message: string) => {
 const saveTabToNote = async (tab: TabData) => {
   console.log(`[TabKeep] 收藏(链接) tab=${tab.id} title=${tab.title} url=${tab.url}`)
   try {
-    const res = await fetch(`${BACKEND_URL}/notes/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: tab.title ?? "",
-        url: tab.url ?? "",
-        notebook_id: "",
-        target_doc: null
-      })
+    const data = await saveThroughAvailableBackend({
+      tab,
+      mode: "link",
+      notebookId: "",
+      targetDoc: null,
     })
-    const data = await res.json()
     if (data.ok) {
       console.log(`[TabKeep] 收藏(链接) ok: ${tab.title}`)
     } else {
@@ -528,8 +588,8 @@ const saveTabToNote = async (tab: TabData) => {
 }
 
 /**
- * 旧版"全文收藏"—— content script 拿 markdown → 直接 POST /notes/save。
- * 当前 popup 不再触发(改走 SUMMARIZE_AND_SAVE),保留以备后用。
+ * 旧版"全文收藏"—— content script 拿 markdown → 保存。
+ * 当前 popup 主要走 NotebookPickerModal,这里保留给消息路径和未来快捷键用。
  */
 const saveTabToNoteFull = async (tab: TabData) => {
   console.log(`[TabKeep] 收藏(全文) 开始 tab=${tab.id} title=${tab.title} url=${tab.url}`)
@@ -568,23 +628,18 @@ const saveTabToNoteFull = async (tab: TabData) => {
     console.warn("[TabKeep] 收藏(全文) 提取为空,回退到仅链接模式")
   }
 
-  const body = {
-    title: tab.title ?? extract.data.title ?? "",
-    url: tab.url ?? "",
-    content: content || undefined,
-    excerpt: extract.data.description || extract.data.author || undefined,
-    notebook_id: "",
-    target_doc: null
-  }
-  console.log(`[TabKeep] 收藏(全文) 第 2 步: POST /notes/save body=`, body)
-
   try {
-    const res = await fetch(`${BACKEND_URL}/notes/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+    const data = await saveThroughAvailableBackend({
+      tab: {
+        ...tab,
+        title: tab.title ?? extract.data.title,
+      },
+      mode: content ? "full" : "link",
+      content: content || undefined,
+      excerpt: extract.data.description || extract.data.author || undefined,
+      notebookId: "",
+      targetDoc: null,
     })
-    const data = await res.json()
     if (data.ok) {
       console.log(`[TabKeep] 收藏(全文) ok: ${tab.title} (${content.length} 字符${truncated ? " 已截断" : ""}) doc=${data.note_id}`)
     } else {
@@ -596,7 +651,6 @@ const saveTabToNoteFull = async (tab: TabData) => {
     return { ok: false, error: String(err) }
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // 9. LLM 分类
@@ -619,7 +673,7 @@ const classifyCurrentWindowTabs = async () => {
     return { error: "无标签页" }
   }
   try {
-    const res = await fetch(`${BACKEND_URL}/classify`, {
+    const res = await apiFetch("/classify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tabs: tabDataList })
@@ -714,15 +768,12 @@ const restoreConfigToBackend = async () => {
       "tabCategories",
       "noteAdapter"
     ])
-    const body: Record<string, unknown> = {}
+    const token = await ensureApiToken()
+    const body: Record<string, unknown> = { apiToken: token }
     if (stored.modelConfig) body.modelConfig = stored.modelConfig
     if (Array.isArray(stored.tabCategories)) body.tabCategories = stored.tabCategories
     if (stored.noteAdapter) body.noteAdapter = stored.noteAdapter
-    if (Object.keys(body).length === 0) {
-      console.log("[TabKeep] 启动恢复: chrome.storage.local 无配置,跳过")
-      return
-    }
-    const res = await fetch(`${BACKEND_URL}/config/sync`, {
+    const res = await apiFetch("/config/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -742,6 +793,6 @@ const restoreConfigToBackend = async () => {
 
 // 入口
 saveTabsData()
-restoreConfigToBackend()
+restoreConfigToBackend().then(syncToBackend)
 
 console.log("TabKeep background loaded")

@@ -7,7 +7,9 @@ export interface NoteAdapterConfig {
   provider: "local" | "siyuan" | "obsidian"
   endpoint?: string                   // SiYuan: http://127.0.0.1:6806
   token?: string                      // SiYuan API token
-  vault?: string                      // Obsidian 预留
+  vault?: string                      // Obsidian/Markdown vault 或普通文件夹路径
+  defaultFolder?: string              // Obsidian/Markdown 默认保存目录
+  writeMode?: "new_file" | "append"  // Obsidian/Markdown 写入模式
   defaultNotebook?: string            // 默认笔记本 id(留空让弹窗选)
   defaultTargetDoc?: string           // 默认目标 doc id(留空 = 每次新建)
 }
@@ -21,7 +23,7 @@ export interface NotebookInfo {
 }
 
 export interface DocNode {
-  id: string                          // 块 id(SiYuan insertBlock 用)
+  id: string                          // 块 id(SiYuan insertBlock 用)或 Markdown 相对路径
   name: string                        // 文档名
   path: string                        // 人类可读路径
   type: string                        // "Container" 文件夹 | "Page" 文档

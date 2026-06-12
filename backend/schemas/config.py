@@ -34,15 +34,18 @@ class NoteAdapterConfig(BaseModel):
     provider: str                    # "siyuan" | "obsidian" | "local"
     endpoint: str | None = None      # SiYuan 时是 http://127.0.0.1:6806
     token: str | None = None         # SiYuan API token
-    vault: str | None = None         # Obsidian 时用,占位
+    vault: str | None = None         # Obsidian/Markdown vault 或普通文件夹
+    defaultFolder: str | None = None # Obsidian/Markdown 默认保存目录
+    writeMode: str | None = None     # "new_file" | "append"
     defaultNotebook: str | None = None   # 留空则每次收藏时弹窗让用户选
     defaultTargetDoc: str | None = None  # 留空 = 每次新建; 填了 = 追加到该 doc
 
 
 # ─────────────────────────────────────────────────────────────
-# 配置同步请求体 — 三个字段都可以不传(用 model_fields_set 区分)
+# 配置同步请求体 — 四个字段都可以不传(用 model_fields_set 区分)
 # ─────────────────────────────────────────────────────────────
 class SyncConfigRequest(BaseModel):
     modelConfig: ModelConfig | None = None
     tabCategories: list[TabCategory] = []
     noteAdapter: NoteAdapterConfig | None = None
+    apiToken: str | None = None

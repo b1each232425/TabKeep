@@ -3,12 +3,12 @@
 
 按职能三段:
   1. build_messages()        — 拼 system / user 两条消息
-  2. parse_summary_markdown  — 清洗 LLM 输出(去 <think> 块 / 去 code fence)
+  2. parse_summary_markdown  — 清洗 LLM 输出(去 <think> 块 / 去 code fence / 空输出报错)
   3. summarize_content()     — 顶层入口,返回 (cleaned_markdown, raw)
 
 设计取舍:
   - 不强制 JSON 输出,让 LLM 直接出 markdown 文本,省去结构化解析
-  - prompt 强制三段结构("## 重点摘录" / "## 关键要点" / "## 配图")
+  - prompt 强制四段结构("## 来源" / "## 重点摘录" / "## 关键要点" / "## 配图")
   - 16K 字符上限:超过部分截断 + 末尾加注记;平衡 token 数和保留信息
   - blockquote `> ...` 严格保留原文,不加 LLM 点评(用户要的是原文)
 """
@@ -40,6 +40,9 @@ def build_messages(title: str, url: str, content: str) -> list[dict[str, str]]:
                 "你的任务是**把文章中所有值得回看的关键信息原文抄录到用户笔记**——"
                 "不是简化 / 概括 / 综述,而是**大段大段保留原文**让用户日后回看能直接读到核心信息。\n\n"
                 "严格遵循以下结构输出纯 markdown:\n\n"
+                "## 来源\n"
+                "- 标题: 原网页标题\n"
+                "- 链接: 原网页 URL\n\n"
                 "## 重点摘录\n"
                 "按文章原文章节顺序,把**所有你认为包含关键信息的段落 / 句子 / 列表 / 数据**全部直接抄录,"
                 "每段用 blockquote `> ...` 包裹(可跨行)。\n"
@@ -52,10 +55,10 @@ def build_messages(title: str, url: str, content: str) -> list[dict[str, str]]:
                 "如果正文没有图片或图片明显是广告 / icon / 占位图,这一节输出 `> (无有意义的配图)`。\n\n"
                 "要求:\n"
                 "- 直接输出 markdown, 不要 ```markdown code fence``` 包裹\n"
-                "- 不要任何开场白 (如 '这是摘录...'), 直接从 ## 重点摘录 开始\n"
+                "- 不要任何开场白, 直接从 ## 来源 开始\n"
+                "- 来源链接必须保留用户提供的原始 URL\n"
                 "- 引用用 `> ...` blockquote, 严格保留原文(可微调标点 / 去多余换行)\n"
                 "- **绝对不要**用你自己的话重写 / 概述 / 点评引用段, 用户要的是原文\n"
-                "- 链接 / 章节标题里的 URL 不用保留(用户已有原网页)\n"
                 "- 关键数据 / 数字 / 专有名词 务必保留\n"
             ),
         },
@@ -78,8 +81,10 @@ def parse_summary_markdown(raw: str) -> str:
     """
     清洗 LLM 响应:去除 <think> 思考块 + markdown code fence,返回纯 markdown 字符串。
     """
-    cleaned = _THINK_RE.sub("", raw)
+    cleaned = _THINK_RE.sub("", raw or "")
     cleaned = _FENCE_RE.sub("", cleaned).strip()
+    if not cleaned:
+        raise ValueError("LLM 返回为空,可以改为保存全文")
     return cleaned
 
 

@@ -6,13 +6,12 @@
   2. 内存状态 + 文件锁
   3. 初始化 init():从 data/config.json 读
   4. 私有 _persist():把内存状态写回 config.json
-  5. 三个 getter:get_model_config / get_tab_categories / get_note_adapter
+  5. getter:get_model_config / get_tab_categories / get_note_adapter / get_api_token
   6. sync_config():合并式同步,只覆盖前端实际传的字段
 
 并发:用 threading.Lock 保护 _state 读写;uvicorn 单进程下也够用。
 """
 import json
-import os
 import threading
 from pathlib import Path
 
@@ -30,7 +29,7 @@ CONFIG_FILE = DATA_DIR / "config.json"
 # 模块级内存状态(单例)
 # ─────────────────────────────────────────────────────────────
 _lock = threading.Lock()
-_state: dict = {"modelConfig": None, "tabCategories": [], "noteAdapter": None}
+_state: dict = {"modelConfig": None, "tabCategories": [], "noteAdapter": None, "apiToken": None}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -52,11 +51,13 @@ def init() -> None:
         _state["modelConfig"] = data.get("modelConfig")
         _state["tabCategories"] = data.get("tabCategories", [])
         _state["noteAdapter"] = data.get("noteAdapter")
+        _state["apiToken"] = data.get("apiToken")
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"config.json 损坏或读取失败 ({e}),回退到空状态")
         _state["modelConfig"] = None
         _state["tabCategories"] = []
         _state["noteAdapter"] = None
+        _state["apiToken"] = None
 
 
 # ─────────────────────────────────────────────────────────────
@@ -88,6 +89,12 @@ def get_note_adapter() -> NoteAdapterConfig | None:
     return NoteAdapterConfig(**data) if data else None
 
 
+def get_api_token() -> str | None:
+    """返回当前本地 API token。"""
+    token = _state.get("apiToken")
+    return str(token) if token else None
+
+
 # ─────────────────────────────────────────────────────────────
 # 同步入口
 # ─────────────────────────────────────────────────────────────
@@ -107,4 +114,6 @@ def sync_config(req: SyncConfigRequest) -> None:
             _state["tabCategories"] = [c.model_dump() for c in (req.tabCategories or [])]
         if "noteAdapter" in sent:
             _state["noteAdapter"] = req.noteAdapter.model_dump() if req.noteAdapter else None
+        if "apiToken" in sent and req.apiToken:
+            _state["apiToken"] = req.apiToken
         _persist()

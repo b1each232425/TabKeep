@@ -5,12 +5,13 @@
 - POST /config/sync    合并式同步(只覆盖前端传的字段)
 - POST /classify       用 LLM 把当前窗口标签归类
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from logger import logger
 from schemas.classify import ClassifyRequest, ClassifyResponse
 from schemas.config import ModelConfig, SyncConfigRequest, TabCategory
 from services import storage
+from services.auth import require_api_token
 from services.classifier import classify_tabs
 
 router = APIRouter(tags=["配置与分类"])
@@ -19,7 +20,7 @@ router = APIRouter(tags=["配置与分类"])
 # ─────────────────────────────────────────────────────────────
 # 配置读写
 # ─────────────────────────────────────────────────────────────
-@router.get("/config", summary="获取当前配置")
+@router.get("/config", summary="获取当前配置", dependencies=[Depends(require_api_token)])
 def get_config() -> dict[str, ModelConfig | list[TabCategory]]:
     """前端初始化时调用,一次拿全 model + categories。"""
     return {
@@ -29,8 +30,21 @@ def get_config() -> dict[str, ModelConfig | list[TabCategory]]:
 
 
 @router.post("/config/sync", summary="同步扩展配置到后端")
-def sync_config(req: SyncConfigRequest) -> dict[str, bool]:
-    """合并式同步。Storage 用 Pydantic model_fields_set 区分"未传"vs"传了空"。"""
+def sync_config(
+    req: SyncConfigRequest,
+    x_tabkeep_token: str | None = Header(default=None),
+) -> dict[str, bool]:
+    """
+    合并式同步。
+
+    首次启动时后端还没有 token,允许扩展把 apiToken 写入。
+    一旦 token 已存在,后续同步也必须带正确的 X-TabKeep-Token。
+    """
+    expected = storage.get_api_token()
+    if expected and x_tabkeep_token != expected:
+        raise HTTPException(status_code=401, detail="TabKeep API token 无效")
+    if not expected and not req.apiToken:
+        raise HTTPException(status_code=401, detail="TabKeep API token 未初始化,请先打开扩展")
     storage.sync_config(req)
     return {"ok": True}
 
@@ -38,7 +52,12 @@ def sync_config(req: SyncConfigRequest) -> dict[str, bool]:
 # ─────────────────────────────────────────────────────────────
 # LLM 分类
 # ─────────────────────────────────────────────────────────────
-@router.post("/classify", summary="用 LLM 分类当前窗口的标签页", response_model=ClassifyResponse)
+@router.post(
+    "/classify",
+    summary="用 LLM 分类当前窗口的标签页",
+    response_model=ClassifyResponse,
+    dependencies=[Depends(require_api_token)],
+)
 async def classify(req: ClassifyRequest) -> ClassifyResponse:
     """
     给一组 tab,返回 {tabId: 分类名}。

@@ -15,16 +15,17 @@
 """
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from logger import logger
 from schemas.config import NoteAdapterConfig
 from services import storage
+from services.auth import require_api_token
 from services.note import build_note_adapter
 from services.note.base import DocNode, NotebookInfo, SaveRequest, SaveResult
 
-router = APIRouter(prefix="/notes", tags=["笔记集成"])
+router = APIRouter(prefix="/notes", tags=["笔记集成"], dependencies=[Depends(require_api_token)])
 
 
 # ─────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ def list_adapters() -> list[dict[str, str]]:
     return [
         {"id": "local", "name": "本地 Markdown", "description": "写到 data/notes/ 目录,纯本地,零依赖"},
         {"id": "siyuan", "name": "思源笔记", "description": "HTTP API @ :6806,需 Token"},
-        {"id": "obsidian", "name": "Obsidian", "description": "即将推出(占位 stub)"},
+        {"id": "obsidian", "name": "Obsidian / Markdown 文件夹", "description": "直接写入 vault 或普通 Markdown 文件夹"},
     ]
 
 
@@ -59,7 +60,7 @@ async def test_connection() -> dict[str, Any]:
     return {"ok": ok, "provider": adapter.name, "error": err}
 
 
-@router.get("/notebooks", summary="列出笔记本(仅 SiYuan 真实返回,local 返回占位)")
+@router.get("/notebooks", summary="列出笔记本")
 async def get_notebooks() -> list[NotebookInfo]:
     config = storage.get_note_adapter()
     if not config:
@@ -74,11 +75,9 @@ async def get_notebooks() -> list[NotebookInfo]:
         raise
 
 
-@router.get("/notebooks/{notebook_id}/docs", summary="列出笔记本内的文档树(仅 SiYuan 真实返回)")
+@router.get("/notebooks/{notebook_id}/docs", summary="列出笔记本内的文档树")
 async def get_notebook_docs(notebook_id: str) -> list[DocNode]:
-    """弹窗里展开笔记本时调一次。SiYuan / Local / Obsidian 行为不同:
-    - SiYuan 真实拼嵌套树
-    - 其他 provider 没实现 list_docs → 返回空数组(弹窗显示"无子文档")"""
+    """弹窗里展开笔记本时调一次。SiYuan / Obsidian 会返回文档树,Local 返回空。"""
     config = storage.get_note_adapter()
     if not config:
         logger.warning(f"/notes/notebooks/{notebook_id}/docs: 未配置 noteAdapter")
@@ -104,13 +103,13 @@ async def get_notebook_docs(notebook_id: str) -> list[DocNode]:
 async def save_tab(req: SaveRequest) -> SaveResult:
     """
     主入口。前端 popup / 弹窗的"确认收藏"按钮直接调这个。
-    - effective_notebook: 优先用请求里的,缺省用 config.defaultNotebook,再缺省报错
-    - effective_target: 同上
+    - effective_notebook: 优先用请求里的,缺省用 config.defaultNotebook
+    - effective_target: 优先用请求里的,缺省用 config.defaultTargetDoc
     - content 字段复用:存全文 / 存 LLM 摘录(走同一条路径)
     """
     content_len = len(req.content) if req.content else 0
     logger.info(
-        f"POST /notes/save title={req.title!r} url={req.url!r} "
+        f"POST /notes/save title={req.title!r} url={req.url!r} mode={req.mode!r} "
         f"content_len={content_len} notebook_id={req.notebook_id!r} target_doc={req.target_doc!r}"
     )
     config = storage.get_note_adapter()
@@ -120,6 +119,7 @@ async def save_tab(req: SaveRequest) -> SaveResult:
 
     effective_notebook = req.notebook_id or config.defaultNotebook or ""
     effective_target = req.target_doc or config.defaultTargetDoc
+    effective_mode = req.mode or ("full" if req.content else "link")
     effective_req = SaveRequest(
         title=req.title,
         url=req.url,
@@ -127,10 +127,11 @@ async def save_tab(req: SaveRequest) -> SaveResult:
         content=req.content,
         notebook_id=effective_notebook,
         target_doc=effective_target,
+        mode=effective_mode,
     )
     logger.info(
         f"/notes/save effective: provider={config.provider} notebook={effective_notebook!r} "
-        f"target_doc={effective_target!r} content_len={content_len}"
+        f"target_doc={effective_target!r} mode={effective_mode!r} content_len={content_len}"
     )
 
     adapter = build_note_adapter(config)
@@ -161,7 +162,7 @@ class SummarizeResponse(BaseModel):
 async def summarize(req: SummarizeRequest) -> SummarizeResponse:
     """
     端到端摘录:content 是前端 defuddle 提取的 markdown,这里送 LLM 拿 markdown 摘录。
-    失败时 error 字段填好(不 raise 500),让前端 fire-and-forget 模式能拿到错误。
+    失败时 error 字段填好(不 raise 500),让前端可以回退保存全文。
     """
     logger.info(
         f"POST /notes/summarize title={req.title!r} url={req.url!r} content_len={len(req.content)}"

@@ -4,10 +4,11 @@
 当前实现是**纯内存**(模块级 list,重启清空),仅供联调用。
 正式版应该把数据落 DB,这里没做。
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from schemas.tab import TabData
+from services.auth import require_api_token
 
-router = APIRouter(prefix="/tabs", tags=["标签管理"])
+router = APIRouter(prefix="/tabs", tags=["标签管理"], dependencies=[Depends(require_api_token)])
 
 # 内存存储(测试用,重启清空)
 tabs_storage: list[TabData] = []

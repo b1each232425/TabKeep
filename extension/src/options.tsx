@@ -34,14 +34,13 @@ import type {
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
+import { apiFetch, checkBackendHealth, ensureApiToken, FASTAPI_URL } from "./config/api"
 import "./style.css"
 
 
 // ─────────────────────────────────────────────────────────────
 // 1. 常量 + 工具
 // ─────────────────────────────────────────────────────────────
-const BACKEND_URL = "http://127.0.0.1:38471"
-
 /**
  * 把已修改的字段增量同步到后端。
  * 后端用 Pydantic model_fields_set 判断"前端是否传了这个字段"——未传则保留原值,
@@ -52,25 +51,25 @@ const syncConfigToBackend = async (partial: {
   tabCategories?: TabCategory[]
   noteAdapter?: NoteAdapterConfig
 }) => {
-  const body: Record<string, unknown> = {}
+  const token = await ensureApiToken()
+  const body: Record<string, unknown> = { apiToken: token }
   if (partial.modelConfig !== undefined) body.modelConfig = partial.modelConfig
   if (partial.tabCategories !== undefined) body.tabCategories = partial.tabCategories
   if (partial.noteAdapter !== undefined) body.noteAdapter = partial.noteAdapter
   try {
-    const res = await fetch(`${BACKEND_URL}/config/sync`, {
+    const res = await apiFetch("/config/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     })
     const data = await res.json()
-    if (!data.ok) {
+    if (!res.ok || !data.ok) {
       console.warn("[TabKeep] 同步配置到后端失败:", data)
     }
   } catch (err) {
     console.warn("[TabKeep] 同步配置到后端异常:", err)
   }
 }
-
 const COLORS: TabGroupColor[] = [
   "grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"
 ]
@@ -626,6 +625,8 @@ function NotesSection() {
 
   const reset = () => {
     setConfig(DEFAULT_NOTE_ADAPTER)
+    setNotebooks([])
+    setTestResult(null)
   }
 
   /**
@@ -633,36 +634,35 @@ function NotesSection() {
    * 让用户能直接点列表项把 notebook id 填到"默认笔记本"输入框。
    */
   const test = async () => {
+    await chrome.storage.local.set({ noteAdapter: config })
+    await syncConfigToBackend({ noteAdapter: config })
+
     setTesting(true)
     setTestResult(null)
     setNotebooks([])
     console.log("[TabKeep] 测试连接开始", { provider: config.provider, endpoint: config.endpoint })
     try {
-      const res = await fetch(`${BACKEND_URL}/notes/test`, { method: "POST" })
+      const res = await apiFetch("/notes/test", { method: "POST" })
       console.log("[TabKeep] /notes/test HTTP", res.status, res.statusText)
+      const data = await res.json()
       if (!res.ok) {
-        const text = await res.text()
-        const err = `后端 HTTP ${res.status}:${text.slice(0, 200)}`
+        const err = data.detail || data.error || `后端 HTTP ${res.status}`
         console.error("[TabKeep] 测试连接 HTTP 失败", err)
-        setTestResult(err)
+        setTestResult(String(err))
         return
       }
-      const data = await res.json()
       console.log("[TabKeep] /notes/test 响应", data)
       if (data.ok) {
         setTestResult(`连接成功 (provider=${data.provider})`)
         console.log("[TabKeep] 测试连接 ok, 拉笔记本列表")
-        const nbRes = await fetch(`${BACKEND_URL}/notes/notebooks`)
-        console.log("[TabKeep] /notes/notebooks HTTP", nbRes.status)
+        const nbRes = await apiFetch("/notes/notebooks")
+        const nbData = await nbRes.json()
+        console.log("[TabKeep] 笔记本列表", nbData)
         if (!nbRes.ok) {
-          const text = await nbRes.text()
-          const err = `拉笔记本失败 HTTP ${nbRes.status}:${text.slice(0, 200)}`
-          console.error("[TabKeep]", err)
+          const err = nbData.detail || nbData.error || `拉笔记本失败 HTTP ${nbRes.status}`
           setTestResult((prev) => `${prev}\n${err}`)
           return
         }
-        const nbData = await nbRes.json()
-        console.log("[TabKeep] 笔记本列表", nbData)
         setNotebooks(Array.isArray(nbData) ? nbData : [])
       } else {
         const errMsg = data.error ?? "未知错误"
@@ -673,7 +673,7 @@ function NotesSection() {
       const errMsg = String(err)
       console.error("[TabKeep] 测试连接 fetch 异常:", err)
       setTestResult(
-        `请求失败:${errMsg}\n\n排查:\n1) 后端是否启动:${BACKEND_URL}\n2) 浏览器能否访问该 URL\n3) CORS / 端口冲突`
+        `请求失败:${errMsg}\n\n排查:\n1) 后端是否启动:${FASTAPI_URL}\n2) 浏览器能否访问该 URL\n3) 端口是否被占用`
       )
     } finally {
       setTesting(false)
@@ -681,6 +681,7 @@ function NotesSection() {
   }
 
   const isLocal = config.provider === "local"
+  const isSiyuan = config.provider === "siyuan"
   const isObsidian = config.provider === "obsidian"
 
   return (
@@ -688,7 +689,7 @@ function NotesSection() {
       <header>
         <h1 className="text-2xl font-semibold">笔记集成</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          配置后可在 popup 点 ☆ 把当前标签页收藏到笔记系统
+          配置后可在 popup 把当前标签页收藏到笔记系统
         </p>
       </header>
 
@@ -698,17 +699,26 @@ function NotesSection() {
           <select
             className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
             value={config.provider}
-            onChange={(e) =>
-              setConfig({ ...config, provider: e.target.value as NoteAdapterConfig["provider"] })
-            }>
+            onChange={(e) => {
+              const provider = e.target.value as NoteAdapterConfig["provider"]
+              setConfig({
+                provider,
+                endpoint: provider === "siyuan" ? config.endpoint ?? "http://127.0.0.1:6806" : undefined,
+                token: provider === "siyuan" ? config.token : undefined,
+                vault: provider === "obsidian" ? config.vault : undefined,
+                defaultFolder: provider === "obsidian" ? config.defaultFolder ?? "TabKeep Inbox" : undefined,
+                writeMode: provider === "obsidian" ? config.writeMode ?? "new_file" : undefined,
+                defaultNotebook: provider === "siyuan" ? config.defaultNotebook : undefined,
+                defaultTargetDoc: provider !== "local" ? config.defaultTargetDoc : undefined,
+              })
+            }}>
             <option value="local">本地 Markdown(写到 data/notes/,零依赖)</option>
             <option value="siyuan">思源笔记(HTTP API @ :6806,需 Token)</option>
-            <option value="obsidian">Obsidian(即将推出)</option>
+            <option value="obsidian">Obsidian / Markdown 文件夹</option>
           </select>
         </div>
 
-        {/* local 模式不需要 endpoint / token;obsidian 模式 endpoint disabled(未实现) */}
-        {!isLocal && (
+        {isSiyuan && (
           <>
             <div>
               <label className="text-sm text-muted-foreground block mb-1">Endpoint</label>
@@ -718,21 +728,18 @@ function NotesSection() {
                 placeholder="http://127.0.0.1:6806"
                 value={config.endpoint ?? ""}
                 onChange={(e) => setConfig({ ...config, endpoint: e.target.value })}
-                disabled={isObsidian}
               />
             </div>
-            {!isObsidian && (
-              <div>
-                <label className="text-sm text-muted-foreground block mb-1">Token</label>
-                <input
-                  type="password"
-                  className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
-                  placeholder="思源:设置 → 关于 → API token"
-                  value={config.token ?? ""}
-                  onChange={(e) => setConfig({ ...config, token: e.target.value })}
-                />
-              </div>
-            )}
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">Token</label>
+              <input
+                type="password"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="思源:设置 → 关于 → API token"
+                value={config.token ?? ""}
+                onChange={(e) => setConfig({ ...config, token: e.target.value })}
+              />
+            </div>
             <div>
               <label className="text-sm text-muted-foreground block mb-1">
                 默认笔记本 ID(可选)
@@ -740,7 +747,7 @@ function NotesSection() {
               <input
                 type="text"
                 className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
-                placeholder="留空则每次收藏时新建"
+                placeholder="留空则每次收藏时选择"
                 value={config.defaultNotebook ?? ""}
                 onChange={(e) => setConfig({ ...config, defaultNotebook: e.target.value })}
               />
@@ -760,19 +767,75 @@ function NotesSection() {
           </>
         )}
 
+        {isObsidian && (
+          <>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                Vault / Markdown 文件夹路径
+              </label>
+              <input
+                type="text"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="E:\\Notes\\MyVault"
+                value={config.vault ?? ""}
+                onChange={(e) => setConfig({ ...config, vault: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                默认保存目录
+              </label>
+              <input
+                type="text"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="TabKeep Inbox"
+                value={config.defaultFolder ?? ""}
+                onChange={(e) => setConfig({ ...config, defaultFolder: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">写入模式</label>
+              <select
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                value={config.writeMode ?? "new_file"}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    writeMode: e.target.value as NonNullable<NoteAdapterConfig["writeMode"]>,
+                  })
+                }>
+                <option value="new_file">每天目录下新建 Markdown 文件</option>
+                <option value="append">追加到选中的 Markdown 文件</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground block mb-1">
+                默认目标 Markdown(可选)
+              </label>
+              <input
+                type="text"
+                className="w-full h-9 px-2 rounded-md border border-input bg-background text-sm"
+                placeholder="留空 = 自动新建;填相对路径 = 追加"
+                value={config.defaultTargetDoc ?? ""}
+                onChange={(e) => setConfig({ ...config, defaultTargetDoc: e.target.value })}
+              />
+            </div>
+          </>
+        )}
+
         {isLocal && (
           <p className="text-xs text-muted-foreground">
-            本地模式无需配置,收藏会写入 <code>data/notes/inbox.md</code>(可在 dataDir 下查看)。
+            本地模式无需配置,收藏会写入 <code>data/notes/inbox.md</code>。
           </p>
         )}
         {isObsidian && (
           <p className="text-xs text-muted-foreground">
-            Obsidian 适配器尚未实现(占位)。后续版本接入 Local REST API 插件。
+            Obsidian 模式会直接写入 vault 或普通 Markdown 文件夹,不依赖 Obsidian 插件。
           </p>
         )}
 
         <div className="flex items-center gap-2 pt-2">
-          <Button size="sm" onClick={save} disabled={isObsidian}>
+          <Button size="sm" onClick={save}>
             {saved ? "已保存" : "保存设置"}
           </Button>
           <Button size="sm" variant="outline" onClick={test} disabled={testing}>
@@ -786,17 +849,18 @@ function NotesSection() {
 
         {testResult && (
           <p
-            className={`text-xs ${
+            className={`text-xs whitespace-pre-wrap ${
               testResult.startsWith("连接成功") ? "text-green-600" : "text-red-600"
             }`}>
             {testResult}
           </p>
         )}
 
-        {/* 笔记本列表:测试成功后显示,点击填入"默认笔记本"输入框 */}
         {notebooks.length > 0 && (
           <div className="border-t border-border pt-3">
-            <p className="text-xs text-muted-foreground mb-2">笔记本列表:</p>
+            <p className="text-xs text-muted-foreground mb-2">
+              {isObsidian ? "Markdown 目录:" : "笔记本列表:"}
+            </p>
             <ul className="space-y-1">
               {notebooks.map((nb) => (
                 <li
@@ -809,7 +873,9 @@ function NotesSection() {
                 </li>
               ))}
             </ul>
-            <p className="text-[10px] text-muted-foreground mt-2">点击笔记本可填入「默认笔记本 ID」</p>
+            <p className="text-[10px] text-muted-foreground mt-2">
+              {isObsidian ? "测试成功后会写入该目录" : "点击笔记本可填入「默认笔记本 ID」"}
+            </p>
           </div>
         )}
       </section>
@@ -817,12 +883,22 @@ function NotesSection() {
   )
 }
 
-
 // ─────────────────────────────────────────────────────────────
 // 6. IndexOptions — 整体壳
 // ─────────────────────────────────────────────────────────────
 function IndexOptions() {
   const [section, setSection] = useState<Section>("overview")
+  const [backendReady, setBackendReady] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    checkBackendHealth().then((ok) => {
+      if (!cancelled) setBackendReady(ok)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const navItems: { id: Section; label: string; icon: typeof LayoutDashboard; disabled?: boolean }[] = [
     { id: "overview", label: "概览", icon: LayoutDashboard },
@@ -837,6 +913,16 @@ function IndexOptions() {
       <aside className="w-56 border-r border-border flex flex-col">
         <div className="p-4 border-b border-border">
           <h2 className="text-lg font-semibold">TabKeep</h2>
+          <p
+            className={`mt-1 text-xs ${
+              backendReady === null
+                ? "text-muted-foreground"
+                : backendReady
+                ? "text-green-600"
+                : "text-red-600"
+            }`}>
+            {backendReady === null ? "后端检查中" : backendReady ? "后端已连接" : "后端未连接"}
+          </p>
         </div>
         <nav className="flex-1 p-2 space-y-1">
           {navItems.map((item) => {

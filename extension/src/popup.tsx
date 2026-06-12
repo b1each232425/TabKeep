@@ -12,13 +12,13 @@ import type { DocNode, NotebookInfo, TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
+import { apiFetch, captureWithDesktop, checkBackendHealth } from "./config/api"
 import "./style.css"
 
 
 // ─────────────────────────────────────────────────────────────
 // 1. 常量 + 类型
 // ─────────────────────────────────────────────────────────────
-const BACKEND_URL = "http://127.0.0.1:38471"
 const MAX_CONTENT_CHARS = 200_000
 
 // 单个 tab 当前保存状态(驱动按钮的图标颜色 / 是否转圈 / 禁用)
@@ -51,6 +51,7 @@ function IndexPopup() {
   const [aiGrouping, setAiGrouping] = useState(false)          // AI 分组按钮 loading
   const [saveStatus, setSaveStatus] = useState<Record<number, SaveStatus>>({})  // 每个 tab id 一份状态
   const [pending, setPending] = useState<Pending>(null)        // 弹窗状态
+  const [backendReady, setBackendReady] = useState<boolean | null>(null)
 
   // 启动:从 IDB 拉 tab 列表
   useEffect(() => {
@@ -60,6 +61,17 @@ function IndexPopup() {
       }
       setLoading(false)
     })
+  }, [])
+
+  // 打开 popup 时探测后端,给用户一个明确状态。
+  useEffect(() => {
+    let cancelled = false
+    checkBackendHealth().then((ok) => {
+      if (!cancelled) setBackendReady(ok)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const groupedTabs = groupTabsByDomain(tabs)
@@ -139,6 +151,16 @@ function IndexPopup() {
             title="打开仪表盘">
             <Settings className="h-4 w-4" />
           </Button>
+          <span
+            className={`text-[11px] ${
+              backendReady === null
+                ? "text-gray-400"
+                : backendReady
+                ? "text-green-600"
+                : "text-red-600"
+            }`}>
+            {backendReady === null ? "检查中" : backendReady ? "后端已连接" : "后端未连接"}
+          </span>
         </div>
         <div className="flex gap-2">
           <Button
@@ -395,7 +417,7 @@ function NotebookPickerModal({
   // 拉笔记本列表(挂载时一次)
   useEffect(() => {
     let cancelled = false
-    fetch(`${BACKEND_URL}/notes/notebooks`)
+    apiFetch("/notes/notebooks")
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return
@@ -425,7 +447,7 @@ function NotebookPickerModal({
     if (!docsByNotebook[notebookId]) {
       setDocsLoading((s) => new Set(s).add(notebookId))
       try {
-        const res = await fetch(`${BACKEND_URL}/notes/notebooks/${notebookId}/docs`)
+        const res = await apiFetch(`/notes/notebooks/${notebookId}/docs`)
         const data = await res.json()
         setDocsByNotebook((m) => ({ ...m, [notebookId]: Array.isArray(data) ? data : [] }))
       } catch (e) {
@@ -442,10 +464,22 @@ function NotebookPickerModal({
     setExpanded((s) => new Set(s).add(notebookId))
   }
 
-  // 共享 POST /notes/save(全文 / 摘录走同一个,把 content 替换掉就行)
+  // 共享保存入口:桌面端优先,失败后回退 FastAPI /notes/save。
   const postSave = async (bodyContent: string | undefined) => {
     setError(null)
-    const res = await fetch(`${BACKEND_URL}/notes/save`, {
+    const mode = summary ? "summary" : bodyContent ? "full" : "link"
+    const desktopSaved = await captureWithDesktop({
+      source: "tabkeep",
+      mode,
+      title: tab.title ?? "",
+      url: tab.url ?? "",
+      contentMarkdown: bodyContent || undefined,
+      favIconUrl: tab.favIconUrl,
+      capturedAt: new Date().toISOString(),
+    })
+    if (desktopSaved) return true
+
+    const res = await apiFetch("/notes/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -454,16 +488,16 @@ function NotebookPickerModal({
         content: bodyContent || undefined,
         notebook_id: selected!.notebookId,
         target_doc: selected!.docId ?? null,
+        mode,
       }),
     })
     const data = await res.json()
-    if (!data.ok) {
-      setError(data.error || "保存失败")
+    if (!res.ok || !data.ok) {
+      setError(data.detail || data.error || "保存失败")
       return false
     }
     return true
   }
-
   // "📄 全文保存" / "再次保存(摘录)" 按钮:直接 POST 当前 content
   const handleConfirm = async () => {
     if (!selected) return
@@ -530,6 +564,8 @@ function NotebookPickerModal({
   const handleSelectNotebook = (notebookId: string) => {
     setSelected({ notebookId })
   }
+
+  const isLinkMode = !content && !summary
 
   // 底部状态文字
   const statusText = !selected
@@ -696,18 +732,20 @@ function NotebookPickerModal({
             {/* 主按钮:三种文案三档行为 */}
             <Button
               size="sm"
-              onClick={summary ? handleConfirm : handleSummarize}
+              onClick={isLinkMode || summary ? handleConfirm : handleSummarize}
               disabled={
                 !selected ||
                 saving ||
                 summarizing ||
-                (!summary && !content)
+                (!isLinkMode && !summary && !content)
               }
               className={!summary ? "bg-purple-600 hover:bg-purple-700" : ""}>
               {summarizing
                 ? "🪄 摘录并保存中..."
                 : saving
                 ? "保存中..."
+                : isLinkMode
+                ? "保存链接"
                 : summary
                 ? "🪄 再次保存(摘录)"
                 : "🪄 重点摘录并保存"}
