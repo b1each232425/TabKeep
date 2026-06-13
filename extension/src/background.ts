@@ -441,6 +441,8 @@ const saveThroughAvailableBackend = async ({
     excerpt,
     favIconUrl: tab.favIconUrl,
     capturedAt: new Date().toISOString(),
+    notebookId,
+    targetDoc,
   })
   if (desktopSaved) {
     return { ok: true, note_id: "openwiki-desktop" }

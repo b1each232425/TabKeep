@@ -34,7 +34,7 @@ import type {
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
-import { apiFetch, checkBackendHealth, ensureApiToken, FASTAPI_URL } from "./config/api"
+import { apiFetch, checkBackendHealth, checkDesktopHealth, ensureApiToken, FASTAPI_URL } from "./config/api"
 import "./style.css"
 
 
@@ -889,11 +889,15 @@ function NotesSection() {
 function IndexOptions() {
   const [section, setSection] = useState<Section>("overview")
   const [backendReady, setBackendReady] = useState<boolean | null>(null)
+  const [desktopReady, setDesktopReady] = useState<boolean | null>(null)
 
   useEffect(() => {
     let cancelled = false
     checkBackendHealth().then((ok) => {
       if (!cancelled) setBackendReady(ok)
+    })
+    checkDesktopHealth().then((ok) => {
+      if (!cancelled) setDesktopReady(ok)
     })
     return () => {
       cancelled = true
@@ -922,6 +926,16 @@ function IndexOptions() {
                 : "text-red-600"
             }`}>
             {backendReady === null ? "后端检查中" : backendReady ? "后端已连接" : "后端未连接"}
+          </p>
+          <p
+            className={`mt-0.5 text-xs ${
+              desktopReady === null
+                ? "text-muted-foreground"
+                : desktopReady
+                ? "text-green-600"
+                : "text-muted-foreground"
+            }`}>
+            {desktopReady === null ? "桌面检查中" : desktopReady ? "桌面已连接" : "桌面未连接"}
           </p>
         </div>
         <nav className="flex-1 p-2 space-y-1">

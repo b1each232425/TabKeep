@@ -12,7 +12,7 @@ import type { DocNode, NotebookInfo, TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
-import { apiFetch, captureWithDesktop, checkBackendHealth } from "./config/api"
+import { apiFetch, captureWithDesktop, checkBackendHealth, checkDesktopHealth } from "./config/api"
 import "./style.css"
 
 
@@ -52,6 +52,7 @@ function IndexPopup() {
   const [saveStatus, setSaveStatus] = useState<Record<number, SaveStatus>>({})  // 每个 tab id 一份状态
   const [pending, setPending] = useState<Pending>(null)        // 弹窗状态
   const [backendReady, setBackendReady] = useState<boolean | null>(null)
+  const [desktopReady, setDesktopReady] = useState<boolean | null>(null)
 
   // 启动:从 IDB 拉 tab 列表
   useEffect(() => {
@@ -68,6 +69,9 @@ function IndexPopup() {
     let cancelled = false
     checkBackendHealth().then((ok) => {
       if (!cancelled) setBackendReady(ok)
+    })
+    checkDesktopHealth().then((ok) => {
+      if (!cancelled) setDesktopReady(ok)
     })
     return () => {
       cancelled = true
@@ -160,6 +164,16 @@ function IndexPopup() {
                 : "text-red-600"
             }`}>
             {backendReady === null ? "检查中" : backendReady ? "后端已连接" : "后端未连接"}
+          </span>
+          <span
+            className={`text-[11px] ${
+              desktopReady === null
+                ? "text-gray-400"
+                : desktopReady
+                ? "text-green-600"
+                : "text-gray-400"
+            }`}>
+            {desktopReady === null ? "桌面检查中" : desktopReady ? "桌面已连接" : "桌面未连接"}
           </span>
         </div>
         <div className="flex gap-2">
@@ -476,6 +490,8 @@ function NotebookPickerModal({
       contentMarkdown: bodyContent || undefined,
       favIconUrl: tab.favIconUrl,
       capturedAt: new Date().toISOString(),
+      notebookId: selected!.notebookId,
+      targetDoc: selected!.docId ?? null,
     })
     if (desktopSaved) return true
 

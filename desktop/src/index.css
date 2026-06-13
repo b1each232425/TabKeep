@@ -1,0 +1,236 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+    --tk-blue: 214 89% 54%;
+    --tk-green: 111 63% 54%;
+    --tk-amber: 38 92% 50%;
+    --tk-graphite: 216 30% 17%;
+    --tk-soft: 210 40% 98%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply m-0 bg-[hsl(var(--tk-soft))] text-foreground antialiased;
+    font-family:
+      Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      sans-serif;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .tk-desktop-shell {
+    @apply grid min-h-screen bg-[hsl(var(--tk-soft))] text-[hsl(var(--tk-graphite))];
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+
+  .tk-sidebar {
+    @apply flex min-h-screen flex-col border-r border-border bg-white/85 px-4 py-5;
+  }
+
+  .tk-wordmark {
+    @apply text-xl font-semibold tracking-normal text-[hsl(var(--tk-graphite))];
+  }
+
+  .tk-wordmark-accent {
+    @apply text-[hsl(var(--tk-green))];
+  }
+
+  .tk-sidebar-nav {
+    @apply mt-8 flex flex-1 flex-col gap-1;
+  }
+
+  .tk-nav-item {
+    @apply flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors;
+  }
+
+  .tk-nav-item:hover {
+    @apply bg-slate-100 text-slate-950;
+  }
+
+  .tk-nav-item-active {
+    @apply bg-blue-50 text-[hsl(var(--tk-blue))];
+  }
+
+  .tk-main {
+    @apply min-w-0 overflow-y-auto px-7 py-6;
+  }
+
+  .tk-topbar {
+    @apply mb-5 flex items-center justify-between gap-4;
+  }
+
+  .tk-page-title {
+    @apply text-2xl font-semibold text-slate-950;
+  }
+
+  .tk-page-subtitle {
+    @apply mt-1 text-sm text-muted-foreground;
+  }
+
+  .tk-status-grid {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
+
+  .tk-status-card {
+    @apply flex min-h-20 items-center gap-3 rounded-lg border border-border bg-white px-4 py-3;
+  }
+
+  .tk-status-dot {
+    @apply h-2.5 w-2.5 rounded-full bg-[hsl(var(--tk-green))];
+  }
+
+  .tk-status-dot-warning {
+    @apply bg-[hsl(var(--tk-amber))];
+  }
+
+  .tk-status-dot-error {
+    @apply bg-red-500;
+  }
+
+  .tk-status-title {
+    @apply text-sm font-medium text-slate-700;
+  }
+
+  .tk-status-value {
+    @apply mt-0.5 text-xs font-medium text-[hsl(var(--tk-green))];
+  }
+
+  .tk-status-value-warning {
+    @apply text-[hsl(var(--tk-amber))];
+  }
+
+  .tk-status-value-error {
+    @apply text-red-600;
+  }
+
+  .tk-panel {
+    @apply rounded-lg border border-border bg-white;
+  }
+
+  .tk-panel-header {
+    @apply flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-3;
+  }
+
+  .tk-panel-title {
+    @apply text-sm font-semibold text-slate-900;
+  }
+
+  .tk-panel-body {
+    @apply p-4;
+  }
+
+  .tk-form-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .tk-field {
+    @apply space-y-1.5;
+  }
+
+  .tk-label {
+    @apply block text-sm font-medium text-slate-700;
+  }
+
+  .tk-input,
+  .tk-select,
+  .tk-textarea {
+    @apply w-full rounded-md border border-input bg-white px-3 text-sm text-slate-900 outline-none transition-colors;
+  }
+
+  .tk-input,
+  .tk-select {
+    @apply h-9;
+  }
+
+  .tk-textarea {
+    @apply min-h-28 py-2 leading-6;
+  }
+
+  .tk-input:focus,
+  .tk-select:focus,
+  .tk-textarea:focus {
+    @apply border-blue-300 ring-2 ring-blue-100;
+  }
+
+  .tk-command-bar {
+    @apply flex flex-wrap items-center gap-2 border-t border-border bg-slate-50/80 px-4 py-3;
+  }
+
+  .tk-primary-button {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[hsl(var(--tk-blue))] px-3 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .tk-primary-button:hover:not(:disabled) {
+    @apply bg-blue-600;
+  }
+
+  .tk-secondary-button {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input bg-white px-3 text-sm font-medium text-slate-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .tk-secondary-button:hover:not(:disabled) {
+    @apply bg-slate-50 text-slate-950;
+  }
+
+  .tk-ghost-button {
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .tk-ghost-button:hover:not(:disabled) {
+    @apply bg-slate-100 text-slate-950;
+  }
+
+  .tk-icon-button {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors;
+  }
+
+  .tk-icon-button:hover {
+    @apply bg-slate-100 text-slate-950;
+  }
+
+  .tk-badge {
+    @apply inline-flex h-6 items-center rounded-md bg-slate-100 px-2 text-xs font-medium text-slate-600;
+  }
+
+  .tk-badge-success {
+    @apply bg-green-50 text-green-700;
+  }
+
+  .tk-badge-warning {
+    @apply bg-amber-50 text-amber-700;
+  }
+
+  .tk-grid-two {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+  }
+
+  .tk-muted-box {
+    @apply rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-muted-foreground;
+  }
+}

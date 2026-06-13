@@ -4,7 +4,7 @@
 // options, and background use the same endpoints.
 
 export const FASTAPI_URL = "http://127.0.0.1:38471"
-export const TAURI_URL = "http://127.0.0.1:38472"
+export const DESKTOP_URL = "http://127.0.0.1:38472"
 export const API_TOKEN_STORAGE_KEY = "tabkeepApiToken"
 
 export type CaptureMode = "link" | "full" | "summary"
@@ -18,6 +18,8 @@ export interface DesktopCapturePayload {
   excerpt?: string
   favIconUrl?: string
   capturedAt: string
+  notebookId?: string
+  targetDoc?: string | null
 }
 
 function generateToken(): string {
@@ -68,13 +70,26 @@ export async function checkBackendHealth(): Promise<boolean> {
   }
 }
 
+export async function desktopFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = await apiHeaders(init.headers)
+  return fetch(`${DESKTOP_URL}${path}`, { ...init, headers })
+}
+
+export async function checkDesktopHealth(): Promise<boolean> {
+  try {
+    const res = await desktopFetch("/health", { method: "GET" })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function captureWithDesktop(payload: DesktopCapturePayload): Promise<boolean> {
   try {
-    const health = await fetch(`${TAURI_URL}/health`, { method: "GET" })
+    const health = await desktopFetch("/health", { method: "GET" })
     if (!health.ok) return false
-    const res = await fetch(`${TAURI_URL}/capture`, {
+    const res = await desktopFetch("/capture", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
     return res.ok
