@@ -11,6 +11,7 @@ import {
   Clipboard,
   Copy,
   Folder,
+  Keyboard,
   Languages,
   LayoutDashboard,
   MousePointer2,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react"
 import {
   BackendRequestError,
+  DEFAULT_SELECTION_TRANSLATE_CONFIG,
   DEFAULT_OCR_CONFIG,
   DEFAULT_REGION_BOX_CONFIG,
   DEFAULT_MODEL_CONFIG,
@@ -43,7 +45,9 @@ import {
   getLatestOcrResult,
   getOcrConfig,
   getRegionBoxConfig,
+  getLatestSelectionTranslateResult,
   getTranslateProviderConfig,
+  getSelectionTranslateConfig,
   loadBackendConfig,
   openRegionBox,
   runRegionTranslate,
@@ -51,12 +55,14 @@ import {
   setOcrConfig,
   setRegionBoxConfig,
   setRegionBoxPassthrough,
+  setSelectionTranslateConfig,
   setTranslateProviderConfig,
   startOcrRecognize,
   startOcrTranslate,
   syncConfigToBackend,
   testTranslateProvider,
   translateText,
+  triggerSelectionTranslate,
 } from "./api"
 import type {
   ClassifyResponse,
@@ -69,6 +75,8 @@ import type {
   OcrFlowResult,
   OcrProvider,
   RegionBoxConfig,
+  SelectionTranslateConfig,
+  SelectionTranslateResult,
   TabCategory,
   TabData,
   TabGroupColor,
@@ -129,6 +137,7 @@ function App() {
   if (view === "ocr-result") return <OcrResultWindow />
   if (view === "region-box") return <RegionBoxWindow />
   if (view === "region-panel") return <RegionPanelWindow />
+  if (view === "selection-panel") return <SelectionPanelWindow />
   return <DesktopApp />
 }
 
@@ -504,15 +513,23 @@ function TranslateSection() {
   const [translateProviderTesting, setTranslateProviderTesting] = useState(false)
   const [translateProviderTest, setTranslateProviderTest] =
     useState<TranslateProviderTestResponse | null>(null)
+  const [selectionConfig, setSelectionConfigState] =
+    useState<SelectionTranslateConfig>(DEFAULT_SELECTION_TRANSLATE_CONFIG)
+  const [selectionSaving, setSelectionSaving] = useState(false)
+  const [selectionTriggering, setSelectionTriggering] = useState(false)
 
   const targetOptions = ["简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
   const canTranslate = sourceText.trim().length > 0 && !translating
 
   useEffect(() => {
     let cancelled = false
-    Promise.allSettled([getOcrConfig(), getTranslateProviderConfig()]).then((results) => {
+    Promise.allSettled([
+      getOcrConfig(),
+      getTranslateProviderConfig(),
+      getSelectionTranslateConfig(),
+    ]).then((results) => {
       if (cancelled) return
-      const [ocrResult, translateProviderResult] = results
+      const [ocrResult, translateProviderResult, selectionResult] = results
       if (ocrResult.status === "fulfilled") {
         setOcrConfigState(ocrResult.value)
       } else {
@@ -522,6 +539,11 @@ function TranslateSection() {
         setTranslateProviderConfigState(translateProviderResult.value)
       } else {
         setStatus(`读取翻译 Provider 设置失败: ${errorMessage(translateProviderResult.reason)}`)
+      }
+      if (selectionResult.status === "fulfilled") {
+        setSelectionConfigState(selectionResult.value)
+      } else {
+        setStatus(`读取划词翻译设置失败: ${errorMessage(selectionResult.reason)}`)
       }
     })
     return () => {
@@ -620,6 +642,39 @@ function TranslateSection() {
       setStatus(errorMessage(err))
     } finally {
       setTranslateProviderTesting(false)
+    }
+  }
+
+  const saveSelectionTranslateSettings = async () => {
+    setSelectionSaving(true)
+    setStatus(null)
+    try {
+      const saved = await setSelectionTranslateConfig(selectionConfig)
+      setSelectionConfigState(saved)
+      setStatus(saved.hotkeyError ?? "划词翻译设置已保存")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setSelectionSaving(false)
+    }
+  }
+
+  const runSelectionTranslateTest = async () => {
+    setSelectionTriggering(true)
+    setStatus("正在最小化桌面端，1 秒后读取当前应用选中文本")
+    try {
+      try {
+        await getCurrentWindow().minimize()
+      } catch {
+        // Ignore minimize failures; the global hotkey flow still works.
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 1000))
+      const result = await triggerSelectionTranslate()
+      setStatus(result.ok ? "划词翻译已完成" : result.error ?? "划词翻译未完成")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setSelectionTriggering(false)
     }
   }
 
@@ -755,6 +810,86 @@ function TranslateSection() {
             </Button>
             <span className="text-xs text-muted-foreground">{translatedText.trim().length} 字符</span>
           </div>
+        </div>
+      </section>
+
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">划词翻译</h2>
+            <p className="text-xs text-muted-foreground">
+              在任意应用中选中文字，按 {selectionConfig.hotkey} 直接翻译
+            </p>
+          </div>
+          <span className={`tk-badge ${selectionConfig.enabled ? "tk-badge-success" : "tk-badge-warning"}`}>
+            {selectionConfig.enabled ? "已启用" : "已关闭"}
+          </span>
+        </div>
+        <div className="tk-panel-body space-y-4">
+          <div className="tk-form-grid">
+            <label className="tk-field">
+              <span className="tk-label">快捷键</span>
+              <input className="tk-input" value={selectionConfig.hotkey} readOnly />
+            </label>
+            <label className="tk-field">
+              <span className="tk-label">源语言</span>
+              <select
+                className="tk-select"
+                value={selectionConfig.sourceLang}
+                onChange={(event) =>
+                  setSelectionConfigState({
+                    ...selectionConfig,
+                    sourceLang: event.target.value,
+                  })
+                }>
+                <option value="auto">自动识别</option>
+                {targetOptions.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="tk-field">
+              <span className="tk-label">目标语言</span>
+              <select
+                className="tk-select"
+                value={selectionConfig.targetLang}
+                onChange={(event) =>
+                  setSelectionConfigState({
+                    ...selectionConfig,
+                    targetLang: event.target.value,
+                  })
+                }>
+                {targetOptions.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Checkbox
+            label="启用全局划词翻译快捷键"
+            checked={selectionConfig.enabled}
+            onChange={(enabled) => setSelectionConfigState({ ...selectionConfig, enabled })}
+          />
+          {selectionConfig.hotkeyError && (
+            <Notice tone="warning">{selectionConfig.hotkeyError}</Notice>
+          )}
+        </div>
+        <div className="tk-command-bar">
+          <Button onClick={saveSelectionTranslateSettings} disabled={selectionSaving}>
+            <Settings2 className="h-4 w-4" />
+            {selectionSaving ? "保存中..." : "保存划词设置"}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={runSelectionTranslateTest}
+            disabled={selectionTriggering}>
+            <Keyboard className={`h-4 w-4 ${selectionTriggering ? "animate-pulse" : ""}`} />
+            {selectionTriggering ? "读取中..." : "手动测试"}
+          </Button>
         </div>
       </section>
 
@@ -1569,6 +1704,126 @@ function RegionPanelWindow() {
           result && !result.ok && result.error ? "tk-region-result-error" : ""
         }`}>
         {formattedTranslationText}
+      </pre>
+    </div>
+  )
+}
+
+function SelectionPanelWindow() {
+  const [result, setResult] = useState<SelectionTranslateResult | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    const previousHtmlBg = document.documentElement.style.background
+    const previousBodyBg = document.body.style.background
+    const root = document.getElementById("root")
+    document.documentElement.style.background = "transparent"
+    document.body.style.background = "transparent"
+    document.documentElement.classList.add("tk-region-panel-window-root")
+    document.body.classList.add("tk-region-panel-window-root")
+    root?.classList.add("tk-region-panel-window-root")
+
+    return () => {
+      document.documentElement.style.background = previousHtmlBg
+      document.body.style.background = previousBodyBg
+      document.documentElement.classList.remove("tk-region-panel-window-root")
+      document.body.classList.remove("tk-region-panel-window-root")
+      root?.classList.remove("tk-region-panel-window-root")
+    }
+  }, [])
+
+  useEffect(() => {
+    let unlistenResult: (() => void) | undefined
+    getLatestSelectionTranslateResult()
+      .then((value) => {
+        if (value) {
+          setResult(value)
+          setNotice(value.message ?? null)
+        }
+      })
+      .catch((err) => setNotice(errorMessage(err)))
+    listen<SelectionTranslateResult>("selection-result-updated", (event) => {
+      setResult(event.payload)
+      setNotice(
+        event.payload.message ??
+          (event.payload.ok ? "完成" : event.payload.error ?? "未完成"),
+      )
+    }).then((value) => {
+      unlistenResult = value
+    })
+    return () => {
+      unlistenResult?.()
+    }
+  }, [])
+
+  const copy = async (value?: string | null) => {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setNotice("已复制")
+    } catch (err) {
+      setNotice(`复制失败: ${errorMessage(err)}`)
+    }
+  }
+
+  const close = async () => {
+    try {
+      await getCurrentWindow().hide()
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const startPanelDrag = async (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    if (target.closest("button, input, select, textarea, a")) return
+    try {
+      await getCurrentWindow().startDragging()
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const translationText = result?.translatedText
+    ? formatTranslationForPanel(result.translatedText)
+    : result?.phase === "copy"
+      ? "正在读取选中文本..."
+      : result?.phase === "translate"
+        ? "正在翻译..."
+        : result?.error
+          ? `翻译失败: ${result.error}`
+          : "等待划词翻译"
+
+  return (
+    <div className="tk-region-panel tk-region-translation-panel">
+      <div
+        className="tk-region-panel-toolbar tk-region-panel-dragbar"
+        onMouseDown={startPanelDrag}
+        title="按住拖动划词译文窗口">
+        <div className="tk-region-result-title-inline">
+          <Keyboard className="h-4 w-4 text-blue-600" />
+          <span>划词译文{result?.model ? ` · ${result.model}` : ""}</span>
+        </div>
+        <button
+          className="tk-icon-button"
+          onClick={() => copy(result?.translatedText)}
+          title="复制译文"
+          disabled={!result?.translatedText}>
+          <Copy className="h-4 w-4" />
+        </button>
+        <button className="tk-icon-button" onClick={close} title="关闭译文">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {notice && <div className="tk-region-notice">{notice}</div>}
+
+      <pre
+        className={`tk-region-result-text tk-region-result-translation ${
+          result && !result.ok && result.error ? "tk-region-result-error" : ""
+        }`}>
+        {translationText}
       </pre>
     </div>
   )

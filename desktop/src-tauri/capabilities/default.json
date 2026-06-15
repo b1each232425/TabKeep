@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default TabKeep desktop permissions",
-  "windows": ["main", "capture", "ocr-result", "region-box", "region-panel"],
+  "windows": ["main", "capture", "ocr-result", "region-box", "region-panel", "selection-panel"],
   "permissions": [
     "core:default",
     "core:window:default",

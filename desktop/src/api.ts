@@ -9,6 +9,8 @@ import type {
   OcrRequest,
   RegionBoxConfig,
   ScreenSelection,
+  SelectionTranslateConfig,
+  SelectionTranslateResult,
   TabCategory,
   TranslateProviderConfig,
   TranslateProviderTestResponse,
@@ -53,6 +55,14 @@ export const DEFAULT_TRANSLATE_PROVIDER_CONFIG: TranslateProviderConfig = {
   volcengineAccessKey: "",
   volcengineSecretKey: "",
   volcengineRegion: "cn-north-1",
+}
+
+export const DEFAULT_SELECTION_TRANSLATE_CONFIG: SelectionTranslateConfig = {
+  enabled: true,
+  hotkey: "Ctrl+Alt+T",
+  sourceLang: "auto",
+  targetLang: "简体中文",
+  hotkeyError: null,
 }
 
 interface BackendResponse<T> {
@@ -280,6 +290,26 @@ export async function runRegionOcr(): Promise<OcrFlowResult> {
 
 export async function runRegionTranslate(): Promise<OcrFlowResult> {
   return invoke<OcrFlowResult>("run_region_translate")
+}
+
+export async function getSelectionTranslateConfig(): Promise<SelectionTranslateConfig> {
+  const config = await invoke<SelectionTranslateConfig>("get_selection_translate_config")
+  return { ...DEFAULT_SELECTION_TRANSLATE_CONFIG, ...config }
+}
+
+export async function setSelectionTranslateConfig(
+  config: SelectionTranslateConfig,
+): Promise<SelectionTranslateConfig> {
+  const saved = await invoke<SelectionTranslateConfig>("set_selection_translate_config", { config })
+  return { ...DEFAULT_SELECTION_TRANSLATE_CONFIG, ...saved }
+}
+
+export async function triggerSelectionTranslate(): Promise<SelectionTranslateResult> {
+  return invoke<SelectionTranslateResult>("trigger_selection_translate")
+}
+
+export async function getLatestSelectionTranslateResult(): Promise<SelectionTranslateResult | null> {
+  return invoke<SelectionTranslateResult | null>("get_latest_selection_translate_result")
 }
 
 function extractErrorMessage(data: unknown): string | null {

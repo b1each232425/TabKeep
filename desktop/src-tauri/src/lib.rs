@@ -22,6 +22,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 mod ocr;
 mod region;
+mod selection;
 mod translation;
 
 const BACKEND_URL: &str = "http://127.0.0.1:38471";
@@ -34,6 +35,10 @@ struct DesktopState {
     client: reqwest::Client,
     pending_ocr: Arc<Mutex<Option<PendingOcrFlow>>>,
     latest_ocr_result: Arc<Mutex<Option<ocr::OcrFlowResult>>>,
+    latest_selection_result: Arc<Mutex<Option<selection::SelectionTranslateResult>>>,
+    selection_hotkey: Arc<Mutex<Option<selection::HotkeyController>>>,
+    selection_hotkey_error: Arc<Mutex<Option<String>>>,
+    selection_running: Arc<Mutex<bool>>,
 }
 
 #[derive(Clone)]
@@ -162,6 +167,10 @@ pub fn run() {
         client: reqwest::Client::new(),
         pending_ocr: Arc::new(Mutex::new(None)),
         latest_ocr_result: Arc::new(Mutex::new(None)),
+        latest_selection_result: Arc::new(Mutex::new(None)),
+        selection_hotkey: Arc::new(Mutex::new(None)),
+        selection_hotkey_error: Arc::new(Mutex::new(None)),
+        selection_running: Arc::new(Mutex::new(false)),
     };
 
     tauri::Builder::default()
@@ -186,6 +195,7 @@ pub fn run() {
         .setup(move |app| {
             setup_tray(app)?;
             setup_close_to_hide(app);
+            setup_selection_hotkey(app, state.clone());
 
             let server_state = HttpState {
                 desktop: state.clone(),
@@ -222,6 +232,10 @@ pub fn run() {
             set_region_box_passthrough,
             run_region_ocr,
             run_region_translate,
+            get_selection_translate_config,
+            set_selection_translate_config,
+            trigger_selection_translate,
+            get_latest_selection_translate_result,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TabKeep desktop");
@@ -268,6 +282,27 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     builder.build(app)?;
     Ok(())
+}
+
+fn setup_selection_hotkey(app: &tauri::App, state: DesktopState) {
+    let app_handle = app.handle().clone();
+    let initial_config = selection::load_config(&app_handle);
+    let status = state.selection_hotkey_error.clone();
+    let trigger_app = app_handle.clone();
+    let trigger_state = state.clone();
+    let on_trigger = Arc::new(move || {
+        let app = trigger_app.clone();
+        let state = trigger_state.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(err) = trigger_selection_translate_flow(app, state).await {
+                log::warn!("划词翻译触发失败: {err}");
+            }
+        });
+    });
+    let controller = selection::start_hotkey_thread(initial_config, status, on_trigger);
+    if let Ok(mut guard) = state.selection_hotkey.lock() {
+        *guard = Some(controller);
+    }
 }
 
 async fn run_http_server(state: HttpState) -> anyhow::Result<()> {
@@ -1025,6 +1060,62 @@ async fn run_region_translate(
 }
 
 #[tauri::command]
+fn get_selection_translate_config(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> selection::SelectionTranslateConfig {
+    let error = state
+        .selection_hotkey_error
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone());
+    selection::load_config(&app).with_hotkey_error(error)
+}
+
+#[tauri::command]
+fn set_selection_translate_config(
+    config: selection::SelectionTranslateConfig,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<selection::SelectionTranslateConfig, String> {
+    let saved = selection::save_config(&app, &config)?;
+    let hotkey_error = {
+        let guard = state
+            .selection_hotkey
+            .lock()
+            .map_err(|_| "全局快捷键状态锁已损坏".to_string())?;
+        if let Some(controller) = guard.as_ref() {
+            controller.configure(saved.clone())?
+        } else {
+            Some("全局快捷键线程尚未启动".to_string())
+        }
+    };
+    if let Ok(mut guard) = state.selection_hotkey_error.lock() {
+        *guard = hotkey_error.clone();
+    }
+    Ok(saved.with_hotkey_error(hotkey_error))
+}
+
+#[tauri::command]
+async fn trigger_selection_translate(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<selection::SelectionTranslateResult, String> {
+    trigger_selection_translate_flow(app, state.inner().clone()).await
+}
+
+#[tauri::command]
+fn get_latest_selection_translate_result(
+    state: tauri::State<'_, DesktopState>,
+) -> Option<selection::SelectionTranslateResult> {
+    state
+        .latest_selection_result
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+#[tauri::command]
 fn get_desktop_status(state: tauri::State<'_, DesktopState>) -> DesktopStatus {
     status_payload(&state)
 }
@@ -1254,6 +1345,134 @@ async fn run_region_flow(
     Ok(result)
 }
 
+async fn trigger_selection_translate_flow(
+    app: tauri::AppHandle,
+    state: DesktopState,
+) -> Result<selection::SelectionTranslateResult, String> {
+    let _run_guard = begin_selection_run(&state)?;
+    log::info!("Selection translate flow started");
+    let config = selection::load_config(&app);
+    let source_lang = normalize_lang(Some(config.source_lang.clone()), "auto");
+    let target_lang = normalize_lang(Some(config.target_lang.clone()), "简体中文");
+    let (x, y) = selection::cursor_position();
+
+    if !config.enabled {
+        let result = selection::error_result(
+            String::new(),
+            source_lang,
+            target_lang,
+            "划词翻译未启用".to_string(),
+            x,
+            y,
+        );
+        publish_selection_result(&app, &state, &result);
+        return Ok(result);
+    }
+
+    let selected_text =
+        match tauri::async_runtime::spawn_blocking(selection::read_selected_text_via_copy).await {
+            Ok(Ok(text)) => text,
+            Ok(Err(err)) => {
+                let result =
+                    selection::error_result(String::new(), source_lang, target_lang, err, x, y);
+                publish_selection_result(&app, &state, &result);
+                return Ok(result);
+            }
+            Err(err) => {
+                let result = selection::error_result(
+                    String::new(),
+                    source_lang,
+                    target_lang,
+                    format!("读取选中文本任务失败: {err}"),
+                    x,
+                    y,
+                );
+                publish_selection_result(&app, &state, &result);
+                return Ok(result);
+            }
+        };
+    log::info!(
+        "Selection translate copied text, chars={}",
+        selected_text.chars().count()
+    );
+
+    if selected_text.chars().count() > MAX_TRANSLATE_CHARS {
+        let result = selection::error_result(
+            selected_text,
+            source_lang,
+            target_lang,
+            format!("选中文本过长,最多支持 {MAX_TRANSLATE_CHARS} 字符"),
+            x,
+            y,
+        );
+        publish_selection_result(&app, &state, &result);
+        return Ok(result);
+    }
+
+    let progress = selection::progress_result(
+        selected_text.clone(),
+        source_lang.clone(),
+        target_lang.clone(),
+        "translate",
+        "正在翻译选中文本...",
+        x,
+        y,
+    );
+    publish_selection_result(&app, &state, &progress);
+    log::info!("Selection translate provider request started");
+
+    let result = match translate_desktop_text(
+        &app,
+        &state,
+        &selected_text,
+        &source_lang,
+        &target_lang,
+        Some("用户在其他应用中选中的文本"),
+    )
+    .await
+    {
+        Ok((translated_text, model)) => selection::success_result(
+            selected_text,
+            translated_text,
+            model,
+            source_lang,
+            target_lang,
+            x,
+            y,
+        ),
+        Err(err) => selection::error_result(selected_text, source_lang, target_lang, err, x, y),
+    };
+    publish_selection_result(&app, &state, &result);
+    log::info!("Selection translate flow finished, ok={}", result.ok);
+    Ok(result)
+}
+
+struct SelectionRunGuard {
+    state: DesktopState,
+}
+
+impl Drop for SelectionRunGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.state.selection_running.lock() {
+            *guard = false;
+        }
+    }
+}
+
+fn begin_selection_run(state: &DesktopState) -> Result<SelectionRunGuard, String> {
+    let mut guard = state
+        .selection_running
+        .lock()
+        .map_err(|_| "划词翻译状态锁已损坏".to_string())?;
+    if *guard {
+        return Err("已有划词翻译正在进行".to_string());
+    }
+    *guard = true;
+    Ok(SelectionRunGuard {
+        state: state.clone(),
+    })
+}
+
 fn hide_region_windows(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("region-box") {
         let _ = window.hide();
@@ -1295,6 +1514,30 @@ fn should_show_region_result(result: &ocr::OcrFlowResult) -> bool {
         .as_deref()
         .is_some_and(|value| !value.trim().is_empty())
         || (result.error.is_some() && !result.text.trim().is_empty())
+}
+
+fn publish_selection_result(
+    app: &tauri::AppHandle,
+    state: &DesktopState,
+    result: &selection::SelectionTranslateResult,
+) {
+    if let Ok(mut guard) = state.latest_selection_result.lock() {
+        *guard = Some(result.clone());
+    }
+    match selection::open_panel_window(app, result.x, result.y) {
+        Ok(window) => {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        Err(err) => {
+            log::warn!("{err}");
+        }
+    }
+    let _ = app.emit_to(
+        "selection-panel",
+        "selection-result-updated",
+        result.clone(),
+    );
 }
 
 fn open_capture_window(app: &tauri::AppHandle) -> Result<(), String> {
@@ -1379,6 +1622,25 @@ async fn translate_ocr_text(
     source_lang: &str,
     target_lang: &str,
 ) -> Result<(String, String), String> {
+    translate_desktop_text(
+        app,
+        state,
+        text,
+        source_lang,
+        target_lang,
+        Some("OCR 截图识别结果"),
+    )
+    .await
+}
+
+async fn translate_desktop_text(
+    app: &tauri::AppHandle,
+    state: &DesktopState,
+    text: &str,
+    source_lang: &str,
+    target_lang: &str,
+    context: Option<&str>,
+) -> Result<(String, String), String> {
     let provider_config = translation::load_config(app);
     if provider_config.provider != translation::TranslateProvider::OpenaiCompatible {
         let translated_text = translation::translate_fast_provider(
@@ -1409,7 +1671,7 @@ async fn translate_ocr_text(
         text,
         source_lang,
         target_lang,
-        Some("OCR 截图识别结果"),
+        context,
     )
     .await
     .map_err(error_from_json_response)?;

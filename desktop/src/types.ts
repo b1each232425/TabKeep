@@ -174,3 +174,25 @@ export interface RegionBoxConfig {
   sourceLang: string
   targetLang: string
 }
+
+export interface SelectionTranslateConfig {
+  enabled: boolean
+  hotkey: string
+  sourceLang: string
+  targetLang: string
+  hotkeyError?: string | null
+}
+
+export interface SelectionTranslateResult {
+  ok: boolean
+  text: string
+  translatedText?: string | null
+  sourceLang: string
+  targetLang: string
+  model?: string | null
+  error?: string | null
+  phase?: "copy" | "translate" | "done" | "error" | null
+  message?: string | null
+  x: number
+  y: number
+}
