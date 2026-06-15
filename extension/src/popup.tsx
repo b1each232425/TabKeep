@@ -7,12 +7,12 @@
 //   4. DocTree 递归子组件
 
 import { useEffect, useState } from "react"
-import { Bookmark, BookmarkCheck, ChevronDown, ChevronRight, Settings, Sparkles, Star, StarOff, X } from "lucide-react"
+import { Bookmark, BookmarkCheck, Camera, ChevronDown, ChevronRight, Copy, Languages, Settings, Sparkles, Star, StarOff, X } from "lucide-react"
 import type { DocNode, NotebookInfo, TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
-import { apiFetch, captureWithDesktop, checkBackendHealth, checkDesktopHealth } from "./config/api"
+import { apiFetch, captureWithDesktop, checkBackendHealth, checkDesktopHealth, translateWithDesktop } from "./config/api"
 import "./style.css"
 
 
@@ -35,6 +35,14 @@ type Pending = {
   summarizeError?: string
 } | null
 
+type TranslationState = {
+  title: string
+  source: string
+  translated?: string
+  model?: string
+  error?: string
+} | null
+
 const openDashboard = () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
 }
@@ -53,6 +61,9 @@ function IndexPopup() {
   const [pending, setPending] = useState<Pending>(null)        // 弹窗状态
   const [backendReady, setBackendReady] = useState<boolean | null>(null)
   const [desktopReady, setDesktopReady] = useState<boolean | null>(null)
+  const [translation, setTranslation] = useState<TranslationState>(null)
+  const [translating, setTranslating] = useState(false)
+  const [desktopOcrStatus, setDesktopOcrStatus] = useState<string | null>(null)
 
   // 启动:从 IDB 拉 tab 列表
   useEffect(() => {
@@ -79,6 +90,116 @@ function IndexPopup() {
   }, [])
 
   const groupedTabs = groupTabsByDomain(tabs)
+
+  const getActiveTab = async (): Promise<TabData | null> => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+    if (!tab) return null
+    return {
+      id: tab.id,
+      title: tab.title,
+      url: tab.url,
+      favIconUrl: tab.favIconUrl,
+      active: tab.active,
+      pinned: tab.pinned,
+    }
+  }
+
+  const handleTranslateTitle = async () => {
+    setTranslating(true)
+    try {
+      const tab = await getActiveTab()
+      const text = tab?.title?.trim()
+      if (!text) {
+        setTranslation({ title: "翻译标题", source: "", error: "当前标签页没有标题" })
+        return
+      }
+      const result = await translateWithDesktop(
+        {
+          text,
+          targetLang: "简体中文",
+          context: tab?.url,
+        },
+        "/translate",
+      )
+      setTranslation({
+        title: "翻译标题",
+        source: text,
+        translated: result.translatedText,
+        model: result.model,
+        error: result.ok ? undefined : result.error,
+      })
+    } catch (e) {
+      setTranslation({ title: "翻译标题", source: "", error: String(e) })
+    } finally {
+      setTranslating(false)
+    }
+  }
+
+  const handleTranslateSelection = async () => {
+    setTranslating(true)
+    try {
+      const tab = await getActiveTab()
+      if (!tab?.id) {
+        setTranslation({ title: "翻译选中", source: "", error: "找不到当前标签页" })
+        return
+      }
+      let text = ""
+      try {
+        const selection = await chrome.tabs.sendMessage(tab.id, { type: "GET_SELECTION" })
+        text = selection?.text?.trim() ?? ""
+      } catch {
+        text = ""
+      }
+      if (!text) {
+        setTranslation({
+          title: "翻译选中",
+          source: "",
+          error: "当前页面没有选中文本,或该页面暂不可访问",
+        })
+        return
+      }
+      const result = await translateWithDesktop(
+        {
+          text,
+          targetLang: "简体中文",
+          context: tab.url,
+        },
+        "/selection_translate",
+      )
+      setTranslation({
+        title: "翻译选中",
+        source: text,
+        translated: result.translatedText,
+        model: result.model,
+        error: result.ok ? undefined : result.error,
+      })
+    } catch (e) {
+      setTranslation({ title: "翻译选中", source: "", error: String(e) })
+    } finally {
+      setTranslating(false)
+    }
+  }
+
+  const handleDesktopOcr = (mode: "recognize" | "translate") => {
+    setDesktopOcrStatus("已交给桌面端,请在屏幕上框选区域")
+    chrome.runtime.sendMessage(
+      {
+        type: mode === "recognize" ? "START_DESKTOP_OCR_RECOGNIZE" : "START_DESKTOP_OCR_TRANSLATE",
+        sourceLang: "auto",
+        targetLang: "简体中文",
+      },
+      (res: { ok?: boolean; error?: string } | undefined) => {
+        if (chrome.runtime.lastError) {
+          return
+        }
+        if (!res?.ok) {
+          setDesktopOcrStatus(res?.error ?? "桌面端 OCR 未完成")
+          return
+        }
+        setDesktopOcrStatus("结果已显示在桌面悬浮窗")
+      },
+    )
+  }
 
   /**
    * 三档收藏的入口(☆/★/🪄)。
@@ -219,6 +340,51 @@ function IndexPopup() {
           <Star className="h-3 w-3" /> 全文(用 Defuddle 提取)
         </span>
       </div>
+
+      <div className="mb-3 flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={translating || desktopReady === false}
+          onClick={handleTranslateTitle}
+          title="翻译当前标签页标题">
+          <Languages className={`h-3 w-3 mr-1 ${translating ? "animate-pulse" : ""}`} />
+          译标题
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={translating || desktopReady === false}
+          onClick={handleTranslateSelection}
+          title="翻译当前页面选中文本">
+          <Languages className={`h-3 w-3 mr-1 ${translating ? "animate-pulse" : ""}`} />
+          译选中
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={desktopReady === false}
+          onClick={() => handleDesktopOcr("recognize")}
+          title="调用桌面端截图 OCR">
+          <Camera className="h-3 w-3 mr-1" />
+          截图 OCR
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={desktopReady === false}
+          onClick={() => handleDesktopOcr("translate")}
+          title="调用桌面端截图翻译">
+          <Languages className="h-3 w-3 mr-1" />
+          截图翻译
+        </Button>
+      </div>
+
+      {desktopOcrStatus && (
+        <div className="mb-3 rounded border border-blue-100 bg-blue-50 px-2 py-1.5 text-xs text-blue-700">
+          {desktopOcrStatus}
+        </div>
+      )}
 
       {/* ── 视图切换:加载中 / 整理视图 / 原始视图 ── */}
       {loading ? (
@@ -384,6 +550,77 @@ function IndexPopup() {
           }
         />
       )}
+      {translation && (
+        <TranslationModal
+          translation={translation}
+          onClose={() => setTranslation(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+
+function TranslationModal({
+  translation,
+  onClose,
+}: {
+  translation: NonNullable<TranslationState>
+  onClose: () => void
+}) {
+  const copyText = async () => {
+    if (!translation.translated) return
+    await navigator.clipboard.writeText(translation.translated)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-2">
+      <div className="bg-white rounded-lg shadow-lg w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="p-3 border-b flex items-center justify-between">
+          <h4 className="text-sm font-semibold truncate pr-2">{translation.title}</h4>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+            title="关闭">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
+          {translation.error ? (
+            <div className="rounded border border-red-100 bg-red-50 px-3 py-2 text-red-700">
+              {translation.error}
+            </div>
+          ) : (
+            <>
+              <div>
+                <p className="mb-1 text-xs font-medium text-gray-500">原文</p>
+                <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded border bg-gray-50 p-2 font-sans text-xs text-gray-700">
+                  {translation.source}
+                </pre>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-gray-500">
+                  译文{translation.model ? ` · ${translation.model}` : ""}
+                </p>
+                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded border bg-blue-50/50 p-2 font-sans text-xs text-gray-800">
+                  {translation.translated}
+                </pre>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="p-2 border-t flex justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={onClose}>
+            关闭
+          </Button>
+          <Button size="sm" onClick={copyText} disabled={!translation.translated}>
+            <Copy className="h-3 w-3 mr-1" />
+            复制译文
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default TabKeep desktop permissions",
-  "windows": ["main"],
+  "windows": ["main", "capture", "ocr-result", "region-box", "region-panel"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -11,6 +11,10 @@
     "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-outer-position",
+    "core:window:allow-outer-size",
+    "core:window:allow-set-ignore-cursor-events",
     "core:event:default"
   ]
 }

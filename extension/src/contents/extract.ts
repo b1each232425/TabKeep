@@ -45,6 +45,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
     return true
   }
+  if (msg.type === "GET_SELECTION") {
+    sendResponse({ ok: true, text: window.getSelection()?.toString() ?? "" })
+  }
 })
 
 

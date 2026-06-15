@@ -4,9 +4,19 @@ import type {
   DesktopStatus,
   ModelConfig,
   NoteAdapterConfig,
+  OcrConfig,
+  OcrFlowResult,
+  OcrRequest,
+  RegionBoxConfig,
+  ScreenSelection,
   TabCategory,
+  TranslateProviderConfig,
+  TranslateRequest,
+  TranslateResponse,
 } from "./types"
 import { generateToken } from "./utils"
+
+const DESKTOP_URL = "http://127.0.0.1:38472"
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   model: "",
@@ -18,10 +28,42 @@ export const DEFAULT_NOTE_ADAPTER: NoteAdapterConfig = {
   provider: "local",
 }
 
+export const DEFAULT_OCR_CONFIG: OcrConfig = {
+  provider: "windows_ocr",
+  paddleExePath: "",
+  paddleModelsPath: "",
+  paddleConfigPath: "",
+}
+
+export const DEFAULT_REGION_BOX_CONFIG: RegionBoxConfig = {
+  x: 160,
+  y: 160,
+  width: 640,
+  height: 180,
+  passThrough: false,
+  sourceLang: "auto",
+  targetLang: "简体中文",
+}
+
+export const DEFAULT_TRANSLATE_PROVIDER_CONFIG: TranslateProviderConfig = {
+  provider: "openai_compatible",
+  baiduAppId: "",
+  baiduSecret: "",
+  volcengineAccessKey: "",
+  volcengineSecretKey: "",
+  volcengineRegion: "cn-north-1",
+}
+
 interface BackendResponse<T> {
   status: number
   ok: boolean
   data: T
+}
+
+interface DesktopHttpResponse<T> {
+  ok: boolean
+  error?: string
+  config?: T
 }
 
 export class BackendRequestError extends Error {
@@ -116,10 +158,149 @@ export async function syncConfigToBackend(partial: {
   }
 }
 
+export async function translateText(
+  payload: TranslateRequest,
+  endpoint: "/translate" | "/input_translate" | "/selection_translate" = "/translate",
+): Promise<TranslateResponse> {
+  const token = await getCachedApiToken()
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (token) headers["X-TabKeep-Token"] = token
+
+  const res = await fetch(`${DESKTOP_URL}${endpoint}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  })
+  const data = (await res.json()) as TranslateResponse
+  if (!res.ok || !data.ok) {
+    throw new BackendRequestError(extractErrorMessage(data) ?? `HTTP ${res.status}`, res.status, data)
+  }
+  return data
+}
+
+export async function getOcrConfig(): Promise<OcrConfig> {
+  const config = await invoke<OcrConfig>("get_ocr_config")
+  return { ...DEFAULT_OCR_CONFIG, ...config }
+}
+
+export async function setOcrConfig(config: OcrConfig): Promise<void> {
+  await invoke("set_ocr_config", { config })
+}
+
+export async function getTranslateProviderConfig(): Promise<TranslateProviderConfig> {
+  const config = await invoke<TranslateProviderConfig>("get_translate_provider_config")
+  return { ...DEFAULT_TRANSLATE_PROVIDER_CONFIG, ...config }
+}
+
+export async function setTranslateProviderConfig(
+  config: TranslateProviderConfig,
+): Promise<TranslateProviderConfig> {
+  const saved = await invoke<TranslateProviderConfig>("set_translate_provider_config", { config })
+  return { ...DEFAULT_TRANSLATE_PROVIDER_CONFIG, ...saved }
+}
+
+export async function startOcrRecognize(payload: OcrRequest): Promise<OcrFlowResult> {
+  return invoke<OcrFlowResult>("start_ocr_recognize", { payload })
+}
+
+export async function startOcrTranslate(payload: OcrRequest): Promise<OcrFlowResult> {
+  return invoke<OcrFlowResult>("start_ocr_translate", { payload })
+}
+
+export async function finishScreenSelection(selection: ScreenSelection): Promise<void> {
+  await invoke("finish_screen_selection", { selection })
+}
+
+export async function cancelScreenSelection(): Promise<void> {
+  await invoke("cancel_screen_selection")
+}
+
+export async function getLatestOcrResult(): Promise<OcrFlowResult | null> {
+  return invoke<OcrFlowResult | null>("get_latest_ocr_result")
+}
+
+export async function openRegionBox(): Promise<RegionBoxConfig> {
+  try {
+    const data = await desktopHttpRequest<RegionBoxConfig>("POST", "/region/open")
+    return { ...DEFAULT_REGION_BOX_CONFIG, ...data }
+  } catch (httpErr) {
+    try {
+      const config = await invoke<RegionBoxConfig>("open_region_box")
+      return { ...DEFAULT_REGION_BOX_CONFIG, ...config }
+    } catch (ipcErr) {
+      throw mergeRegionError("打开固定翻译框失败", httpErr, ipcErr)
+    }
+  }
+}
+
+export async function closeRegionBox(): Promise<void> {
+  try {
+    await desktopHttpRequest<void>("POST", "/region/close")
+  } catch (httpErr) {
+    try {
+      await invoke("close_region_box")
+    } catch (ipcErr) {
+      throw mergeRegionError("关闭固定翻译框失败", httpErr, ipcErr)
+    }
+  }
+}
+
+export async function getRegionBoxConfig(): Promise<RegionBoxConfig> {
+  try {
+    const config = await desktopHttpRequest<RegionBoxConfig>("GET", "/region/config")
+    return { ...DEFAULT_REGION_BOX_CONFIG, ...config }
+  } catch {
+    const config = await invoke<RegionBoxConfig>("get_region_box_config")
+    return { ...DEFAULT_REGION_BOX_CONFIG, ...config }
+  }
+}
+
+export async function setRegionBoxConfig(config: RegionBoxConfig): Promise<RegionBoxConfig> {
+  const saved = await invoke<RegionBoxConfig>("set_region_box_config", { config })
+  return { ...DEFAULT_REGION_BOX_CONFIG, ...saved }
+}
+
+export async function setRegionBoxPassthrough(passThrough: boolean): Promise<RegionBoxConfig> {
+  const config = await invoke<RegionBoxConfig>("set_region_box_passthrough", { passThrough })
+  return { ...DEFAULT_REGION_BOX_CONFIG, ...config }
+}
+
+export async function runRegionOcr(): Promise<OcrFlowResult> {
+  return invoke<OcrFlowResult>("run_region_ocr")
+}
+
+export async function runRegionTranslate(): Promise<OcrFlowResult> {
+  return invoke<OcrFlowResult>("run_region_translate")
+}
+
 function extractErrorMessage(data: unknown): string | null {
   if (!data || typeof data !== "object") return null
   const record = data as Record<string, unknown>
   const detail = record.detail ?? record.error
   if (typeof detail === "string") return detail
   return null
+}
+
+async function desktopHttpRequest<T>(
+  method: "GET" | "POST",
+  path: "/region/open" | "/region/close" | "/region/config",
+): Promise<T> {
+  const res = await fetch(`${DESKTOP_URL}${path}`, { method })
+  const data = (await res.json()) as DesktopHttpResponse<T>
+  if (!res.ok || !data.ok) {
+    throw new BackendRequestError(data.error ?? `HTTP ${res.status}`, res.status, data)
+  }
+  return data.config as T
+}
+
+function mergeRegionError(prefix: string, httpErr: unknown, ipcErr: unknown): BackendRequestError {
+  return new BackendRequestError(
+    `${prefix}: HTTP ${formatUnknownError(httpErr)}; Tauri IPC ${formatUnknownError(ipcErr)}`,
+  )
+}
+
+function formatUnknownError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }

@@ -89,3 +89,78 @@ export interface NotesTestResponse {
   provider?: string | null
   error?: string | null
 }
+
+export interface TranslateRequest {
+  text: string
+  sourceLang?: string
+  targetLang?: string
+  context?: string
+}
+
+export interface TranslateResponse {
+  ok: boolean
+  text: string
+  translatedText: string
+  sourceLang: string
+  targetLang: string
+  model: string
+  error?: string
+  detail?: string
+}
+
+export type TranslateProvider = "openai_compatible" | "baidu" | "volcengine"
+
+export interface TranslateProviderConfig {
+  provider: TranslateProvider
+  baiduAppId: string
+  baiduSecret: string
+  volcengineAccessKey: string
+  volcengineSecretKey: string
+  volcengineRegion: string
+}
+
+export type OcrProvider = "windows_ocr" | "paddleocr_json"
+
+export interface OcrConfig {
+  provider: OcrProvider
+  paddleExePath: string
+  paddleModelsPath: string
+  paddleConfigPath: string
+}
+
+export interface OcrRequest {
+  screenshot?: boolean
+  provider?: OcrProvider
+  sourceLang?: string
+  targetLang?: string
+}
+
+export interface ScreenSelection {
+  x: number
+  y: number
+  width: number
+  height: number
+  viewportWidth: number
+  viewportHeight: number
+}
+
+export interface OcrFlowResult {
+  ok: boolean
+  text: string
+  provider: OcrProvider
+  imagePath: string
+  imageDataUrl?: string | null
+  translatedText?: string | null
+  model?: string | null
+  error?: string | null
+}
+
+export interface RegionBoxConfig {
+  x: number
+  y: number
+  width: number
+  height: number
+  passThrough: boolean
+  sourceLang: string
+  targetLang: string
+}

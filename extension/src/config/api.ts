@@ -22,6 +22,44 @@ export interface DesktopCapturePayload {
   targetDoc?: string | null
 }
 
+export interface DesktopTranslatePayload {
+  text: string
+  sourceLang?: string
+  targetLang?: string
+  context?: string
+}
+
+export interface DesktopTranslateResponse {
+  ok: boolean
+  text?: string
+  translatedText?: string
+  sourceLang?: string
+  targetLang?: string
+  model?: string
+  error?: string
+  detail?: string
+}
+
+export type DesktopOcrProvider = "windows_ocr" | "paddleocr_json"
+
+export interface DesktopOcrPayload {
+  screenshot?: boolean
+  provider?: DesktopOcrProvider
+  sourceLang?: string
+  targetLang?: string
+}
+
+export interface DesktopOcrResponse {
+  ok: boolean
+  text?: string
+  provider?: DesktopOcrProvider
+  imagePath?: string
+  translatedText?: string
+  model?: string
+  error?: string
+  detail?: string
+}
+
 function generateToken(): string {
   const bytes = new Uint8Array(32)
   crypto.getRandomValues(bytes)
@@ -96,4 +134,42 @@ export async function captureWithDesktop(payload: DesktopCapturePayload): Promis
   } catch {
     return false
   }
+}
+
+export async function translateWithDesktop(
+  payload: DesktopTranslatePayload,
+  endpoint: "/translate" | "/input_translate" | "/selection_translate" = "/translate",
+): Promise<DesktopTranslateResponse> {
+  const res = await desktopFetch(endpoint, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  const data = (await res.json()) as DesktopTranslateResponse
+  if (!res.ok || !data.ok) {
+    return {
+      ...data,
+      ok: false,
+      error: data.error || data.detail || `桌面端翻译失败: HTTP ${res.status}`,
+    }
+  }
+  return data
+}
+
+export async function ocrWithDesktop(
+  payload: DesktopOcrPayload,
+  endpoint: "/ocr_recognize" | "/ocr_translate",
+): Promise<DesktopOcrResponse> {
+  const res = await desktopFetch(endpoint, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+  const data = (await res.json()) as DesktopOcrResponse
+  if (!res.ok || !data.ok) {
+    return {
+      ...data,
+      ok: false,
+      error: data.error || data.detail || `桌面端 OCR 失败: HTTP ${res.status}`,
+    }
+  }
+  return data
 }

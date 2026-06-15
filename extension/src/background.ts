@@ -18,7 +18,7 @@
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { saveToIDB } from "./utils/indexedDB"
 import type { TabData, TabGroupColor, TabGroupStyleOptions } from "./types"
-import { apiFetch, captureWithDesktop, ensureApiToken } from "./config/api"
+import { apiFetch, captureWithDesktop, ensureApiToken, ocrWithDesktop } from "./config/api"
 
 
 // ─────────────────────────────────────────────────────────────
@@ -319,6 +319,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } else if (msg.type === "SUMMARIZE_AND_SAVE") {
     summarizeAndSave(msg.tab, msg.content, msg.notebookId, msg.targetDoc).then(sendResponse)
     return true
+  } else if (msg.type === "START_DESKTOP_OCR_RECOGNIZE") {
+    startDesktopOcr("recognize", msg).then(sendResponse)
+    return true
+  } else if (msg.type === "START_DESKTOP_OCR_TRANSLATE") {
+    startDesktopOcr("translate", msg).then(sendResponse)
+    return true
   }
 })
 
@@ -363,6 +369,36 @@ const trySendMessage = async (tabId: number): Promise<any> => {
     return res
   } catch (e) {
     return null
+  }
+}
+
+const startDesktopOcr = async (
+  mode: "recognize" | "translate",
+  msg: { sourceLang?: string; targetLang?: string }
+): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const result = await ocrWithDesktop(
+      {
+        screenshot: true,
+        sourceLang: msg.sourceLang ?? "auto",
+        targetLang: msg.targetLang ?? "简体中文",
+      },
+      mode === "recognize" ? "/ocr_recognize" : "/ocr_translate",
+    )
+    if (result.ok) {
+      notifyUser(
+        mode === "recognize" ? "截图 OCR 已完成" : "截图翻译已完成",
+        "结果已显示在 TabKeep 桌面悬浮窗"
+      )
+      return { ok: true }
+    }
+    const error = result.error ?? "桌面端 OCR 未完成"
+    notifyUser(mode === "recognize" ? "截图 OCR 失败" : "截图翻译失败", error)
+    return { ok: false, error }
+  } catch (e) {
+    const error = String(e)
+    notifyUser(mode === "recognize" ? "截图 OCR 失败" : "截图翻译失败", error)
+    return { ok: false, error }
   }
 }
 

@@ -1,32 +1,62 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { ButtonHTMLAttributes } from "react"
+import { listen } from "@tauri-apps/api/event"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { LucideIcon } from "lucide-react"
 import {
   BookOpen,
   Brain,
+  Camera,
   CheckCircle2,
+  Clipboard,
+  Copy,
   Folder,
+  Languages,
   LayoutDashboard,
+  MousePointer2,
+  Move,
   Pencil,
   PlugZap,
   Plus,
   RefreshCw,
   RotateCcw,
+  Settings2,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react"
 import {
   BackendRequestError,
+  DEFAULT_OCR_CONFIG,
+  DEFAULT_REGION_BOX_CONFIG,
   DEFAULT_MODEL_CONFIG,
   DEFAULT_NOTE_ADAPTER,
+  DEFAULT_TRANSLATE_PROVIDER_CONFIG,
   backendRequest,
+  cancelScreenSelection,
   checkBackendHealth,
   clearCachedApiToken,
+  closeRegionBox,
+  finishScreenSelection,
   getCachedApiToken,
   getDesktopStatus,
+  getLatestOcrResult,
+  getOcrConfig,
+  getRegionBoxConfig,
+  getTranslateProviderConfig,
   loadBackendConfig,
+  openRegionBox,
+  runRegionOcr,
+  runRegionTranslate,
   setCachedApiToken,
+  setOcrConfig,
+  setRegionBoxConfig,
+  setRegionBoxPassthrough,
+  setTranslateProviderConfig,
+  startOcrRecognize,
+  startOcrTranslate,
   syncConfigToBackend,
+  translateText,
 } from "./api"
 import type {
   ClassifyResponse,
@@ -35,14 +65,29 @@ import type {
   NoteAdapterConfig,
   NotebookInfo,
   NotesTestResponse,
+  OcrConfig,
+  OcrFlowResult,
+  OcrProvider,
+  RegionBoxConfig,
   TabCategory,
   TabData,
   TabGroupColor,
   TabGroupStyleOptions,
+  TranslateProvider,
+  TranslateProviderConfig,
 } from "./types"
 import { groupTabsByDomain } from "./utils"
 
-type Section = "overview" | "categories" | "modelApi" | "notes"
+type Section = "overview" | "translate" | "categories" | "modelApi" | "notes"
+type ResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West"
 
 const TAB_GROUP_STYLE_KEY = "tabkeep.desktop.tabGroupStyle"
 
@@ -78,6 +123,15 @@ const DEFAULT_STYLE: TabGroupStyleOptions = {
 }
 
 function App() {
+  const view = new URLSearchParams(window.location.search).get("view")
+  if (view === "capture") return <CaptureOverlay />
+  if (view === "ocr-result") return <OcrResultWindow />
+  if (view === "region-box") return <RegionBoxWindow />
+  if (view === "region-panel") return <RegionPanelWindow />
+  return <DesktopApp />
+}
+
+function DesktopApp() {
   const [section, setSection] = useState<Section>("overview")
   const [desktopStatus, setDesktopStatus] = useState<DesktopStatus | null>(null)
   const [backendReady, setBackendReady] = useState<boolean | null>(null)
@@ -131,6 +185,7 @@ function App() {
 
   const navItems: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: "overview", label: "概览", icon: LayoutDashboard },
+    { id: "translate", label: "翻译", icon: Languages },
     { id: "categories", label: "分组", icon: Folder },
     { id: "modelApi", label: "模型 API", icon: Brain },
     { id: "notes", label: "笔记集成", icon: BookOpen },
@@ -202,6 +257,7 @@ function App() {
             refreshing={refreshing}
           />
         )}
+        {section === "translate" && <TranslateSection />}
         {section === "categories" && (
           <CategoriesSection
             tabs={tabs}
@@ -427,6 +483,1050 @@ function OverviewSection({
           )}
         </div>
       </section>
+    </div>
+  )
+}
+
+function TranslateSection() {
+  const [sourceText, setSourceText] = useState("")
+  const [translatedText, setTranslatedText] = useState("")
+  const [sourceLang, setSourceLang] = useState("auto")
+  const [targetLang, setTargetLang] = useState("简体中文")
+  const [status, setStatus] = useState<string | null>(null)
+  const [translating, setTranslating] = useState(false)
+  const [ocrConfig, setOcrConfigState] = useState<OcrConfig>(DEFAULT_OCR_CONFIG)
+  const [ocrSaving, setOcrSaving] = useState(false)
+  const [ocrBusy, setOcrBusy] = useState<"recognize" | "translate" | null>(null)
+  const [translateProviderConfig, setTranslateProviderConfigState] =
+    useState<TranslateProviderConfig>(DEFAULT_TRANSLATE_PROVIDER_CONFIG)
+  const [translateProviderSaving, setTranslateProviderSaving] = useState(false)
+
+  const targetOptions = ["简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
+  const canTranslate = sourceText.trim().length > 0 && !translating
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.allSettled([getOcrConfig(), getTranslateProviderConfig()]).then((results) => {
+      if (cancelled) return
+      const [ocrResult, translateProviderResult] = results
+      if (ocrResult.status === "fulfilled") {
+        setOcrConfigState(ocrResult.value)
+      } else {
+        setStatus(`读取 OCR 设置失败: ${errorMessage(ocrResult.reason)}`)
+      }
+      if (translateProviderResult.status === "fulfilled") {
+        setTranslateProviderConfigState(translateProviderResult.value)
+      } else {
+        setStatus(`读取翻译 Provider 设置失败: ${errorMessage(translateProviderResult.reason)}`)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const runTranslate = async () => {
+    const text = sourceText.trim()
+    if (!text) return
+    setTranslating(true)
+    setStatus(null)
+    setTranslatedText("")
+    try {
+      const result = await translateText({
+        text,
+        sourceLang,
+        targetLang,
+      }, "/input_translate")
+      setTranslatedText(result.translatedText)
+      setStatus(`已完成 · ${result.model}`)
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setTranslating(false)
+    }
+  }
+
+  const pasteText = async () => {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text) setSourceText(text)
+    } catch (err) {
+      setStatus(`读取剪贴板失败: ${errorMessage(err)}`)
+    }
+  }
+
+  const copyResult = async () => {
+    if (!translatedText) return
+    try {
+      await navigator.clipboard.writeText(translatedText)
+      setStatus("译文已复制")
+    } catch (err) {
+      setStatus(`复制失败: ${errorMessage(err)}`)
+    }
+  }
+
+  const swapText = () => {
+    if (!translatedText) return
+    setSourceText(translatedText)
+    setTranslatedText(sourceText)
+    setSourceLang(targetLang)
+    setTargetLang(sourceLang === "auto" ? "English" : sourceLang)
+  }
+
+  const saveOcrSettings = async () => {
+    setOcrSaving(true)
+    setStatus(null)
+    try {
+      await setOcrConfig(ocrConfig)
+      setStatus("OCR 设置已保存")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setOcrSaving(false)
+    }
+  }
+
+  const saveTranslateProviderSettings = async () => {
+    setTranslateProviderSaving(true)
+    setStatus(null)
+    try {
+      const saved = await setTranslateProviderConfig(translateProviderConfig)
+      setTranslateProviderConfigState(saved)
+      setStatus("翻译 Provider 设置已保存")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setTranslateProviderSaving(false)
+    }
+  }
+
+  const runScreenshotOcr = async (mode: "recognize" | "translate") => {
+    setOcrBusy(mode)
+    setStatus("请在屏幕上框选要识别的区域")
+    try {
+      const payload = {
+        screenshot: true,
+        provider: ocrConfig.provider,
+        sourceLang,
+        targetLang,
+      }
+      const result =
+        mode === "recognize"
+          ? await startOcrRecognize(payload)
+          : await startOcrTranslate(payload)
+      setStatus(result.ok ? "OCR 结果已在悬浮窗显示" : result.error ?? "OCR 未完成")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setOcrBusy(null)
+    }
+  }
+
+  const openFixedRegion = async () => {
+    setStatus(null)
+    try {
+      const config = await openRegionBox()
+      setStatus(
+        `固定翻译框已打开 · ${config.width}x${config.height} @ ${config.x},${config.y}`,
+      )
+    } catch (err) {
+      setStatus(errorMessage(err))
+    }
+  }
+
+  const closeFixedRegion = async () => {
+    setStatus(null)
+    try {
+      await closeRegionBox()
+      setStatus("固定翻译框已关闭")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    }
+  }
+
+  const resetFixedRegion = async () => {
+    setStatus(null)
+    try {
+      await setRegionBoxConfig(DEFAULT_REGION_BOX_CONFIG)
+      const config = await openRegionBox()
+      setStatus(
+        `固定翻译框位置已重置 · ${config.width}x${config.height} @ ${config.x},${config.y}`,
+      )
+    } catch (err) {
+      setStatus(errorMessage(err))
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <header className="tk-topbar">
+        <div>
+          <h1 className="tk-page-title">翻译</h1>
+          <p className="tk-page-subtitle">文本翻译、截图 OCR 翻译和固定区域翻译</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={pasteText}>
+            <Clipboard className="h-4 w-4" />
+            粘贴
+          </Button>
+          <Button onClick={runTranslate} disabled={!canTranslate}>
+            <Languages className={`h-4 w-4 ${translating ? "animate-pulse" : ""}`} />
+            {translating ? "翻译中..." : "翻译"}
+          </Button>
+        </div>
+      </header>
+
+      {status && <Notice tone={translatedText ? "success" : "warning"}>{status}</Notice>}
+
+      <section className="tk-translate-grid">
+        <div className="tk-panel">
+          <div className="tk-panel-header">
+            <h2 className="tk-panel-title">原文</h2>
+            <div className="flex items-center gap-2">
+              <select
+                className="tk-select tk-compact-select"
+                value={sourceLang}
+                onChange={(event) => setSourceLang(event.target.value)}>
+                <option value="auto">自动识别</option>
+                {targetOptions.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+              <button className="tk-icon-button" onClick={() => setSourceText("")} title="清空">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="tk-panel-body">
+            <textarea
+              className="tk-textarea tk-translate-textarea"
+              value={sourceText}
+              onChange={(event) => setSourceText(event.target.value)}
+              placeholder="输入或粘贴要翻译的文本"
+            />
+          </div>
+          <div className="tk-command-bar">
+            <span className="text-xs text-muted-foreground">{sourceText.trim().length} 字符</span>
+          </div>
+        </div>
+
+        <div className="tk-panel">
+          <div className="tk-panel-header">
+            <h2 className="tk-panel-title">译文</h2>
+            <div className="flex items-center gap-2">
+              <select
+                className="tk-select tk-compact-select"
+                value={targetLang}
+                onChange={(event) => setTargetLang(event.target.value)}>
+                {targetOptions.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+              <button className="tk-icon-button" onClick={copyResult} title="复制译文" disabled={!translatedText}>
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="tk-panel-body">
+            <textarea
+              className="tk-textarea tk-translate-textarea"
+              value={translatedText}
+              onChange={(event) => setTranslatedText(event.target.value)}
+              placeholder={translating ? "正在生成译文..." : "译文会显示在这里"}
+            />
+          </div>
+          <div className="tk-command-bar">
+            <Button variant="secondary" onClick={swapText} disabled={!translatedText}>
+              交换
+            </Button>
+            <span className="text-xs text-muted-foreground">{translatedText.trim().length} 字符</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">快速翻译 Provider</h2>
+            <p className="text-xs text-muted-foreground">
+              文本翻译、截图翻译和固定区域翻译都会使用这里保存的 provider
+            </p>
+          </div>
+          <span className="tk-badge">
+            {translateProviderConfig.provider === "openai_compatible"
+              ? "模型"
+              : translateProviderConfig.provider === "baidu"
+                ? "百度"
+                : "火山"}
+          </span>
+        </div>
+        <div className="tk-panel-body space-y-4">
+          <div className="tk-form-grid">
+            <label className="tk-field">
+              <span className="tk-label">Provider</span>
+              <select
+                className="tk-select"
+                value={translateProviderConfig.provider}
+                onChange={(event) =>
+                  setTranslateProviderConfigState({
+                    ...translateProviderConfig,
+                    provider: event.target.value as TranslateProvider,
+                  })
+                }>
+                <option value="openai_compatible">OpenAI-compatible 精翻</option>
+                <option value="baidu">百度翻译 快速</option>
+                <option value="volcengine">火山翻译 快速</option>
+              </select>
+            </label>
+
+            {translateProviderConfig.provider === "baidu" && (
+              <>
+                <TextField
+                  label="百度 App ID"
+                  value={translateProviderConfig.baiduAppId}
+                  onChange={(value) =>
+                    setTranslateProviderConfigState({
+                      ...translateProviderConfig,
+                      baiduAppId: value,
+                    })
+                  }
+                  placeholder="在百度翻译开放平台获取"
+                />
+                <TextField
+                  label="百度密钥"
+                  type="password"
+                  value={translateProviderConfig.baiduSecret}
+                  onChange={(value) =>
+                    setTranslateProviderConfigState({
+                      ...translateProviderConfig,
+                      baiduSecret: value,
+                    })
+                  }
+                  placeholder="Secret Key"
+                />
+              </>
+            )}
+
+            {translateProviderConfig.provider === "volcengine" && (
+              <>
+                <TextField
+                  label="火山 Access Key"
+                  value={translateProviderConfig.volcengineAccessKey}
+                  onChange={(value) =>
+                    setTranslateProviderConfigState({
+                      ...translateProviderConfig,
+                      volcengineAccessKey: value,
+                    })
+                  }
+                  placeholder="Access Key ID"
+                />
+                <TextField
+                  label="火山 Secret Key"
+                  type="password"
+                  value={translateProviderConfig.volcengineSecretKey}
+                  onChange={(value) =>
+                    setTranslateProviderConfigState({
+                      ...translateProviderConfig,
+                      volcengineSecretKey: value,
+                    })
+                  }
+                  placeholder="Secret Access Key"
+                />
+                <TextField
+                  label="火山 Region"
+                  value={translateProviderConfig.volcengineRegion}
+                  onChange={(value) =>
+                    setTranslateProviderConfigState({
+                      ...translateProviderConfig,
+                      volcengineRegion: value,
+                    })
+                  }
+                  placeholder="cn-north-1"
+                />
+              </>
+            )}
+          </div>
+        </div>
+        <div className="tk-command-bar">
+          <Button onClick={saveTranslateProviderSettings} disabled={translateProviderSaving}>
+            <Settings2 className="h-4 w-4" />
+            {translateProviderSaving ? "保存中..." : "保存 Provider 设置"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setTranslateProviderConfigState(DEFAULT_TRANSLATE_PROVIDER_CONFIG)}>
+            <RotateCcw className="h-4 w-4" />
+            重置为模型翻译
+          </Button>
+        </div>
+      </section>
+
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">截图 OCR</h2>
+            <p className="text-xs text-muted-foreground">框选屏幕区域后，结果会在置顶悬浮窗显示</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => runScreenshotOcr("recognize")}
+              disabled={ocrBusy !== null}>
+              <Camera className={`h-4 w-4 ${ocrBusy === "recognize" ? "animate-pulse" : ""}`} />
+              截图 OCR
+            </Button>
+            <Button onClick={() => runScreenshotOcr("translate")} disabled={ocrBusy !== null}>
+              <Languages className={`h-4 w-4 ${ocrBusy === "translate" ? "animate-pulse" : ""}`} />
+              截图翻译
+            </Button>
+          </div>
+        </div>
+        <div className="tk-panel-body space-y-4">
+          <div className="tk-form-grid">
+            <label className="tk-field">
+              <span className="tk-label">OCR Provider</span>
+              <select
+                className="tk-select"
+                value={ocrConfig.provider}
+                onChange={(event) =>
+                  setOcrConfigState({
+                    ...ocrConfig,
+                    provider: event.target.value as OcrProvider,
+                  })
+                }>
+                <option value="windows_ocr">Windows OCR</option>
+                <option value="paddleocr_json">PaddleOCR-json</option>
+              </select>
+            </label>
+            <TextField
+              label="PaddleOCR-json.exe"
+              value={ocrConfig.paddleExePath}
+              onChange={(value) => setOcrConfigState({ ...ocrConfig, paddleExePath: value })}
+              placeholder="D:\\PaddleOCR-json\\PaddleOCR-json.exe"
+            />
+            <TextField
+              label="Paddle models"
+              value={ocrConfig.paddleModelsPath}
+              onChange={(value) => setOcrConfigState({ ...ocrConfig, paddleModelsPath: value })}
+              placeholder="可留空"
+            />
+            <TextField
+              label="Paddle config"
+              value={ocrConfig.paddleConfigPath}
+              onChange={(value) => setOcrConfigState({ ...ocrConfig, paddleConfigPath: value })}
+              placeholder="可留空"
+            />
+          </div>
+        </div>
+        <div className="tk-command-bar">
+          <Button onClick={saveOcrSettings} disabled={ocrSaving}>
+            <Settings2 className="h-4 w-4" />
+            {ocrSaving ? "保存中..." : "保存 OCR 设置"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setOcrConfigState(DEFAULT_OCR_CONFIG)}>
+            <RotateCcw className="h-4 w-4" />
+            重置为 Windows OCR
+          </Button>
+        </div>
+      </section>
+
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">固定区域翻译框</h2>
+            <p className="text-xs text-muted-foreground">把区域框放到游戏或视频字幕上，再从下方浮窗识别和翻译</p>
+          </div>
+          <span className="tk-badge">区域</span>
+        </div>
+        <div className="tk-panel-body">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={openFixedRegion}>
+              <Move className="h-4 w-4" />
+              打开固定翻译框
+            </Button>
+            <Button variant="secondary" onClick={closeFixedRegion}>
+              <X className="h-4 w-4" />
+              关闭固定翻译框
+            </Button>
+            <Button variant="ghost" onClick={resetFixedRegion}>
+              <RotateCcw className="h-4 w-4" />
+              重置区域位置
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function CaptureOverlay() {
+  const [drag, setDrag] = useState<{
+    startX: number
+    startY: number
+    currentX: number
+    currentY: number
+  } | null>(null)
+  const [notice, setNotice] = useState("拖拽框选区域，Esc 取消")
+  const finishingRef = useRef(false)
+
+  useEffect(() => {
+    const previousHtmlBg = document.documentElement.style.background
+    const previousBodyBg = document.body.style.background
+    document.documentElement.style.background = "transparent"
+    document.body.style.background = "transparent"
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        finishingRef.current = true
+        cancelScreenSelection().catch(() => undefined)
+      }
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => {
+      window.removeEventListener("keydown", handleKey)
+      document.documentElement.style.background = previousHtmlBg
+      document.body.style.background = previousBodyBg
+    }
+  }, [])
+
+  const selection = useMemo(() => {
+    if (!drag) return null
+    const x = Math.min(drag.startX, drag.currentX)
+    const y = Math.min(drag.startY, drag.currentY)
+    const width = Math.abs(drag.currentX - drag.startX)
+    const height = Math.abs(drag.currentY - drag.startY)
+    return { x, y, width, height }
+  }, [drag])
+
+  const finish = async () => {
+    if (!selection || finishingRef.current) return
+    if (selection.width < 8 || selection.height < 8) {
+      setNotice("选区太小，请重新框选")
+      setDrag(null)
+      return
+    }
+    finishingRef.current = true
+    setNotice("正在识别...")
+    try {
+      await finishScreenSelection({
+        ...selection,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      })
+    } catch (err) {
+      finishingRef.current = false
+      setNotice(errorMessage(err))
+    }
+  }
+
+  return (
+    <div
+      className="tk-capture-root"
+      onMouseDown={(event) => {
+        if (event.button !== 0 || finishingRef.current) return
+        setDrag({
+          startX: event.clientX,
+          startY: event.clientY,
+          currentX: event.clientX,
+          currentY: event.clientY,
+        })
+      }}
+      onMouseMove={(event) => {
+        if (!drag || finishingRef.current) return
+        setDrag({
+          ...drag,
+          currentX: event.clientX,
+          currentY: event.clientY,
+        })
+      }}
+      onMouseUp={finish}>
+      <div className="tk-capture-hint">{notice}</div>
+      {selection && (
+        <div
+          className="tk-capture-selection"
+          style={{
+            left: selection.x,
+            top: selection.y,
+            width: selection.width,
+            height: selection.height,
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function OcrResultWindow() {
+  const [result, setResult] = useState<OcrFlowResult | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    getLatestOcrResult()
+      .then(setResult)
+      .catch((err) => setNotice(errorMessage(err)))
+    listen<OcrFlowResult>("ocr-result-updated", (event) => {
+      setResult(event.payload)
+      setNotice(null)
+    }).then((value) => {
+      unlisten = value
+    })
+    return () => {
+      unlisten?.()
+    }
+  }, [])
+
+  const copy = async (value?: string | null) => {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setNotice("已复制")
+    } catch (err) {
+      setNotice(`复制失败: ${errorMessage(err)}`)
+    }
+  }
+
+  const providerLabel = result?.provider === "paddleocr_json" ? "PaddleOCR-json" : "Windows OCR"
+
+  return (
+    <div className="tk-result-shell">
+      <header className="tk-result-header">
+        <div>
+          <h1 className="tk-page-title">OCR 结果</h1>
+          <p className="tk-page-subtitle">{result ? providerLabel : "等待截图结果"}</p>
+        </div>
+        {result && (
+          <span className={`tk-badge ${result.ok ? "tk-badge-success" : "tk-badge-warning"}`}>
+            {result.ok ? "完成" : "需处理"}
+          </span>
+        )}
+      </header>
+
+      {notice && <Notice tone="neutral">{notice}</Notice>}
+      {result?.error && <Notice tone="warning">{result.error}</Notice>}
+
+      {result?.imageDataUrl && (
+        <section className="tk-result-image-wrap">
+          <img className="tk-result-image" src={result.imageDataUrl} alt="OCR selection" />
+        </section>
+      )}
+
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <h2 className="tk-panel-title">识别文本</h2>
+          <button className="tk-icon-button" onClick={() => copy(result?.text)} title="复制识别文本">
+            <Copy className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="tk-panel-body">
+          <pre className="tk-result-text">{result?.text || "暂无识别文本"}</pre>
+        </div>
+      </section>
+
+      {(result?.translatedText || result?.model) && (
+        <section className="tk-panel">
+          <div className="tk-panel-header">
+            <h2 className="tk-panel-title">译文{result.model ? ` · ${result.model}` : ""}</h2>
+            <button
+              className="tk-icon-button"
+              onClick={() => copy(result.translatedText)}
+              title="复制译文">
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="tk-panel-body">
+            <pre className="tk-result-text tk-result-translation">
+              {result.translatedText || "暂无译文"}
+            </pre>
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function RegionBoxWindow() {
+  const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
+  const configRef = useRef(config)
+
+  useEffect(() => {
+    configRef.current = config
+  }, [config])
+
+  useEffect(() => {
+    const previousHtmlBg = document.documentElement.style.background
+    const previousBodyBg = document.body.style.background
+    const root = document.getElementById("root")
+    document.documentElement.style.background = "transparent"
+    document.body.style.background = "transparent"
+    document.documentElement.classList.add("tk-region-window-root")
+    document.body.classList.add("tk-region-window-root")
+    root?.classList.add("tk-region-window-root")
+
+    const currentWindow = getCurrentWindow()
+    let timer: number | undefined
+    let unlistenMoved: (() => void) | undefined
+    let unlistenResized: (() => void) | undefined
+    let unlistenConfig: (() => void) | undefined
+
+    const syncGeometry = () => {
+      if (timer) window.clearTimeout(timer)
+      timer = window.setTimeout(async () => {
+        try {
+          const [position, size] = await Promise.all([
+            currentWindow.outerPosition(),
+            currentWindow.outerSize(),
+          ])
+          const next = await setRegionBoxConfig({
+            ...configRef.current,
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+          })
+          configRef.current = next
+          setConfig(next)
+        } catch {
+          // Window move/resize events can fire while the window is being closed.
+        }
+      }, 140)
+    }
+
+    getRegionBoxConfig().then((value) => {
+      configRef.current = value
+      setConfig(value)
+    })
+    currentWindow.onMoved(syncGeometry).then((value) => {
+      unlistenMoved = value
+    })
+    currentWindow.onResized(syncGeometry).then((value) => {
+      unlistenResized = value
+    })
+    listen<RegionBoxConfig>("region-config-updated", (event) => {
+      configRef.current = event.payload
+      setConfig(event.payload)
+    }).then((value) => {
+      unlistenConfig = value
+    })
+
+    return () => {
+      if (timer) window.clearTimeout(timer)
+      unlistenMoved?.()
+      unlistenResized?.()
+      unlistenConfig?.()
+      document.documentElement.style.background = previousHtmlBg
+      document.body.style.background = previousBodyBg
+      document.documentElement.classList.remove("tk-region-window-root")
+      document.body.classList.remove("tk-region-window-root")
+      root?.classList.remove("tk-region-window-root")
+    }
+  }, [])
+
+  const startDrag = async () => {
+    if (config.passThrough) return
+    try {
+      await getCurrentWindow().startDragging()
+    } catch {
+      // Native dragging can be rejected if the pointer is already released.
+    }
+  }
+
+  const closeRegion = async () => {
+    try {
+      await closeRegionBox()
+    } catch {
+      try {
+        await getCurrentWindow().close()
+      } catch {
+        // The command path is authoritative; this is only a UI fallback.
+      }
+    }
+  }
+
+  const startResize = async (direction: ResizeDirection) => {
+    if (config.passThrough) return
+    try {
+      await getCurrentWindow().startResizeDragging(direction)
+    } catch {
+      // Same as dragging: a missed native resize is harmless.
+    }
+  }
+
+  const handles: { direction: ResizeDirection; className: string }[] = [
+    { direction: "North", className: "tk-region-handle-n" },
+    { direction: "South", className: "tk-region-handle-s" },
+    { direction: "West", className: "tk-region-handle-w" },
+    { direction: "East", className: "tk-region-handle-e" },
+    { direction: "NorthWest", className: "tk-region-handle-nw" },
+    { direction: "NorthEast", className: "tk-region-handle-ne" },
+    { direction: "SouthWest", className: "tk-region-handle-sw" },
+    { direction: "SouthEast", className: "tk-region-handle-se" },
+  ]
+
+  const frameStyle = config.passThrough
+    ? {
+        borderColor: "rgba(52, 211, 153, 0.9)",
+        background: "rgba(16, 185, 129, 0.035)",
+        boxShadow:
+          "0 0 0 1px rgba(255, 255, 255, 0.55) inset, 0 0 22px rgba(16, 185, 129, 0.36)",
+      }
+    : {
+        borderColor: "rgba(16, 185, 129, 0.98)",
+        background: "rgba(16, 185, 129, 0.12)",
+        boxShadow:
+          "0 0 0 1px rgba(255, 255, 255, 0.9) inset, 0 0 0 9999px rgba(15, 23, 42, 0.05), 0 12px 32px rgba(15, 23, 42, 0.28)",
+      }
+
+  return (
+    <div
+      className={`tk-region-box ${config.passThrough ? "tk-region-box-passthrough" : ""}`}
+      style={frameStyle}>
+      {!config.passThrough && (
+        <div className="tk-region-frame-toolbar" onMouseDown={startDrag}>
+          <div className="tk-region-frame-title" onMouseDown={startDrag}>
+            <Move className="h-3.5 w-3.5" />
+            <span>TabKeep 区域框</span>
+          </div>
+          <span className="tk-region-frame-hint">拖动这里移动，拖四周调整大小</span>
+          <button
+            className="tk-region-frame-close"
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={closeRegion}
+            title="关闭区域框">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      <div className="tk-region-drag-surface" onMouseDown={startDrag}>
+        {!config.passThrough && (
+          <div className="tk-region-box-label">
+            OCR 区域
+          </div>
+        )}
+      </div>
+      {!config.passThrough &&
+        handles.map((handle) => (
+          <button
+            key={handle.direction}
+            className={`tk-region-handle ${handle.className}`}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              startResize(handle.direction)
+            }}
+            title="调整区域"
+          />
+        ))}
+    </div>
+  )
+}
+
+function RegionPanelWindow() {
+  const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
+  const [result, setResult] = useState<OcrFlowResult | null>(null)
+  const [busy, setBusy] = useState<"ocr" | "translate" | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const configRef = useRef(config)
+
+  const languageOptions = ["auto", "简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
+
+  useEffect(() => {
+    configRef.current = config
+  }, [config])
+
+  useEffect(() => {
+    const previousHtmlBg = document.documentElement.style.background
+    const previousBodyBg = document.body.style.background
+    const root = document.getElementById("root")
+    document.documentElement.style.background = "transparent"
+    document.body.style.background = "transparent"
+    document.documentElement.classList.add("tk-region-panel-window-root")
+    document.body.classList.add("tk-region-panel-window-root")
+    root?.classList.add("tk-region-panel-window-root")
+
+    return () => {
+      document.documentElement.style.background = previousHtmlBg
+      document.body.style.background = previousBodyBg
+      document.documentElement.classList.remove("tk-region-panel-window-root")
+      document.body.classList.remove("tk-region-panel-window-root")
+      root?.classList.remove("tk-region-panel-window-root")
+    }
+  }, [])
+
+  useEffect(() => {
+    let unlistenConfig: (() => void) | undefined
+    let unlistenResult: (() => void) | undefined
+    getRegionBoxConfig()
+      .then((value) => {
+        configRef.current = value
+        setConfig(value)
+      })
+      .catch((err) => setNotice(errorMessage(err)))
+    listen<RegionBoxConfig>("region-config-updated", (event) => {
+      configRef.current = event.payload
+      setConfig(event.payload)
+    }).then((value) => {
+      unlistenConfig = value
+    })
+    listen<OcrFlowResult>("region-result-updated", (event) => {
+      setResult(event.payload)
+      setNotice(event.payload.ok ? "完成" : event.payload.error ?? "未完成")
+    }).then((value) => {
+      unlistenResult = value
+    })
+    return () => {
+      unlistenConfig?.()
+      unlistenResult?.()
+    }
+  }, [])
+
+  const updateConfig = async (partial: Partial<RegionBoxConfig>) => {
+    try {
+      const next = await setRegionBoxConfig({ ...configRef.current, ...partial })
+      configRef.current = next
+      setConfig(next)
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const togglePassthrough = async () => {
+    try {
+      const next = await setRegionBoxPassthrough(!config.passThrough)
+      configRef.current = next
+      setConfig(next)
+      setNotice(next.passThrough ? "区域框已穿透" : "区域框可编辑")
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const run = async (mode: "ocr" | "translate") => {
+    setBusy(mode)
+    setNotice(mode === "ocr" ? "正在识别区域..." : "正在识别并翻译区域...")
+    try {
+      const value = mode === "ocr" ? await runRegionOcr() : await runRegionTranslate()
+      setResult(value)
+      setNotice(value.ok ? "完成" : value.error ?? "未完成")
+    } catch (err) {
+      setNotice(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const copy = async (value?: string | null) => {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setNotice("已复制")
+    } catch (err) {
+      setNotice(`复制失败: ${errorMessage(err)}`)
+    }
+  }
+
+  const close = async () => {
+    try {
+      await closeRegionBox()
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  return (
+    <div className="tk-region-panel">
+      <div className="tk-region-panel-toolbar">
+        <Button
+          className="h-8"
+          variant="secondary"
+          onClick={() => run("ocr")}
+          disabled={busy !== null}>
+          <Camera className={`h-4 w-4 ${busy === "ocr" ? "animate-pulse" : ""}`} />
+          识别
+        </Button>
+        <Button className="h-8" onClick={() => run("translate")} disabled={busy !== null}>
+          <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
+          翻译
+        </Button>
+        <Button className="h-8" variant="ghost" onClick={togglePassthrough}>
+          <MousePointer2 className="h-4 w-4" />
+          {config.passThrough ? "编辑" : "穿透"}
+        </Button>
+        <button className="tk-icon-button" onClick={close} title="关闭固定翻译框">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="tk-region-panel-controls">
+        <select
+          className="tk-select tk-region-select"
+          value={config.sourceLang}
+          onChange={(event) => updateConfig({ sourceLang: event.target.value })}>
+          <option value="auto">自动识别</option>
+          {languageOptions
+            .filter((lang) => lang !== "auto")
+            .map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+        </select>
+        <select
+          className="tk-select tk-region-select"
+          value={config.targetLang}
+          onChange={(event) => updateConfig({ targetLang: event.target.value })}>
+          {languageOptions
+            .filter((lang) => lang !== "auto")
+            .map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+        </select>
+      </div>
+
+      {notice && <div className="tk-region-notice">{notice}</div>}
+
+      <div className="tk-region-result-grid">
+        <section className="tk-region-result-block">
+          <div className="tk-region-result-title">
+            <span>识别文本</span>
+            <button className="tk-icon-button" onClick={() => copy(result?.text)} title="复制识别文本">
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <pre className="tk-region-result-text">{result?.text || "暂无内容"}</pre>
+        </section>
+        <section className="tk-region-result-block">
+          <div className="tk-region-result-title">
+            <span>译文{result?.model ? ` · ${result.model}` : ""}</span>
+            <button
+              className="tk-icon-button"
+              onClick={() => copy(result?.translatedText)}
+              title="复制译文">
+              <Copy className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <pre
+            className={`tk-region-result-text tk-region-result-translation ${
+              result && !result.ok && result.error ? "tk-region-result-error" : ""
+            }`}>
+            {result?.translatedText ||
+              (result && !result.ok && result.error
+                ? `翻译失败: ${result.error}`
+                : "暂无译文")}
+          </pre>
+        </section>
+      </div>
     </div>
   )
 }

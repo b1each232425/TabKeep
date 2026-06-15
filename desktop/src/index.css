@@ -32,6 +32,20 @@
       sans-serif;
   }
 
+  html.tk-region-window-root,
+  body.tk-region-window-root,
+  #root.tk-region-window-root,
+  body.tk-region-window-root #root,
+  html.tk-region-panel-window-root,
+  body.tk-region-panel-window-root,
+  #root.tk-region-panel-window-root,
+  body.tk-region-panel-window-root #root {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: transparent !important;
+  }
+
   button,
   input,
   select,
@@ -232,5 +246,197 @@
 
   .tk-muted-box {
     @apply rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-muted-foreground;
+  }
+
+  .tk-translate-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+
+  .tk-compact-select {
+    @apply h-8 w-auto min-w-28 pr-8;
+  }
+
+  .tk-translate-textarea {
+    @apply min-h-72 resize-y;
+  }
+
+  .tk-capture-root {
+    @apply fixed inset-0 select-none overflow-hidden;
+    cursor: crosshair;
+    background: rgb(15 23 42 / 0.18);
+  }
+
+  .tk-capture-selection {
+    @apply fixed rounded-md border-2 border-blue-400 bg-blue-400/10 shadow-[0_0_0_9999px_rgb(15_23_42/0.34)];
+  }
+
+  .tk-capture-hint {
+    @apply fixed left-1/2 top-5 z-10 -translate-x-1/2 rounded-md border border-white/25 bg-slate-950/70 px-3 py-2 text-sm font-medium text-white shadow-lg;
+  }
+
+  .tk-result-shell {
+    @apply flex min-h-screen flex-col gap-4 bg-[hsl(var(--tk-soft))] p-5 text-[hsl(var(--tk-graphite))];
+  }
+
+  .tk-result-header {
+    @apply flex items-start justify-between gap-3;
+  }
+
+  .tk-result-image-wrap {
+    @apply max-h-48 overflow-hidden rounded-lg border border-border bg-white;
+  }
+
+  .tk-result-image {
+    @apply block max-h-48 w-full object-contain;
+  }
+
+  .tk-result-text {
+    @apply max-h-44 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-slate-100 bg-slate-50 p-3 font-sans text-sm leading-6 text-slate-800;
+  }
+
+  .tk-result-translation {
+    @apply bg-blue-50/60;
+  }
+
+  .tk-region-box {
+    @apply fixed inset-0 select-none overflow-hidden rounded-md border-[3px] border-emerald-400;
+    box-sizing: border-box;
+  }
+
+  .tk-region-box-passthrough {
+    @apply border-2 border-dashed;
+  }
+
+  .tk-region-drag-surface {
+    @apply absolute inset-0 z-10 cursor-move;
+    background:
+      linear-gradient(90deg, rgb(16 185 129 / 0.32) 50%, transparent 0) top left / 12px 2px repeat-x,
+      linear-gradient(90deg, rgb(16 185 129 / 0.32) 50%, transparent 0) bottom left / 12px 2px repeat-x,
+      linear-gradient(0deg, rgb(16 185 129 / 0.32) 50%, transparent 0) top left / 2px 12px repeat-y,
+      linear-gradient(0deg, rgb(16 185 129 / 0.32) 50%, transparent 0) top right / 2px 12px repeat-y;
+  }
+
+  .tk-region-frame-toolbar {
+    @apply absolute left-2 right-2 top-2 z-40 flex h-9 cursor-move items-center gap-2 rounded-md border border-white/25 bg-slate-950/90 px-2 text-xs text-white shadow-lg;
+  }
+
+  .tk-region-frame-title {
+    @apply inline-flex min-w-0 shrink-0 items-center gap-1.5 font-semibold;
+  }
+
+  .tk-region-frame-hint {
+    @apply min-w-0 flex-1 truncate text-[11px] font-normal text-white/70;
+  }
+
+  .tk-region-frame-close {
+    @apply inline-flex h-7 w-7 shrink-0 cursor-default items-center justify-center rounded-md text-white/75 transition-colors;
+  }
+
+  .tk-region-frame-close:hover {
+    @apply bg-white/15 text-white;
+  }
+
+  .tk-region-box-label {
+    @apply absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md border border-white/40 bg-white/85 px-2 py-1 text-[11px] font-semibold text-emerald-700 shadow-sm;
+  }
+
+  .tk-region-handle {
+    @apply absolute z-50 rounded-full border-2 border-white bg-emerald-400 shadow-md;
+    pointer-events: auto;
+  }
+
+  .tk-region-handle-n,
+  .tk-region-handle-s {
+    @apply left-1/2 h-2.5 w-10 -translate-x-1/2 cursor-ns-resize;
+  }
+
+  .tk-region-handle-n {
+    @apply top-0 -translate-y-1/2;
+  }
+
+  .tk-region-handle-s {
+    @apply bottom-0 translate-y-1/2;
+  }
+
+  .tk-region-handle-e,
+  .tk-region-handle-w {
+    @apply top-1/2 h-10 w-2.5 -translate-y-1/2 cursor-ew-resize;
+  }
+
+  .tk-region-handle-e {
+    @apply right-0 translate-x-1/2;
+  }
+
+  .tk-region-handle-w {
+    @apply left-0 -translate-x-1/2;
+  }
+
+  .tk-region-handle-nw,
+  .tk-region-handle-ne,
+  .tk-region-handle-sw,
+  .tk-region-handle-se {
+    @apply h-4 w-4;
+  }
+
+  .tk-region-handle-nw {
+    @apply left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize;
+  }
+
+  .tk-region-handle-ne {
+    @apply right-0 top-0 -translate-y-1/2 translate-x-1/2 cursor-nesw-resize;
+  }
+
+  .tk-region-handle-sw {
+    @apply bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize;
+  }
+
+  .tk-region-handle-se {
+    @apply bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize;
+  }
+
+  .tk-region-panel {
+    @apply flex h-screen flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 p-3 text-[hsl(var(--tk-graphite))] shadow-xl;
+    box-sizing: border-box;
+  }
+
+  .tk-region-panel-toolbar {
+    @apply flex shrink-0 items-center gap-2;
+  }
+
+  .tk-region-panel-controls {
+    @apply mt-2 grid shrink-0 grid-cols-2 gap-2;
+  }
+
+  .tk-region-select {
+    @apply h-8 text-xs;
+  }
+
+  .tk-region-notice {
+    @apply mt-2 shrink-0 truncate rounded-md border border-blue-100 bg-blue-50 px-2 py-1.5 text-xs text-blue-700;
+  }
+
+  .tk-region-result-grid {
+    @apply mt-2 grid min-h-0 flex-1 grid-cols-2 gap-2;
+  }
+
+  .tk-region-result-block {
+    @apply flex min-h-0 flex-col rounded-md border border-border bg-slate-50/70;
+  }
+
+  .tk-region-result-title {
+    @apply flex h-8 items-center justify-between border-b border-border px-2 text-xs font-medium text-slate-600;
+  }
+
+  .tk-region-result-text {
+    @apply min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words p-2 font-sans text-xs leading-5 text-slate-800;
+  }
+
+  .tk-region-result-translation {
+    @apply bg-blue-50/50;
+  }
+
+  .tk-region-result-error {
+    @apply bg-rose-50 text-rose-700;
   }
 }
