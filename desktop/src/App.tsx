@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { ButtonHTMLAttributes } from "react"
+import type { ButtonHTMLAttributes, MouseEvent } from "react"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { LucideIcon } from "lucide-react"
@@ -46,7 +46,6 @@ import {
   getTranslateProviderConfig,
   loadBackendConfig,
   openRegionBox,
-  runRegionOcr,
   runRegionTranslate,
   setCachedApiToken,
   setOcrConfig,
@@ -56,6 +55,7 @@ import {
   startOcrRecognize,
   startOcrTranslate,
   syncConfigToBackend,
+  testTranslateProvider,
   translateText,
 } from "./api"
 import type {
@@ -75,6 +75,7 @@ import type {
   TabGroupStyleOptions,
   TranslateProvider,
   TranslateProviderConfig,
+  TranslateProviderTestResponse,
 } from "./types"
 import { groupTabsByDomain } from "./utils"
 
@@ -500,6 +501,9 @@ function TranslateSection() {
   const [translateProviderConfig, setTranslateProviderConfigState] =
     useState<TranslateProviderConfig>(DEFAULT_TRANSLATE_PROVIDER_CONFIG)
   const [translateProviderSaving, setTranslateProviderSaving] = useState(false)
+  const [translateProviderTesting, setTranslateProviderTesting] = useState(false)
+  const [translateProviderTest, setTranslateProviderTest] =
+    useState<TranslateProviderTestResponse | null>(null)
 
   const targetOptions = ["简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
   const canTranslate = sourceText.trim().length > 0 && !translating
@@ -600,6 +604,25 @@ function TranslateSection() {
     }
   }
 
+  const testCurrentTranslateProvider = async () => {
+    setTranslateProviderTesting(true)
+    setTranslateProviderTest(null)
+    setStatus(null)
+    try {
+      const result = await testTranslateProvider(translateProviderConfig)
+      setTranslateProviderTest(result)
+      setStatus(
+        result.ok
+          ? `测试成功 · ${result.provider} · ${result.latencyMs}ms`
+          : result.error ?? "Provider 测试失败",
+      )
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setTranslateProviderTesting(false)
+    }
+  }
+
   const runScreenshotOcr = async (mode: "recognize" | "translate") => {
     setOcrBusy(mode)
     setStatus("请在屏幕上框选要识别的区域")
@@ -639,19 +662,6 @@ function TranslateSection() {
     try {
       await closeRegionBox()
       setStatus("固定翻译框已关闭")
-    } catch (err) {
-      setStatus(errorMessage(err))
-    }
-  }
-
-  const resetFixedRegion = async () => {
-    setStatus(null)
-    try {
-      await setRegionBoxConfig(DEFAULT_REGION_BOX_CONFIG)
-      const config = await openRegionBox()
-      setStatus(
-        `固定翻译框位置已重置 · ${config.width}x${config.height} @ ${config.x},${config.y}`,
-      )
     } catch (err) {
       setStatus(errorMessage(err))
     }
@@ -744,6 +754,28 @@ function TranslateSection() {
               交换
             </Button>
             <span className="text-xs text-muted-foreground">{translatedText.trim().length} 字符</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">固定区域翻译框</h2>
+            <p className="text-xs text-muted-foreground">把区域框放到游戏或视频字幕上，直接翻译框内内容</p>
+          </div>
+          <span className="tk-badge">区域</span>
+        </div>
+        <div className="tk-panel-body">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={openFixedRegion}>
+              <Move className="h-4 w-4" />
+              打开固定翻译框
+            </Button>
+            <Button variant="secondary" onClick={closeFixedRegion}>
+              <X className="h-4 w-4" />
+              关闭固定翻译框
+            </Button>
           </div>
         </div>
       </section>
@@ -852,6 +884,13 @@ function TranslateSection() {
           </div>
         </div>
         <div className="tk-command-bar">
+          <Button
+            variant="secondary"
+            onClick={testCurrentTranslateProvider}
+            disabled={translateProviderTesting}>
+            <PlugZap className={`h-4 w-4 ${translateProviderTesting ? "animate-pulse" : ""}`} />
+            {translateProviderTesting ? "测试中..." : "测试连接"}
+          </Button>
           <Button onClick={saveTranslateProviderSettings} disabled={translateProviderSaving}>
             <Settings2 className="h-4 w-4" />
             {translateProviderSaving ? "保存中..." : "保存 Provider 设置"}
@@ -862,6 +901,16 @@ function TranslateSection() {
             <RotateCcw className="h-4 w-4" />
             重置为模型翻译
           </Button>
+          {translateProviderTest && (
+            <span
+              className={`text-sm ${
+                translateProviderTest.ok ? "text-emerald-700" : "text-rose-700"
+              }`}>
+              {translateProviderTest.ok
+                ? `${translateProviderTest.provider} · ${translateProviderTest.latencyMs}ms · ${translateProviderTest.translatedText ?? ""}`
+                : translateProviderTest.error ?? "测试失败"}
+            </span>
+          )}
         </div>
       </section>
 
@@ -936,31 +985,6 @@ function TranslateSection() {
         </div>
       </section>
 
-      <section className="tk-panel">
-        <div className="tk-panel-header">
-          <div>
-            <h2 className="tk-panel-title">固定区域翻译框</h2>
-            <p className="text-xs text-muted-foreground">把区域框放到游戏或视频字幕上，再从下方浮窗识别和翻译</p>
-          </div>
-          <span className="tk-badge">区域</span>
-        </div>
-        <div className="tk-panel-body">
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={openFixedRegion}>
-              <Move className="h-4 w-4" />
-              打开固定翻译框
-            </Button>
-            <Button variant="secondary" onClick={closeFixedRegion}>
-              <X className="h-4 w-4" />
-              关闭固定翻译框
-            </Button>
-            <Button variant="ghost" onClick={resetFixedRegion}>
-              <RotateCcw className="h-4 w-4" />
-              重置区域位置
-            </Button>
-          </div>
-        </div>
-      </section>
     </div>
   )
 }
@@ -1073,7 +1097,7 @@ function OcrResultWindow() {
       .catch((err) => setNotice(errorMessage(err)))
     listen<OcrFlowResult>("ocr-result-updated", (event) => {
       setResult(event.payload)
-      setNotice(null)
+      setNotice(event.payload.message ?? null)
     }).then((value) => {
       unlisten = value
     })
@@ -1103,7 +1127,7 @@ function OcrResultWindow() {
         </div>
         {result && (
           <span className={`tk-badge ${result.ok ? "tk-badge-success" : "tk-badge-warning"}`}>
-            {result.ok ? "完成" : "需处理"}
+            {result.phase === "translate" ? "翻译中" : result.ok ? "完成" : "需处理"}
           </span>
         )}
       </header>
@@ -1129,7 +1153,7 @@ function OcrResultWindow() {
         </div>
       </section>
 
-      {(result?.translatedText || result?.model) && (
+      {(result?.translatedText || result?.model || result?.phase === "translate" || (result?.error && result?.text)) && (
         <section className="tk-panel">
           <div className="tk-panel-header">
             <h2 className="tk-panel-title">译文{result.model ? ` · ${result.model}` : ""}</h2>
@@ -1141,8 +1165,16 @@ function OcrResultWindow() {
             </button>
           </div>
           <div className="tk-panel-body">
-            <pre className="tk-result-text tk-result-translation">
-              {result.translatedText || "暂无译文"}
+            <pre
+              className={`tk-result-text tk-result-translation ${
+                result.error && !result.translatedText ? "tk-region-result-error" : ""
+              }`}>
+              {result.translatedText ||
+                (result.phase === "translate"
+                  ? "正在翻译..."
+                  : result.error
+                    ? `翻译失败: ${result.error}`
+                    : "暂无译文")}
             </pre>
           </div>
         </section>
@@ -1153,7 +1185,10 @@ function OcrResultWindow() {
 
 function RegionBoxWindow() {
   const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
+  const [busy, setBusy] = useState<"translate" | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const configRef = useRef(config)
+  const languageOptions = ["auto", "简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
 
   useEffect(() => {
     configRef.current = config
@@ -1174,6 +1209,7 @@ function RegionBoxWindow() {
     let unlistenMoved: (() => void) | undefined
     let unlistenResized: (() => void) | undefined
     let unlistenConfig: (() => void) | undefined
+    let unlistenResult: (() => void) | undefined
 
     const syncGeometry = () => {
       if (timer) window.clearTimeout(timer)
@@ -1214,12 +1250,31 @@ function RegionBoxWindow() {
     }).then((value) => {
       unlistenConfig = value
     })
+    listen<OcrFlowResult>("region-result-updated", (event) => {
+      const payload = event.payload
+      setNotice(
+        payload.message ??
+          (payload.translatedText
+            ? "翻译完成"
+            : payload.error
+              ? payload.error
+              : payload.phase === "translate"
+                ? "正在翻译..."
+                : null),
+      )
+      if (payload.phase !== "translate") {
+        setBusy(null)
+      }
+    }).then((value) => {
+      unlistenResult = value
+    })
 
     return () => {
       if (timer) window.clearTimeout(timer)
       unlistenMoved?.()
       unlistenResized?.()
       unlistenConfig?.()
+      unlistenResult?.()
       document.documentElement.style.background = previousHtmlBg
       document.body.style.background = previousBodyBg
       document.documentElement.classList.remove("tk-region-window-root")
@@ -1246,6 +1301,43 @@ function RegionBoxWindow() {
       } catch {
         // The command path is authoritative; this is only a UI fallback.
       }
+    }
+  }
+
+  const updateConfig = async (partial: Partial<RegionBoxConfig>) => {
+    if (config.passThrough) return
+    try {
+      const next = await setRegionBoxConfig({ ...configRef.current, ...partial })
+      configRef.current = next
+      setConfig(next)
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const togglePassthrough = async () => {
+    if (config.passThrough) return
+    try {
+      const next = await setRegionBoxPassthrough(true)
+      configRef.current = next
+      setConfig(next)
+      setNotice("区域框已穿透")
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const runTranslate = async () => {
+    if (config.passThrough) return
+    setBusy("translate")
+    setNotice("正在识别并翻译区域...")
+    try {
+      const value = await runRegionTranslate()
+      setNotice(value.message ?? (value.ok ? "翻译完成" : value.error ?? "翻译未完成"))
+    } catch (err) {
+      setNotice(errorMessage(err))
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -1293,7 +1385,7 @@ function RegionBoxWindow() {
             <Move className="h-3.5 w-3.5" />
             <span>TabKeep 区域框</span>
           </div>
-          <span className="tk-region-frame-hint">拖动这里移动，拖四周调整大小</span>
+          <span className="tk-region-frame-hint">{notice ?? "拖动这里移动，拖四周调整大小"}</span>
           <button
             className="tk-region-frame-close"
             onMouseDown={(event) => {
@@ -1313,6 +1405,52 @@ function RegionBoxWindow() {
           </div>
         )}
       </div>
+      {!config.passThrough && (
+        <div
+          className="tk-region-edge-toolbar"
+          onMouseDown={(event) => {
+            event.stopPropagation()
+          }}>
+          <select
+            className="tk-select tk-region-edge-select"
+            value={config.sourceLang}
+            onChange={(event) => updateConfig({ sourceLang: event.target.value })}
+            title="源语言">
+            <option value="auto">自动</option>
+            {languageOptions
+              .filter((lang) => lang !== "auto")
+              .map((lang) => (
+                <option key={lang} value={lang}>
+                  {lang}
+                </option>
+              ))}
+          </select>
+          <select
+            className="tk-select tk-region-edge-select"
+            value={config.targetLang}
+            onChange={(event) => updateConfig({ targetLang: event.target.value })}
+            title="目标语言">
+            {languageOptions
+              .filter((lang) => lang !== "auto")
+              .map((lang) => (
+                <option key={lang} value={lang}>
+                  {lang}
+                </option>
+              ))}
+          </select>
+          <Button className="h-8" onClick={runTranslate} disabled={busy !== null}>
+            <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
+            {busy === "translate" ? "翻译中" : "翻译"}
+          </Button>
+          <Button className="h-8" variant="ghost" onClick={togglePassthrough}>
+            <MousePointer2 className="h-4 w-4" />
+            穿透
+          </Button>
+          <button className="tk-icon-button" onClick={closeRegion} title="关闭固定翻译框">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
       {!config.passThrough &&
         handles.map((handle) => (
           <button
@@ -1331,17 +1469,8 @@ function RegionBoxWindow() {
 }
 
 function RegionPanelWindow() {
-  const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
   const [result, setResult] = useState<OcrFlowResult | null>(null)
-  const [busy, setBusy] = useState<"ocr" | "translate" | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const configRef = useRef(config)
-
-  const languageOptions = ["auto", "简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
-
-  useEffect(() => {
-    configRef.current = config
-  }, [config])
 
   useEffect(() => {
     const previousHtmlBg = document.documentElement.style.background
@@ -1363,66 +1492,17 @@ function RegionPanelWindow() {
   }, [])
 
   useEffect(() => {
-    let unlistenConfig: (() => void) | undefined
     let unlistenResult: (() => void) | undefined
-    getRegionBoxConfig()
-      .then((value) => {
-        configRef.current = value
-        setConfig(value)
-      })
-      .catch((err) => setNotice(errorMessage(err)))
-    listen<RegionBoxConfig>("region-config-updated", (event) => {
-      configRef.current = event.payload
-      setConfig(event.payload)
-    }).then((value) => {
-      unlistenConfig = value
-    })
     listen<OcrFlowResult>("region-result-updated", (event) => {
       setResult(event.payload)
-      setNotice(event.payload.ok ? "完成" : event.payload.error ?? "未完成")
+      setNotice(event.payload.message ?? (event.payload.ok ? "完成" : event.payload.error ?? "未完成"))
     }).then((value) => {
       unlistenResult = value
     })
     return () => {
-      unlistenConfig?.()
       unlistenResult?.()
     }
   }, [])
-
-  const updateConfig = async (partial: Partial<RegionBoxConfig>) => {
-    try {
-      const next = await setRegionBoxConfig({ ...configRef.current, ...partial })
-      configRef.current = next
-      setConfig(next)
-    } catch (err) {
-      setNotice(errorMessage(err))
-    }
-  }
-
-  const togglePassthrough = async () => {
-    try {
-      const next = await setRegionBoxPassthrough(!config.passThrough)
-      configRef.current = next
-      setConfig(next)
-      setNotice(next.passThrough ? "区域框已穿透" : "区域框可编辑")
-    } catch (err) {
-      setNotice(errorMessage(err))
-    }
-  }
-
-  const run = async (mode: "ocr" | "translate") => {
-    setBusy(mode)
-    setNotice(mode === "ocr" ? "正在识别区域..." : "正在识别并翻译区域...")
-    try {
-      const value = mode === "ocr" ? await runRegionOcr() : await runRegionTranslate()
-      setResult(value)
-      setNotice(value.ok ? "完成" : value.error ?? "未完成")
-    } catch (err) {
-      setNotice(errorMessage(err))
-    } finally {
-      setBusy(null)
-    }
-  }
 
   const copy = async (value?: string | null) => {
     if (!value) return
@@ -1436,97 +1516,60 @@ function RegionPanelWindow() {
 
   const close = async () => {
     try {
-      await closeRegionBox()
+      await getCurrentWindow().hide()
     } catch (err) {
       setNotice(errorMessage(err))
     }
   }
 
+  const startPanelDrag = async (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement
+    if (target.closest("button, input, select, textarea, a")) return
+    try {
+      await getCurrentWindow().startDragging()
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const translationText =
+    result?.translatedText ||
+    (result?.error ? `翻译失败: ${result.error}` : "等待译文")
+  const formattedTranslationText = result?.translatedText
+    ? formatTranslationForPanel(result.translatedText)
+    : translationText
+
   return (
-    <div className="tk-region-panel">
-      <div className="tk-region-panel-toolbar">
-        <Button
-          className="h-8"
-          variant="secondary"
-          onClick={() => run("ocr")}
-          disabled={busy !== null}>
-          <Camera className={`h-4 w-4 ${busy === "ocr" ? "animate-pulse" : ""}`} />
-          识别
-        </Button>
-        <Button className="h-8" onClick={() => run("translate")} disabled={busy !== null}>
-          <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
-          翻译
-        </Button>
-        <Button className="h-8" variant="ghost" onClick={togglePassthrough}>
-          <MousePointer2 className="h-4 w-4" />
-          {config.passThrough ? "编辑" : "穿透"}
-        </Button>
-        <button className="tk-icon-button" onClick={close} title="关闭固定翻译框">
+    <div className="tk-region-panel tk-region-translation-panel">
+      <div
+        className="tk-region-panel-toolbar tk-region-panel-dragbar"
+        onMouseDown={startPanelDrag}
+        title="按住拖动译文窗口">
+        <div className="tk-region-result-title-inline">
+          <Languages className="h-4 w-4 text-blue-600" />
+          <span>译文{result?.model ? ` · ${result.model}` : ""}</span>
+        </div>
+        <button
+          className="tk-icon-button"
+          onClick={() => copy(result?.translatedText)}
+          title="复制译文"
+          disabled={!result?.translatedText}>
+          <Copy className="h-4 w-4" />
+        </button>
+        <button className="tk-icon-button" onClick={close} title="关闭译文">
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="tk-region-panel-controls">
-        <select
-          className="tk-select tk-region-select"
-          value={config.sourceLang}
-          onChange={(event) => updateConfig({ sourceLang: event.target.value })}>
-          <option value="auto">自动识别</option>
-          {languageOptions
-            .filter((lang) => lang !== "auto")
-            .map((lang) => (
-              <option key={lang} value={lang}>
-                {lang}
-              </option>
-            ))}
-        </select>
-        <select
-          className="tk-select tk-region-select"
-          value={config.targetLang}
-          onChange={(event) => updateConfig({ targetLang: event.target.value })}>
-          {languageOptions
-            .filter((lang) => lang !== "auto")
-            .map((lang) => (
-              <option key={lang} value={lang}>
-                {lang}
-              </option>
-            ))}
-        </select>
-      </div>
-
       {notice && <div className="tk-region-notice">{notice}</div>}
 
-      <div className="tk-region-result-grid">
-        <section className="tk-region-result-block">
-          <div className="tk-region-result-title">
-            <span>识别文本</span>
-            <button className="tk-icon-button" onClick={() => copy(result?.text)} title="复制识别文本">
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <pre className="tk-region-result-text">{result?.text || "暂无内容"}</pre>
-        </section>
-        <section className="tk-region-result-block">
-          <div className="tk-region-result-title">
-            <span>译文{result?.model ? ` · ${result.model}` : ""}</span>
-            <button
-              className="tk-icon-button"
-              onClick={() => copy(result?.translatedText)}
-              title="复制译文">
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <pre
-            className={`tk-region-result-text tk-region-result-translation ${
-              result && !result.ok && result.error ? "tk-region-result-error" : ""
-            }`}>
-            {result?.translatedText ||
-              (result && !result.ok && result.error
-                ? `翻译失败: ${result.error}`
-                : "暂无译文")}
-          </pre>
-        </section>
-      </div>
+      <pre
+        className={`tk-region-result-text tk-region-result-translation ${
+          result && !result.ok && result.error ? "tk-region-result-error" : ""
+        }`}>
+        {formattedTranslationText}
+      </pre>
     </div>
   )
 }
@@ -2154,6 +2197,26 @@ function loadTabGroupStyle(): TabGroupStyleOptions {
   } catch {
     return DEFAULT_STYLE
   }
+}
+
+function formatTranslationForPanel(value: string): string {
+  const normalized = value.replace(/\r\n?/g, "\n").trim()
+  if (!normalized) return ""
+
+  if (normalized.includes("\n")) {
+    return normalized
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+  }
+
+  return normalized
+    .replace(/([。！？!?；;][”’"』」】）》）]*)\s*/g, "$1\n")
+    .replace(/([.][”’"』」】）》）]*)\s+(?=[A-Z0-9\u4e00-\u9fff])/g, "$1\n")
+    .replace(/([:：])\s+(?=(?:[-*•]|\d+[.)、]))/g, "$1\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
 }
 
 function errorMessage(err: unknown): string {

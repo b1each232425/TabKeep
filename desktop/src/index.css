@@ -341,6 +341,15 @@
     @apply absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md border border-white/40 bg-white/85 px-2 py-1 text-[11px] font-semibold text-emerald-700 shadow-sm;
   }
 
+  .tk-region-edge-toolbar {
+    @apply absolute bottom-2 left-2 z-[60] flex max-w-[calc(100%-1rem)] items-center gap-2 rounded-md border border-white/40 bg-white/95 p-1.5 text-xs shadow-lg backdrop-blur;
+    pointer-events: auto;
+  }
+
+  .tk-region-edge-select {
+    @apply h-8 w-24 text-xs;
+  }
+
   .tk-region-handle {
     @apply absolute z-50 rounded-full border-2 border-white bg-emerald-400 shadow-md;
     pointer-events: auto;
@@ -404,6 +413,22 @@
     @apply flex shrink-0 items-center gap-2;
   }
 
+  .tk-region-translation-panel .tk-region-panel-toolbar {
+    @apply justify-between;
+  }
+
+  .tk-region-panel-dragbar {
+    @apply cursor-move select-none;
+  }
+
+  .tk-region-panel-dragbar button {
+    @apply cursor-pointer;
+  }
+
+  .tk-region-result-title-inline {
+    @apply inline-flex min-w-0 flex-1 items-center gap-2 truncate text-sm font-semibold text-slate-800;
+  }
+
   .tk-region-panel-controls {
     @apply mt-2 grid shrink-0 grid-cols-2 gap-2;
   }
@@ -434,6 +459,10 @@
 
   .tk-region-result-translation {
     @apply bg-blue-50/50;
+  }
+
+  .tk-region-translation-panel .tk-region-result-translation {
+    @apply mt-2 rounded-md border border-blue-100 p-3 text-sm leading-6;
   }
 
   .tk-region-result-error {

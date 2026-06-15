@@ -9,13 +9,11 @@ use tauri::{
 
 const REGION_CONFIG_FILE: &str = "region-box-config.json";
 const REGION_SCREENSHOT_FILE: &str = "tabkeep_region.png";
-const REGION_PANEL_WIDTH: f64 = 680.0;
-const REGION_PANEL_HEIGHT: f64 = 340.0;
+const REGION_PANEL_WIDTH: f64 = 520.0;
+const REGION_PANEL_HEIGHT: f64 = 220.0;
 const REGION_PANEL_GAP: i32 = 10;
 const MIN_REGION_WIDTH: u32 = 120;
 const MIN_REGION_HEIGHT: u32 = 60;
-const MAX_REGION_WIDTH: u32 = 1200;
-const MAX_REGION_HEIGHT: u32 = 420;
 const SCREEN_PADDING: i32 = 12;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -83,6 +81,7 @@ pub fn open_windows(app: &AppHandle) -> Result<RegionBoxConfig, String> {
     )
     .title("TabKeep Region Box")
     .inner_size(config.width as f64, config.height as f64)
+    .min_inner_size(MIN_REGION_WIDTH as f64, MIN_REGION_HEIGHT as f64)
     .position(config.x as f64, config.y as f64)
     .decorations(false)
     .transparent(true)
@@ -94,7 +93,7 @@ pub fn open_windows(app: &AppHandle) -> Result<RegionBoxConfig, String> {
     .map_err(|err| format!("打开区域框失败: {err}"))?;
 
     let panel_position = panel_position(&config);
-    let panel_window = WebviewWindowBuilder::new(
+    let _panel_window = WebviewWindowBuilder::new(
         app,
         "region-panel",
         WebviewUrl::App("index.html?view=region-panel".into()),
@@ -107,12 +106,11 @@ pub fn open_windows(app: &AppHandle) -> Result<RegionBoxConfig, String> {
     .background_color(Color(0, 0, 0, 0))
     .always_on_top(true)
     .resizable(false)
-    .visible(true)
+    .visible(false)
     .build()
     .map_err(|err| format!("打开区域翻译面板失败: {err}"))?;
 
     let _ = box_window.show();
-    let _ = panel_window.show();
     apply_window_config(app, &config)?;
     emit_config(app, &config);
     Ok(config)
@@ -202,6 +200,26 @@ pub fn set_passthrough(app: &AppHandle, pass_through: bool) -> Result<RegionBoxC
     Ok(config)
 }
 
+pub fn save_live_box_config(
+    app: &AppHandle,
+    config: &RegionBoxConfig,
+) -> Result<RegionBoxConfig, String> {
+    let config = save_config(app, config)?;
+    if let Some(window) = app.get_webview_window("region-panel") {
+        let position = panel_position(&config);
+        window
+            .set_position(Position::Physical(PhysicalPosition::new(
+                position.0, position.1,
+            )))
+            .map_err(|err| format!("移动区域翻译面板失败: {err}"))?;
+        window
+            .set_always_on_top(true)
+            .map_err(|err| format!("设置区域翻译面板置顶失败: {err}"))?;
+    }
+    emit_config(app, &config);
+    Ok(config)
+}
+
 pub fn capture_region(app: &AppHandle, config: &RegionBoxConfig) -> Result<PathBuf, String> {
     let config = sanitize_config(config.clone());
     if config.width < MIN_REGION_WIDTH || config.height < MIN_REGION_HEIGHT {
@@ -232,8 +250,8 @@ pub fn emit_config(app: &AppHandle, config: &RegionBoxConfig) {
 }
 
 fn sanitize_config(mut config: RegionBoxConfig) -> RegionBoxConfig {
-    config.width = config.width.clamp(MIN_REGION_WIDTH, MAX_REGION_WIDTH);
-    config.height = config.height.clamp(MIN_REGION_HEIGHT, MAX_REGION_HEIGHT);
+    config.width = config.width.max(MIN_REGION_WIDTH);
+    config.height = config.height.max(MIN_REGION_HEIGHT);
     if config.source_lang.trim().is_empty() {
         config.source_lang = "auto".to_string();
     }

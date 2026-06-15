@@ -11,6 +11,7 @@ import type {
   ScreenSelection,
   TabCategory,
   TranslateProviderConfig,
+  TranslateProviderTestResponse,
   TranslateRequest,
   TranslateResponse,
 } from "./types"
@@ -199,6 +200,12 @@ export async function setTranslateProviderConfig(
 ): Promise<TranslateProviderConfig> {
   const saved = await invoke<TranslateProviderConfig>("set_translate_provider_config", { config })
   return { ...DEFAULT_TRANSLATE_PROVIDER_CONFIG, ...saved }
+}
+
+export async function testTranslateProvider(
+  config: TranslateProviderConfig,
+): Promise<TranslateProviderTestResponse> {
+  return invoke<TranslateProviderTestResponse>("test_translate_provider", { config })
 }
 
 export async function startOcrRecognize(payload: OcrRequest): Promise<OcrFlowResult> {

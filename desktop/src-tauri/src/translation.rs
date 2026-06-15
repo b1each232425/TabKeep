@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, time::Duration};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -72,6 +72,7 @@ pub fn save_config(
     config: &TranslateProviderConfig,
 ) -> Result<TranslateProviderConfig, String> {
     let config = sanitize_config(config.clone());
+    validate_config(&config)?;
     let path = config_path(app)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("创建翻译配置目录失败: {err}"))?;
@@ -80,6 +81,29 @@ pub fn save_config(
         .map_err(|err| format!("序列化翻译配置失败: {err}"))?;
     fs::write(path, raw).map_err(|err| format!("写入翻译配置失败: {err}"))?;
     Ok(config)
+}
+
+pub fn validate_config(config: &TranslateProviderConfig) -> Result<(), String> {
+    match config.provider {
+        TranslateProvider::OpenaiCompatible => Ok(()),
+        TranslateProvider::Baidu => {
+            if config.baidu_app_id.trim().is_empty() || config.baidu_secret.trim().is_empty() {
+                Err("请先填写百度翻译 App ID 和密钥".to_string())
+            } else {
+                Ok(())
+            }
+        }
+        TranslateProvider::Volcengine => {
+            if config.volcengine_access_key.trim().is_empty()
+                || config.volcengine_secret_key.trim().is_empty()
+                || config.volcengine_region.trim().is_empty()
+            {
+                Err("请先填写火山翻译 Access Key、Secret Key 和 Region".to_string())
+            } else {
+                Ok(())
+            }
+        }
+    }
 }
 
 pub async fn translate_fast_provider(
@@ -97,6 +121,41 @@ pub async fn translate_fast_provider(
             translate_volcengine(client, config, text, source_lang, target_lang).await
         }
         TranslateProvider::OpenaiCompatible => Err("OpenAI-compatible 由模型配置处理".to_string()),
+    }
+}
+
+pub fn explain_translate_error(error: &str) -> String {
+    let lower = error.to_lowercase();
+    let hint = if lower.contains("signaturedoesnotmatch")
+        || lower.contains("invalid sign")
+        || lower.contains("sign")
+    {
+        Some("签名校验失败,请检查密钥是否填对,以及是否复制了多余空格")
+    } else if lower.contains("unsynchronized") {
+        Some("账号状态未同步,请确认服务已开通并等待控制台同步完成")
+    } else if lower.contains("account status abnormal") {
+        Some("账号状态异常,请检查实名、欠费、冻结或子账号权限")
+    } else if lower.contains("unauthorized")
+        || lower.contains("forbidden")
+        || lower.contains("\"-403\"")
+        || lower.contains("permission")
+    {
+        Some("服务拒绝访问,请检查账号权限、服务开通状态和计费状态")
+    } else if lower.contains("timeout") || lower.contains("timed out") {
+        Some("请求超时,请检查网络或稍后重试")
+    } else if lower.contains("language")
+        || lower.contains("unsupported")
+        || lower.contains("语种")
+        || lower.contains("lang")
+    {
+        Some("当前语言方向可能不被该 provider 支持")
+    } else {
+        None
+    };
+
+    match hint {
+        Some(hint) => format!("{hint}: {}", trim_detail(error)),
+        None => trim_detail(error),
     }
 }
 
@@ -128,6 +187,7 @@ async fn translate_baidu(
 
     let response = client
         .post(BAIDU_ENDPOINT)
+        .timeout(Duration::from_secs(8))
         .form(&params)
         .send()
         .await
@@ -225,6 +285,7 @@ async fn translate_volcengine(
 
     let response = client
         .post(url)
+        .timeout(Duration::from_secs(8))
         .header("Authorization", authorization)
         .header("Content-Type", "application/json")
         .header("Host", VOLCENGINE_HOST)

@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Instant,
+};
 
 use axum::{
     extract::State as AxumState,
@@ -111,6 +114,17 @@ struct TranslateResponse {
     model: String,
 }
 
+#[derive(Serialize)]
+struct TranslateProviderTestResponse {
+    ok: bool,
+    provider: String,
+    #[serde(rename = "translatedText")]
+    translated_text: Option<String>,
+    #[serde(rename = "latencyMs")]
+    latency_ms: u128,
+    error: Option<String>,
+}
+
 #[derive(Deserialize)]
 struct BackendConfigPayload {
     #[serde(rename = "modelConfig")]
@@ -195,6 +209,7 @@ pub fn run() {
             set_ocr_config,
             get_translate_provider_config,
             set_translate_provider_config,
+            test_translate_provider,
             start_ocr_recognize,
             start_ocr_translate,
             finish_screen_selection,
@@ -463,13 +478,14 @@ async fn translate(
         {
             Ok(value) => value,
             Err(err) => {
+                let error = translation::explain_translate_error(&err);
                 return json_response(
                     StatusCode::BAD_REQUEST,
                     json!({
                         "ok": false,
-                        "error": err
+                        "error": error
                     }),
-                )
+                );
             }
         };
 
@@ -667,6 +683,7 @@ async fn call_translation_model(
     let result = state
         .client
         .post(endpoint)
+        .timeout(Duration::from_secs(45))
         .bearer_auth(config.api_key.trim())
         .json(&body)
         .send()
@@ -744,6 +761,61 @@ fn set_translate_provider_config(
     app: tauri::AppHandle,
 ) -> Result<translation::TranslateProviderConfig, String> {
     translation::save_config(&app, &config)
+}
+
+#[tauri::command]
+async fn test_translate_provider(
+    config: Option<translation::TranslateProviderConfig>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<TranslateProviderTestResponse, String> {
+    let config = config.unwrap_or_else(|| translation::load_config(&app));
+    let provider = config.provider.display_name().to_string();
+    let desktop = state.inner().clone();
+    let started = Instant::now();
+    if let Err(error) = translation::validate_config(&config) {
+        return Ok(TranslateProviderTestResponse {
+            ok: false,
+            provider,
+            translated_text: None,
+            latency_ms: started.elapsed().as_millis(),
+            error: Some(error),
+        });
+    }
+    let result = if config.provider == translation::TranslateProvider::OpenaiCompatible {
+        match test_openai_compatible_provider(&desktop).await {
+            Ok(value) => Ok(value),
+            Err(err) => Err(err),
+        }
+    } else {
+        translation::translate_fast_provider(
+            &desktop.client,
+            &config,
+            "hello",
+            "English",
+            "简体中文",
+        )
+        .await
+        .map_err(|err| translation::explain_translate_error(&err))
+    };
+    let latency_ms = started.elapsed().as_millis();
+
+    match result {
+        Ok(translated_text) => Ok(TranslateProviderTestResponse {
+            ok: true,
+            provider,
+            translated_text: Some(translated_text),
+            latency_ms,
+            error: None,
+        }),
+        Err(error) => Ok(TranslateProviderTestResponse {
+            ok: false,
+            provider,
+            translated_text: None,
+            latency_ms,
+            error: Some(error),
+        }),
+    }
 }
 
 #[tauri::command]
@@ -841,6 +913,12 @@ async fn finish_screen_selection(
     let result = match pending.mode {
         OcrFlowMode::Recognize => ocr::success_result(text, provider, &cut_path, None, None),
         OcrFlowMode::Translate => {
+            let mut progress =
+                ocr::success_result(text.clone(), provider.clone(), &cut_path, None, None);
+            progress.phase = Some("translate".to_string());
+            progress.message = Some("OCR 完成,正在翻译...".to_string());
+            let _ = show_ocr_result_window(&app, &desktop, &progress);
+
             match translate_ocr_text(&app, &desktop, &text, &source_lang, &target_lang).await {
                 Ok((translated_text, model)) => ocr::success_result(
                     text,
@@ -853,6 +931,8 @@ async fn finish_screen_selection(
                     let mut result = ocr::success_result(text, provider, &cut_path, None, None);
                     result.ok = false;
                     result.error = Some(err);
+                    result.phase = Some("error".to_string());
+                    result.message = Some("翻译失败".to_string());
                     result
                 }
             }
@@ -917,10 +997,7 @@ fn set_region_box_config(
     config: region::RegionBoxConfig,
     app: tauri::AppHandle,
 ) -> Result<region::RegionBoxConfig, String> {
-    let config = region::save_config(&app, &config)?;
-    region::apply_window_config(&app, &config)?;
-    region::emit_config(&app, &config);
-    Ok(config)
+    region::save_live_box_config(&app, &config)
 }
 
 #[tauri::command]
@@ -1141,6 +1218,17 @@ async fn run_region_flow(
             ocr::success_result_without_image(text, provider, &image_path, None, None)
         }
         OcrFlowMode::Translate => {
+            let mut progress = ocr::success_result_without_image(
+                text.clone(),
+                provider.clone(),
+                &image_path,
+                None,
+                None,
+            );
+            progress.phase = Some("translate".to_string());
+            progress.message = Some("OCR 完成,正在翻译...".to_string());
+            publish_region_result(&app, &state, &progress);
+
             match translate_ocr_text(&app, &state, &text, &source_lang, &target_lang).await {
                 Ok((translated_text, model)) => ocr::success_result_without_image(
                     text,
@@ -1154,6 +1242,8 @@ async fn run_region_flow(
                         ocr::success_result_without_image(text, provider, &image_path, None, None);
                     result.ok = false;
                     result.error = Some(err);
+                    result.phase = Some("error".to_string());
+                    result.message = Some("翻译失败".to_string());
                     result
                 }
             }
@@ -1177,10 +1267,6 @@ fn show_region_windows(app: &tauri::AppHandle, config: &region::RegionBoxConfig)
     if let Some(window) = app.get_webview_window("region-box") {
         let _ = window.show();
     }
-    if let Some(window) = app.get_webview_window("region-panel") {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
     let _ = region::apply_window_config(app, config);
     region::emit_config(app, config);
 }
@@ -1193,7 +1279,22 @@ fn publish_region_result(
     if let Ok(mut guard) = state.latest_ocr_result.lock() {
         *guard = Some(result.clone());
     }
+    let _ = app.emit_to("region-box", "region-result-updated", result.clone());
+    if should_show_region_result(result) {
+        if let Some(window) = app.get_webview_window("region-panel") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
     let _ = app.emit_to("region-panel", "region-result-updated", result.clone());
+}
+
+fn should_show_region_result(result: &ocr::OcrFlowResult) -> bool {
+    result
+        .translated_text
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || (result.error.is_some() && !result.text.trim().is_empty())
 }
 
 fn open_capture_window(app: &tauri::AppHandle) -> Result<(), String> {
@@ -1287,7 +1388,8 @@ async fn translate_ocr_text(
             source_lang,
             target_lang,
         )
-        .await?;
+        .await
+        .map_err(|err| translation::explain_translate_error(&err))?;
         return Ok((
             translated_text,
             provider_config.provider.display_name().to_string(),
@@ -1312,6 +1414,25 @@ async fn translate_ocr_text(
     .await
     .map_err(error_from_json_response)?;
     Ok((translated_text, model))
+}
+
+async fn test_openai_compatible_provider(state: &DesktopState) -> Result<String, String> {
+    let token = get_cached_token(state).ok_or_else(|| {
+        "桌面端还没有 TabKeep API token,请先打开扩展 popup 或在桌面端保存 Token".to_string()
+    })?;
+    let model_config = load_model_config(state, &token)
+        .await
+        .map_err(error_from_json_response)?;
+    call_translation_model(
+        state,
+        &model_config,
+        "hello",
+        "English",
+        "简体中文",
+        Some("Provider 连接测试"),
+    )
+    .await
+    .map_err(error_from_json_response)
 }
 
 fn error_from_json_response((_status, value): (StatusCode, Value)) -> String {

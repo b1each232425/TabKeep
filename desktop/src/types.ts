@@ -119,6 +119,14 @@ export interface TranslateProviderConfig {
   volcengineRegion: string
 }
 
+export interface TranslateProviderTestResponse {
+  ok: boolean
+  provider: string
+  translatedText?: string | null
+  latencyMs: number
+  error?: string | null
+}
+
 export type OcrProvider = "windows_ocr" | "paddleocr_json"
 
 export interface OcrConfig {
@@ -153,6 +161,8 @@ export interface OcrFlowResult {
   translatedText?: string | null
   model?: string | null
   error?: string | null
+  phase?: "ocr" | "translate" | "done" | "error" | null
+  message?: string | null
 }
 
 export interface RegionBoxConfig {

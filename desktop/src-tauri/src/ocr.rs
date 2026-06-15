@@ -106,6 +106,8 @@ pub struct OcrFlowResult {
     pub translated_text: Option<String>,
     pub model: Option<String>,
     pub error: Option<String>,
+    pub phase: Option<String>,
+    pub message: Option<String>,
 }
 
 pub fn load_config(app: &AppHandle) -> OcrConfig {
@@ -222,6 +224,8 @@ pub fn success_result(
         translated_text,
         model,
         error: None,
+        phase: Some("done".to_string()),
+        message: None,
     }
 }
 
@@ -241,6 +245,8 @@ pub fn success_result_without_image(
         translated_text,
         model,
         error: None,
+        phase: Some("done".to_string()),
+        message: None,
     }
 }
 
@@ -258,6 +264,8 @@ pub fn error_result(
         translated_text: None,
         model: None,
         error: Some(error),
+        phase: Some("error".to_string()),
+        message: None,
     }
 }
 
@@ -275,6 +283,8 @@ pub fn error_result_without_image(
         translated_text: None,
         model: None,
         error: Some(error),
+        phase: Some("error".to_string()),
+        message: None,
     }
 }
 

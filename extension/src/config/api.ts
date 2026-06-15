@@ -37,6 +37,8 @@ export interface DesktopTranslateResponse {
   targetLang?: string
   model?: string
   error?: string
+  phase?: "ocr" | "translate" | "done" | "error" | null
+  message?: string | null
   detail?: string
 }
 
