@@ -1,0 +1,67 @@
+from fastapi import APIRouter, Depends
+
+from schemas.knowledge import (
+    KnowledgeAskRequest,
+    KnowledgeAskResponse,
+    KnowledgeConfig,
+    KnowledgeMessage,
+    KnowledgeReindexResponse,
+    KnowledgeSearchRequest,
+    KnowledgeSearchResponse,
+    KnowledgeSession,
+    KnowledgeStats,
+    KnowledgeSiyuanSyncRequest,
+    KnowledgeSiyuanSyncResponse,
+)
+from services import storage
+from services.auth import require_api_token
+from services.knowledge import db, service, vector_store
+
+router = APIRouter(prefix="/knowledge", tags=["知识库"], dependencies=[Depends(require_api_token)])
+
+
+@router.get("/config", response_model=KnowledgeConfig, summary="读取知识库配置")
+def get_config() -> KnowledgeConfig:
+    return storage.get_knowledge_config()
+
+
+@router.post("/config", response_model=KnowledgeConfig, summary="保存知识库配置")
+def set_config(config: KnowledgeConfig) -> KnowledgeConfig:
+    storage.set_knowledge_config(config)
+    return storage.get_knowledge_config()
+
+
+@router.get("/stats", response_model=KnowledgeStats, summary="读取知识库统计")
+def get_stats() -> KnowledgeStats:
+    vector_ok, vector_message = vector_store.availability()
+    return db.get_stats(vector_ok, vector_message)
+
+
+@router.post("/reindex", response_model=KnowledgeReindexResponse, summary="重建知识库索引")
+async def reindex() -> KnowledgeReindexResponse:
+    return await service.reindex_all()
+
+
+@router.post("/sync/siyuan", response_model=KnowledgeSiyuanSyncResponse, summary="同步 SiYuan 到知识库")
+async def sync_siyuan(req: KnowledgeSiyuanSyncRequest) -> KnowledgeSiyuanSyncResponse:
+    return await service.sync_siyuan_notes(req)
+
+
+@router.post("/search", response_model=KnowledgeSearchResponse, summary="搜索知识库")
+async def search(req: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
+    return await service.search_knowledge(req.query, req.limit)
+
+
+@router.post("/ask", response_model=KnowledgeAskResponse, summary="基于知识库问答")
+async def ask(req: KnowledgeAskRequest) -> KnowledgeAskResponse:
+    return await service.ask_knowledge(req)
+
+
+@router.get("/sessions", response_model=list[KnowledgeSession], summary="列出 RAG 问答会话")
+def sessions() -> list[KnowledgeSession]:
+    return db.list_sessions()
+
+
+@router.get("/sessions/{session_id}/messages", response_model=list[KnowledgeMessage], summary="读取 RAG 会话消息")
+def messages(session_id: str) -> list[KnowledgeMessage]:
+    return db.list_messages(session_id)

@@ -8,6 +8,8 @@ Pydantic 数据模型 — 三类配置。
 """
 from pydantic import BaseModel
 
+from schemas.knowledge import KnowledgeConfig
+
 
 # ─────────────────────────────────────────────────────────────
 # LLM 配置 — 每次调 chat_completion 都用这个
@@ -48,4 +50,5 @@ class SyncConfigRequest(BaseModel):
     modelConfig: ModelConfig | None = None
     tabCategories: list[TabCategory] = []
     noteAdapter: NoteAdapterConfig | None = None
+    knowledgeConfig: KnowledgeConfig | None = None
     apiToken: str | None = None

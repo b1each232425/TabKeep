@@ -78,6 +78,77 @@ export interface BackendConfigResponse {
   tabCategories?: TabCategory[]
 }
 
+export interface EmbeddingConfig {
+  enabled: boolean
+  baseURL: string
+  apiKey: string
+  model: string
+}
+
+export interface KnowledgeConfig {
+  enabled: boolean
+  markdownPaths: string[]
+  maxFileBytes: number
+  embedding: EmbeddingConfig
+}
+
+export interface KnowledgeStats {
+  documents: number
+  chunks: number
+  sessions: number
+  lastIndexedAt?: string | null
+  vectorAvailable: boolean
+  vectorMessage?: string | null
+}
+
+export interface KnowledgeCitation {
+  documentId: string
+  chunkId: string
+  title: string
+  sourceType: string
+  url?: string | null
+  path?: string | null
+  content: string
+  score: number
+}
+
+export interface KnowledgeReindexResponse {
+  ok: boolean
+  documentsIndexed: number
+  documentsSkipped: number
+  chunksIndexed: number
+  errors: string[]
+  stats: KnowledgeStats
+}
+
+export interface KnowledgeSiyuanSyncResponse {
+  ok: boolean
+  notebooksScanned: number
+  documentsFound: number
+  documentsIndexed: number
+  documentsSkipped: number
+  chunksIndexed: number
+  errors: string[]
+  stats: KnowledgeStats
+}
+
+export interface KnowledgeSearchResponse {
+  ok: boolean
+  query: string
+  sourceMode: string
+  items: KnowledgeCitation[]
+  error?: string | null
+}
+
+export interface KnowledgeAskResponse {
+  ok: boolean
+  answer: string
+  citations: KnowledgeCitation[]
+  sessionId?: string | null
+  sourceMode: string
+  error?: string | null
+}
+
 export interface ClassifyResponse {
   result?: Record<string, string>
   raw?: string

@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clipboard,
   Copy,
+  Database,
   Folder,
   Keyboard,
   Languages,
@@ -21,6 +22,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   Settings2,
   Sparkles,
   Trash2,
@@ -28,12 +30,14 @@ import {
 } from "lucide-react"
 import {
   BackendRequestError,
+  DEFAULT_KNOWLEDGE_CONFIG,
   DEFAULT_SELECTION_TRANSLATE_CONFIG,
   DEFAULT_OCR_CONFIG,
   DEFAULT_REGION_BOX_CONFIG,
   DEFAULT_MODEL_CONFIG,
   DEFAULT_NOTE_ADAPTER,
   DEFAULT_TRANSLATE_PROVIDER_CONFIG,
+  askKnowledge,
   backendRequest,
   cancelScreenSelection,
   checkBackendHealth,
@@ -42,6 +46,8 @@ import {
   finishScreenSelection,
   getCachedApiToken,
   getDesktopStatus,
+  getKnowledgeConfig,
+  getKnowledgeStats,
   getLatestOcrResult,
   getOcrConfig,
   getRegionBoxConfig,
@@ -50,8 +56,11 @@ import {
   getSelectionTranslateConfig,
   loadBackendConfig,
   openRegionBox,
+  reindexKnowledge,
   runRegionTranslate,
+  searchKnowledge,
   setCachedApiToken,
+  setKnowledgeConfig,
   setOcrConfig,
   setRegionBoxConfig,
   setRegionBoxPassthrough,
@@ -59,6 +68,7 @@ import {
   setTranslateProviderConfig,
   startOcrRecognize,
   startOcrTranslate,
+  syncSiyuanKnowledge,
   syncConfigToBackend,
   testTranslateProvider,
   translateText,
@@ -67,6 +77,12 @@ import {
 import type {
   ClassifyResponse,
   DesktopStatus,
+  KnowledgeAskResponse,
+  KnowledgeCitation,
+  KnowledgeConfig,
+  KnowledgeSearchResponse,
+  KnowledgeStats,
+  KnowledgeSiyuanSyncResponse,
   ModelConfig,
   NoteAdapterConfig,
   NotebookInfo,
@@ -87,7 +103,7 @@ import type {
 } from "./types"
 import { groupTabsByDomain } from "./utils"
 
-type Section = "overview" | "translate" | "categories" | "modelApi" | "notes"
+type Section = "overview" | "translate" | "knowledge" | "categories" | "modelApi" | "notes"
 type ResizeDirection =
   | "East"
   | "North"
@@ -196,6 +212,7 @@ function DesktopApp() {
   const navItems: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: "overview", label: "概览", icon: LayoutDashboard },
     { id: "translate", label: "翻译", icon: Languages },
+    { id: "knowledge", label: "知识库", icon: Database },
     { id: "categories", label: "分组", icon: Folder },
     { id: "modelApi", label: "模型 API", icon: Brain },
     { id: "notes", label: "笔记集成", icon: BookOpen },
@@ -268,6 +285,7 @@ function DesktopApp() {
           />
         )}
         {section === "translate" && <TranslateSection />}
+        {section === "knowledge" && <KnowledgeSection />}
         {section === "categories" && (
           <CategoriesSection
             tabs={tabs}
@@ -2123,6 +2141,386 @@ function CategoriesSection({
   )
 }
 
+function KnowledgeSection() {
+  const [config, setConfigState] = useState<KnowledgeConfig>(DEFAULT_KNOWLEDGE_CONFIG)
+  const [pathText, setPathText] = useState("")
+  const [stats, setStats] = useState<KnowledgeStats | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [reindexing, setReindexing] = useState(false)
+  const [syncingSiyuan, setSyncingSiyuan] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchResult, setSearchResult] = useState<KnowledgeSearchResponse | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [question, setQuestion] = useState("")
+  const [askResult, setAskResult] = useState<KnowledgeAskResponse | null>(null)
+  const [asking, setAsking] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+
+  const refresh = async () => {
+    setLoading(true)
+    setStatus(null)
+    try {
+      const [nextConfig, nextStats] = await Promise.all([getKnowledgeConfig(), getKnowledgeStats()])
+      setConfigState(nextConfig)
+      setPathText(nextConfig.markdownPaths.join("\n"))
+      setStats(nextStats)
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  const buildDraft = (): KnowledgeConfig => ({
+    ...config,
+    markdownPaths: pathText
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+    maxFileBytes: Number.isFinite(config.maxFileBytes) && config.maxFileBytes > 0
+      ? config.maxFileBytes
+      : DEFAULT_KNOWLEDGE_CONFIG.maxFileBytes,
+  })
+
+  const save = async () => {
+    setSaving(true)
+    setStatus(null)
+    try {
+      const saved = await setKnowledgeConfig(buildDraft())
+      setConfigState(saved)
+      setPathText(saved.markdownPaths.join("\n"))
+      setStatus("知识库设置已保存")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const runReindex = async () => {
+    setReindexing(true)
+    setStatus(null)
+    try {
+      await setKnowledgeConfig(buildDraft())
+      const result = await reindexKnowledge()
+      setStats(result.stats)
+      setStatus(
+        result.ok
+          ? `重建完成：${result.documentsIndexed} 篇文档，${result.chunksIndexed} 个片段`
+          : `重建完成但有错误：${result.errors.slice(0, 2).join("；")}`,
+      )
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setReindexing(false)
+    }
+  }
+
+  const runSiyuanSync = async () => {
+    setSyncingSiyuan(true)
+    setStatus(null)
+    try {
+      await setKnowledgeConfig(buildDraft())
+      const result = await syncSiyuanKnowledge()
+      setStats(result.stats)
+      setStatus(formatSiyuanSyncStatus(result))
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setSyncingSiyuan(false)
+    }
+  }
+
+  const runSearch = async () => {
+    const query = searchQuery.trim()
+    if (!query) return
+    setSearching(true)
+    setStatus(null)
+    try {
+      const result = await searchKnowledge(query, 8)
+      setSearchResult(result)
+      if (!result.ok) setStatus(result.error ?? "搜索失败")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const runAsk = async () => {
+    const value = question.trim()
+    if (!value) return
+    setAsking(true)
+    setStatus(null)
+    try {
+      const result = await askKnowledge(value, sessionId, 8)
+      setAskResult(result)
+      if (result.sessionId) setSessionId(result.sessionId)
+      if (!result.ok) setStatus(result.error ?? "知识库问答失败")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setAsking(false)
+    }
+  }
+
+  const copyAnswer = async () => {
+    if (!askResult?.answer) return
+    try {
+      await navigator.clipboard.writeText(askResult.answer)
+      setStatus("回答已复制")
+    } catch (err) {
+      setStatus(`复制失败: ${errorMessage(err)}`)
+    }
+  }
+
+  const statusTone =
+    status?.includes("已保存") || status?.includes("完成") || status?.includes("已复制")
+      ? "success"
+      : "warning"
+
+  return (
+    <div className="space-y-5">
+      <header className="tk-topbar">
+        <div>
+          <h1 className="tk-page-title">知识库</h1>
+          <p className="tk-page-subtitle">索引 TabKeep 收藏和 Markdown / Obsidian 笔记，进行搜索与 RAG 问答</p>
+        </div>
+        <Button variant="secondary" onClick={refresh} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          刷新
+        </Button>
+      </header>
+
+      {status && <Notice tone={statusTone}>{status}</Notice>}
+
+      <section className="tk-status-grid">
+        <StatusCard title="文档" value={`${stats?.documents ?? 0} 篇`} tone="neutral" />
+        <StatusCard title="片段" value={`${stats?.chunks ?? 0} 个`} tone="neutral" />
+        <StatusCard
+          title="向量层"
+          value={stats?.vectorAvailable ? "可用" : "未启用"}
+          tone={stats?.vectorAvailable ? "success" : "warning"}
+        />
+        <StatusCard
+          title="最近索引"
+          value={stats?.lastIndexedAt ? formatCompactDate(stats.lastIndexedAt) : "暂无"}
+          tone={stats?.lastIndexedAt ? "success" : "warning"}
+        />
+      </section>
+
+      <section className="tk-grid-two">
+        <section className="tk-panel">
+          <div className="tk-panel-header">
+            <div>
+              <h2 className="tk-panel-title">索引设置</h2>
+              <p className="text-xs text-muted-foreground">每行一个 Markdown / Obsidian 路径</p>
+            </div>
+            <span className="tk-badge">{config.enabled ? "启用" : "关闭"}</span>
+          </div>
+          <div className="tk-panel-body space-y-4">
+            <Checkbox
+              label="启用本地知识库"
+              checked={config.enabled}
+              onChange={(checked) => setConfigState({ ...config, enabled: checked })}
+            />
+            <label className="tk-field">
+              <span className="tk-label">Markdown / Obsidian 路径</span>
+              <textarea
+                className="tk-textarea min-h-36"
+                value={pathText}
+                onChange={(event) => setPathText(event.target.value)}
+                placeholder={"E:\\Notes\\ObsidianVault\nE:\\Projects\\TabKeep\\docs"}
+              />
+            </label>
+            <TextField
+              label="单文件最大字节数"
+              type="number"
+              value={String(config.maxFileBytes)}
+              onChange={(value) =>
+                setConfigState({ ...config, maxFileBytes: Number(value) || 1_000_000 })
+              }
+              placeholder="1000000"
+            />
+            {stats?.vectorMessage && <div className="tk-muted-box">{stats.vectorMessage}</div>}
+          </div>
+          <div className="tk-command-bar">
+            <Button onClick={save} disabled={saving}>
+              {saving ? "保存中..." : "保存设置"}
+            </Button>
+            <Button variant="secondary" onClick={runReindex} disabled={reindexing}>
+              <RefreshCw className={`h-4 w-4 ${reindexing ? "animate-spin" : ""}`} />
+              {reindexing ? "重建中..." : "重建索引"}
+            </Button>
+            <Button variant="secondary" onClick={runSiyuanSync} disabled={syncingSiyuan}>
+              <BookOpen className="h-4 w-4" />
+              {syncingSiyuan ? "同步中..." : "同步 SiYuan"}
+            </Button>
+          </div>
+        </section>
+
+        <section className="tk-panel">
+          <div className="tk-panel-header">
+            <div>
+              <h2 className="tk-panel-title">Embedding</h2>
+              <p className="text-xs text-muted-foreground">可选；关闭时使用全文检索</p>
+            </div>
+            <span className="tk-badge">{config.embedding.enabled ? "语义检索" : "FTS"}</span>
+          </div>
+          <div className="tk-panel-body space-y-4">
+            <Checkbox
+              label="启用 OpenAI-compatible embedding"
+              checked={config.embedding.enabled}
+              onChange={(checked) =>
+                setConfigState({
+                  ...config,
+                  embedding: { ...config.embedding, enabled: checked },
+                })
+              }
+            />
+            <TextField
+              label="Embedding BaseURL"
+              value={config.embedding.baseURL}
+              onChange={(value) =>
+                setConfigState({
+                  ...config,
+                  embedding: { ...config.embedding, baseURL: value },
+                })
+              }
+              placeholder="https://api.openai.com/v1"
+            />
+            <TextField
+              label="Embedding Model"
+              value={config.embedding.model}
+              onChange={(value) =>
+                setConfigState({
+                  ...config,
+                  embedding: { ...config.embedding, model: value },
+                })
+              }
+              placeholder="text-embedding-3-small"
+            />
+            <TextField
+              label="Embedding API Key"
+              type="password"
+              value={config.embedding.apiKey}
+              onChange={(value) =>
+                setConfigState({
+                  ...config,
+                  embedding: { ...config.embedding, apiKey: value },
+                })
+              }
+              placeholder="sk-..."
+            />
+          </div>
+        </section>
+      </section>
+
+      <section className="tk-grid-two">
+        <section className="tk-panel">
+          <div className="tk-panel-header">
+            <h2 className="tk-panel-title">搜索</h2>
+            <span className="tk-badge">{searchResult?.sourceMode ?? "未搜索"}</span>
+          </div>
+          <div className="tk-panel-body space-y-4">
+            <div className="flex gap-2">
+              <input
+                className="tk-input"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") runSearch()
+                }}
+                placeholder="搜索项目方案、错误信息、笔记主题"
+              />
+              <Button onClick={runSearch} disabled={searching || !searchQuery.trim()}>
+                <Search className="h-4 w-4" />
+                {searching ? "搜索中..." : "搜索"}
+              </Button>
+            </div>
+            <CitationList items={searchResult?.items ?? []} emptyText="暂无搜索结果" />
+          </div>
+        </section>
+
+        <section className="tk-panel">
+          <div className="tk-panel-header">
+            <h2 className="tk-panel-title">知识库问答</h2>
+            <span className="tk-badge">{askResult?.sourceMode ?? "RAG"}</span>
+          </div>
+          <div className="tk-panel-body space-y-4">
+            <textarea
+              className="tk-textarea"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="例如：TabKeep 桌面端翻译功能目前做到哪一步了？"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={runAsk} disabled={asking || !question.trim()}>
+                <Sparkles className="h-4 w-4" />
+                {asking ? "思考中..." : "提问"}
+              </Button>
+              <Button variant="secondary" onClick={copyAnswer} disabled={!askResult?.answer}>
+                <Copy className="h-4 w-4" />
+                复制回答
+              </Button>
+            </div>
+            {askResult?.answer ? (
+              <div className="rounded-md border border-border bg-white p-3 text-sm leading-7 text-slate-800 whitespace-pre-wrap">
+                {askResult.answer}
+              </div>
+            ) : (
+              <div className="tk-muted-box">回答会基于下方引用片段生成，不会默认读取整个笔记库。</div>
+            )}
+            <CitationList items={askResult?.citations ?? []} emptyText="暂无引用来源" compact />
+          </div>
+        </section>
+      </section>
+    </div>
+  )
+}
+
+function CitationList({
+  items,
+  emptyText,
+  compact = false,
+}: {
+  items: KnowledgeCitation[]
+  emptyText: string
+  compact?: boolean
+}) {
+  if (items.length === 0) {
+    return <div className="tk-muted-box">{emptyText}</div>
+  }
+  return (
+    <div className="grid gap-2">
+      {items.map((item, index) => (
+        <div key={item.chunkId} className="rounded-md border border-border p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="tk-badge">来源 {index + 1}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
+              {item.title}
+            </span>
+          </div>
+          <p className="truncate text-xs text-muted-foreground">
+            {item.url || item.path || item.documentId}
+          </p>
+          {!compact && (
+            <p className="mt-2 max-h-24 overflow-hidden whitespace-pre-wrap text-sm leading-6 text-slate-700">
+              {item.content}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function NotesSection({
   config,
   setConfig,
@@ -2472,6 +2870,20 @@ function formatTranslationForPanel(value: string): string {
     .replace(/([:：])\s+(?=(?:[-*•]|\d+[.)、]))/g, "$1\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
+}
+
+function formatCompactDate(value: string): string {
+  try {
+    return new Date(value).toLocaleString()
+  } catch {
+    return value
+  }
+}
+
+function formatSiyuanSyncStatus(result: KnowledgeSiyuanSyncResponse): string {
+  const base = `SiYuan 同步${result.ok ? "完成" : "完成但有错误"}：扫描 ${result.notebooksScanned} 个笔记本，发现 ${result.documentsFound} 篇文档，更新 ${result.documentsIndexed} 篇，跳过 ${result.documentsSkipped} 篇`
+  if (result.errors.length === 0) return base
+  return `${base}；${result.errors.slice(0, 2).join("；")}`
 }
 
 function errorMessage(err: unknown): string {

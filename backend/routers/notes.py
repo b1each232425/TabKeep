@@ -22,6 +22,7 @@ from logger import logger
 from schemas.config import NoteAdapterConfig
 from services import storage
 from services.auth import require_api_token
+from services.knowledge.service import index_saved_note
 from services.note import build_note_adapter
 from services.note.base import DocNode, NotebookInfo, SaveRequest, SaveResult
 
@@ -138,6 +139,7 @@ async def save_tab(req: SaveRequest) -> SaveResult:
     result = await adapter.save(effective_req)
     if result.ok:
         logger.info(f"/notes/save ok provider={adapter.name} doc={result.note_id}")
+        await index_saved_note(effective_req, result)
     else:
         logger.warning(f"/notes/save fail provider={adapter.name} error={result.error}")
     return result

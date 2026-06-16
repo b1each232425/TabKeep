@@ -17,6 +17,7 @@ from pathlib import Path
 
 from logger import logger
 from schemas.config import ModelConfig, NoteAdapterConfig, SyncConfigRequest, TabCategory
+from schemas.knowledge import KnowledgeConfig
 
 # ─────────────────────────────────────────────────────────────
 # 路径常量
@@ -29,7 +30,13 @@ CONFIG_FILE = DATA_DIR / "config.json"
 # 模块级内存状态(单例)
 # ─────────────────────────────────────────────────────────────
 _lock = threading.Lock()
-_state: dict = {"modelConfig": None, "tabCategories": [], "noteAdapter": None, "apiToken": None}
+_state: dict = {
+    "modelConfig": None,
+    "tabCategories": [],
+    "noteAdapter": None,
+    "knowledgeConfig": None,
+    "apiToken": None,
+}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -51,12 +58,14 @@ def init() -> None:
         _state["modelConfig"] = data.get("modelConfig")
         _state["tabCategories"] = data.get("tabCategories", [])
         _state["noteAdapter"] = data.get("noteAdapter")
+        _state["knowledgeConfig"] = data.get("knowledgeConfig")
         _state["apiToken"] = data.get("apiToken")
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"config.json 损坏或读取失败 ({e}),回退到空状态")
         _state["modelConfig"] = None
         _state["tabCategories"] = []
         _state["noteAdapter"] = None
+        _state["knowledgeConfig"] = None
         _state["apiToken"] = None
 
 
@@ -95,6 +104,19 @@ def get_api_token() -> str | None:
     return str(token) if token else None
 
 
+def get_knowledge_config() -> KnowledgeConfig:
+    """返回知识库配置。未配置时返回默认值。"""
+    data = _state.get("knowledgeConfig")
+    return KnowledgeConfig(**data) if data else KnowledgeConfig()
+
+
+def set_knowledge_config(config: KnowledgeConfig) -> None:
+    """保存知识库配置。"""
+    with _lock:
+        _state["knowledgeConfig"] = config.model_dump()
+        _persist()
+
+
 # ─────────────────────────────────────────────────────────────
 # 同步入口
 # ─────────────────────────────────────────────────────────────
@@ -114,6 +136,8 @@ def sync_config(req: SyncConfigRequest) -> None:
             _state["tabCategories"] = [c.model_dump() for c in (req.tabCategories or [])]
         if "noteAdapter" in sent:
             _state["noteAdapter"] = req.noteAdapter.model_dump() if req.noteAdapter else None
+        if "knowledgeConfig" in sent:
+            _state["knowledgeConfig"] = req.knowledgeConfig.model_dump() if req.knowledgeConfig else None
         if "apiToken" in sent and req.apiToken:
             _state["apiToken"] = req.apiToken
         _persist()

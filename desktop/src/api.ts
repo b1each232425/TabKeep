@@ -2,6 +2,12 @@ import { invoke } from "@tauri-apps/api/core"
 import type {
   BackendConfigResponse,
   DesktopStatus,
+  KnowledgeAskResponse,
+  KnowledgeConfig,
+  KnowledgeReindexResponse,
+  KnowledgeSearchResponse,
+  KnowledgeSiyuanSyncResponse,
+  KnowledgeStats,
   ModelConfig,
   NoteAdapterConfig,
   OcrConfig,
@@ -63,6 +69,18 @@ export const DEFAULT_SELECTION_TRANSLATE_CONFIG: SelectionTranslateConfig = {
   sourceLang: "auto",
   targetLang: "简体中文",
   hotkeyError: null,
+}
+
+export const DEFAULT_KNOWLEDGE_CONFIG: KnowledgeConfig = {
+  enabled: true,
+  markdownPaths: [],
+  maxFileBytes: 1_000_000,
+  embedding: {
+    enabled: false,
+    baseURL: "",
+    apiKey: "",
+    model: "",
+  },
 }
 
 interface BackendResponse<T> {
@@ -151,6 +169,59 @@ export async function loadBackendConfig(): Promise<{
     tabCategories: Array.isArray(config.tabCategories) ? config.tabCategories : [],
     noteAdapter: { ...DEFAULT_NOTE_ADAPTER, ...(noteAdapter ?? {}) },
   }
+}
+
+export async function getKnowledgeConfig(): Promise<KnowledgeConfig> {
+  const config = await backendRequest<KnowledgeConfig>("GET", "/knowledge/config")
+  return {
+    ...DEFAULT_KNOWLEDGE_CONFIG,
+    ...config,
+    embedding: { ...DEFAULT_KNOWLEDGE_CONFIG.embedding, ...(config.embedding ?? {}) },
+  }
+}
+
+export async function setKnowledgeConfig(config: KnowledgeConfig): Promise<KnowledgeConfig> {
+  const saved = await backendRequest<KnowledgeConfig>("POST", "/knowledge/config", config)
+  return {
+    ...DEFAULT_KNOWLEDGE_CONFIG,
+    ...saved,
+    embedding: { ...DEFAULT_KNOWLEDGE_CONFIG.embedding, ...(saved.embedding ?? {}) },
+  }
+}
+
+export async function getKnowledgeStats(): Promise<KnowledgeStats> {
+  return backendRequest<KnowledgeStats>("GET", "/knowledge/stats")
+}
+
+export async function reindexKnowledge(): Promise<KnowledgeReindexResponse> {
+  return backendRequest<KnowledgeReindexResponse>("POST", "/knowledge/reindex")
+}
+
+export async function syncSiyuanKnowledge(
+  notebookId?: string | null,
+): Promise<KnowledgeSiyuanSyncResponse> {
+  return backendRequest<KnowledgeSiyuanSyncResponse>("POST", "/knowledge/sync/siyuan", {
+    notebookId: notebookId || null,
+  })
+}
+
+export async function searchKnowledge(
+  query: string,
+  limit = 8,
+): Promise<KnowledgeSearchResponse> {
+  return backendRequest<KnowledgeSearchResponse>("POST", "/knowledge/search", { query, limit })
+}
+
+export async function askKnowledge(
+  question: string,
+  sessionId?: string | null,
+  limit = 8,
+): Promise<KnowledgeAskResponse> {
+  return backendRequest<KnowledgeAskResponse>("POST", "/knowledge/ask", {
+    question,
+    sessionId,
+    limit,
+  })
 }
 
 export async function syncConfigToBackend(partial: {

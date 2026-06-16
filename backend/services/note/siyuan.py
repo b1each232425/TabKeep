@@ -187,6 +187,24 @@ class SiYuanAdapter:
         logger.info(f"siyuan list_docs ok: {len(flat)} 个文档,拼出 {len(tree)} 个根节点")
         return tree
 
+    async def export_markdown(self, doc_id: str) -> tuple[str, str]:
+        """
+        导出单篇文档的 Markdown 文本。
+
+        SiYuan 官方接口: /api/export/exportMdContent
+        返回 hPath + content,其中 content 是可用于 Obsidian/Markdown/RAG 的 Markdown。
+        """
+        logger.info(f"siyuan export markdown doc={doc_id}")
+        data = await self._post("/api/export/exportMdContent", {"id": doc_id})
+        if data.get("code") != 0:
+            raise RuntimeError(
+                f"导出 SiYuan Markdown 失败: code={data.get('code')} msg={data.get('msg')!r}"
+            )
+        payload = data.get("data") or {}
+        h_path = str(payload.get("hPath") or "")
+        content = str(payload.get("content") or "")
+        return h_path, content
+
     @staticmethod
     def _build_doc_tree(flat: list[dict]) -> list[DocNode]:
         """SiYuan 扁平 path → 嵌套 DocNode 树。"""
