@@ -236,6 +236,7 @@ pub fn run() {
             set_selection_translate_config,
             trigger_selection_translate,
             get_latest_selection_translate_result,
+            open_external_target,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TabKeep desktop");
@@ -251,6 +252,62 @@ fn setup_close_to_hide(app: &tauri::App) {
             }
         });
     }
+}
+
+#[tauri::command]
+fn open_external_target(target: String) -> Result<(), String> {
+    let target = target.trim();
+    if target.is_empty() {
+        return Err("来源为空".to_string());
+    }
+    if target.len() > 4096 {
+        return Err("来源路径过长".to_string());
+    }
+    open_target_with_system(target)
+}
+
+#[cfg(windows)]
+fn open_target_with_system(target: &str) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let operation = wide_null("open");
+    let file = wide_null(target);
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(operation.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if (result.0 as isize) <= 32 {
+        return Err(format!("系统打开来源失败，ShellExecute code={}", result.0 as isize));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn wide_null(value: &str) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+
+    std::ffi::OsStr::new(value)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn open_target_with_system(target: &str) -> Result<(), String> {
+    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    std::process::Command::new(opener)
+        .arg(target)
+        .spawn()
+        .map_err(|err| format!("系统打开来源失败: {err}"))?;
+    Ok(())
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {

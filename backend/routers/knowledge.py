@@ -10,6 +10,7 @@ from schemas.knowledge import (
     KnowledgeSearchResponse,
     KnowledgeSession,
     KnowledgeStats,
+    KnowledgeSiyuanPrecheckResponse,
     KnowledgeSiyuanSyncRequest,
     KnowledgeSiyuanSyncResponse,
 )
@@ -40,6 +41,11 @@ def get_stats() -> KnowledgeStats:
 @router.post("/reindex", response_model=KnowledgeReindexResponse, summary="重建知识库索引")
 async def reindex() -> KnowledgeReindexResponse:
     return await service.reindex_all()
+
+
+@router.get("/sync/siyuan/precheck", response_model=KnowledgeSiyuanPrecheckResponse, summary="检查 SiYuan 同步条件")
+async def precheck_siyuan() -> KnowledgeSiyuanPrecheckResponse:
+    return await service.precheck_siyuan_sync()
 
 
 @router.post("/sync/siyuan", response_model=KnowledgeSiyuanSyncResponse, summary="同步 SiYuan 到知识库")

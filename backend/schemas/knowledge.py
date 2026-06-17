@@ -38,6 +38,14 @@ class KnowledgeSiyuanSyncRequest(BaseModel):
     limit: int | None = None
 
 
+class KnowledgeSiyuanPrecheckResponse(BaseModel):
+    ok: bool
+    provider: str | None = None
+    endpoint: str | None = None
+    notebooks: list[dict[str, str]] = []
+    error: str | None = None
+
+
 class KnowledgeSiyuanSyncResponse(BaseModel):
     ok: bool
     notebooksScanned: int = 0

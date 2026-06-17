@@ -132,6 +132,14 @@ export interface KnowledgeSiyuanSyncResponse {
   stats: KnowledgeStats
 }
 
+export interface KnowledgeSiyuanPrecheckResponse {
+  ok: boolean
+  provider?: string | null
+  endpoint?: string | null
+  notebooks: NotebookInfo[]
+  error?: string | null
+}
+
 export interface KnowledgeSearchResponse {
   ok: boolean
   query: string

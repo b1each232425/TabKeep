@@ -6,6 +6,7 @@ import type {
   KnowledgeConfig,
   KnowledgeReindexResponse,
   KnowledgeSearchResponse,
+  KnowledgeSiyuanPrecheckResponse,
   KnowledgeSiyuanSyncResponse,
   KnowledgeStats,
   ModelConfig,
@@ -197,11 +198,17 @@ export async function reindexKnowledge(): Promise<KnowledgeReindexResponse> {
   return backendRequest<KnowledgeReindexResponse>("POST", "/knowledge/reindex")
 }
 
+export async function precheckSiyuanKnowledge(): Promise<KnowledgeSiyuanPrecheckResponse> {
+  return backendRequest<KnowledgeSiyuanPrecheckResponse>("GET", "/knowledge/sync/siyuan/precheck")
+}
+
 export async function syncSiyuanKnowledge(
   notebookId?: string | null,
+  limit?: number | null,
 ): Promise<KnowledgeSiyuanSyncResponse> {
   return backendRequest<KnowledgeSiyuanSyncResponse>("POST", "/knowledge/sync/siyuan", {
     notebookId: notebookId || null,
+    limit: limit && limit > 0 ? limit : null,
   })
 }
 
@@ -381,6 +388,10 @@ export async function triggerSelectionTranslate(): Promise<SelectionTranslateRes
 
 export async function getLatestSelectionTranslateResult(): Promise<SelectionTranslateResult | null> {
   return invoke<SelectionTranslateResult | null>("get_latest_selection_translate_result")
+}
+
+export async function openExternalTarget(target: string): Promise<void> {
+  await invoke("open_external_target", { target })
 }
 
 function extractErrorMessage(data: unknown): string | null {

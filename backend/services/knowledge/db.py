@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -36,7 +37,7 @@ class IndexResult:
 
 def init_db() -> None:
     storage.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with connect() as conn:
+    with connection() as conn:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS documents (
@@ -116,6 +117,19 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def connection() -> Iterable[sqlite3.Connection]:
+    conn = connect()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def upsert_document(
     *,
     source_type: str,
@@ -131,7 +145,7 @@ def upsert_document(
     content_hash = sha1_text(content)
     chunks = chunk_text(content)
 
-    with connect() as conn:
+    with connection() as conn:
         old = conn.execute(
             "SELECT content_hash FROM documents WHERE id = ?",
             (document_id,),
@@ -192,7 +206,7 @@ def mark_embedding_status(chunk_ids: Iterable[str], status: str) -> None:
     ids = list(chunk_ids)
     if not ids:
         return
-    with connect() as conn:
+    with connection() as conn:
         conn.executemany(
             "UPDATE chunks SET embedding_status = ? WHERE id = ?",
             [(status, chunk_id) for chunk_id in ids],
@@ -204,7 +218,7 @@ def search_fts(query: str, limit: int) -> list[KnowledgeCitation]:
     fts_query = build_fts_query(query)
     if not fts_query:
         return []
-    with connect() as conn:
+    with connection() as conn:
         rows = conn.execute(
             """
             SELECT
@@ -232,7 +246,7 @@ def get_chunks_by_ids(chunk_ids: list[str]) -> dict[str, KnowledgeCitation]:
     if not chunk_ids:
         return {}
     placeholders = ",".join("?" for _ in chunk_ids)
-    with connect() as conn:
+    with connection() as conn:
         rows = conn.execute(
             f"""
             SELECT
@@ -254,7 +268,7 @@ def get_chunks_by_ids(chunk_ids: list[str]) -> dict[str, KnowledgeCitation]:
 
 def get_stats(vector_available: bool = False, vector_message: str | None = None) -> KnowledgeStats:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         documents = conn.execute("SELECT COUNT(*) AS count FROM documents").fetchone()["count"]
         chunks = conn.execute("SELECT COUNT(*) AS count FROM chunks").fetchone()["count"]
         sessions = conn.execute("SELECT COUNT(*) AS count FROM rag_sessions").fetchone()["count"]
@@ -274,7 +288,7 @@ def ensure_session(session_id: str | None, title: str) -> str:
     now = now_iso()
     sid = session_id or uuid.uuid4().hex
     clean_title = title.strip()[:80] or "知识库问答"
-    with connect() as conn:
+    with connection() as conn:
         row = conn.execute("SELECT id FROM rag_sessions WHERE id = ?", (sid,)).fetchone()
         if row:
             conn.execute("UPDATE rag_sessions SET updated_at = ? WHERE id = ?", (now, sid))
@@ -288,7 +302,7 @@ def ensure_session(session_id: str | None, title: str) -> str:
 
 def add_message(session_id: str, role: str, content: str) -> None:
     now = now_iso()
-    with connect() as conn:
+    with connection() as conn:
         conn.execute(
             "INSERT INTO rag_messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
             (uuid.uuid4().hex, session_id, role, content, now),
@@ -298,7 +312,7 @@ def add_message(session_id: str, role: str, content: str) -> None:
 
 def list_sessions() -> list[KnowledgeSession]:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         rows = conn.execute(
             "SELECT id, title, created_at, updated_at FROM rag_sessions ORDER BY updated_at DESC LIMIT 50"
         ).fetchall()
@@ -315,7 +329,7 @@ def list_sessions() -> list[KnowledgeSession]:
 
 def list_messages(session_id: str) -> list[KnowledgeMessage]:
     init_db()
-    with connect() as conn:
+    with connection() as conn:
         rows = conn.execute(
             """
             SELECT id, session_id, role, content, created_at
@@ -407,4 +421,3 @@ def sha1_text(text: str) -> str:
 
 def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
-

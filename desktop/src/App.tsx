@@ -56,6 +56,8 @@ import {
   getSelectionTranslateConfig,
   loadBackendConfig,
   openRegionBox,
+  openExternalTarget,
+  precheckSiyuanKnowledge,
   reindexKnowledge,
   runRegionTranslate,
   searchKnowledge,
@@ -82,6 +84,7 @@ import type {
   KnowledgeConfig,
   KnowledgeSearchResponse,
   KnowledgeStats,
+  KnowledgeSiyuanPrecheckResponse,
   KnowledgeSiyuanSyncResponse,
   ModelConfig,
   NoteAdapterConfig,
@@ -2150,6 +2153,10 @@ function KnowledgeSection() {
   const [saving, setSaving] = useState(false)
   const [reindexing, setReindexing] = useState(false)
   const [syncingSiyuan, setSyncingSiyuan] = useState(false)
+  const [checkingSiyuan, setCheckingSiyuan] = useState(false)
+  const [siyuanPrecheck, setSiyuanPrecheck] = useState<KnowledgeSiyuanPrecheckResponse | null>(null)
+  const [siyuanNotebookId, setSiyuanNotebookId] = useState("")
+  const [siyuanLimit, setSiyuanLimit] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResult, setSearchResult] = useState<KnowledgeSearchResponse | null>(null)
   const [searching, setSearching] = useState(false)
@@ -2227,13 +2234,38 @@ function KnowledgeSection() {
     setStatus(null)
     try {
       await setKnowledgeConfig(buildDraft())
-      const result = await syncSiyuanKnowledge()
+      const precheck = await precheckSiyuanKnowledge()
+      setSiyuanPrecheck(precheck)
+      if (!precheck.ok) {
+        setStatus(precheck.error ?? "SiYuan 同步预检查失败")
+        return
+      }
+      const limit = siyuanLimit.trim() ? Number(siyuanLimit) : null
+      const result = await syncSiyuanKnowledge(siyuanNotebookId || null, limit)
       setStats(result.stats)
       setStatus(formatSiyuanSyncStatus(result))
     } catch (err) {
       setStatus(errorMessage(err))
     } finally {
       setSyncingSiyuan(false)
+    }
+  }
+
+  const runSiyuanPrecheck = async () => {
+    setCheckingSiyuan(true)
+    setStatus(null)
+    try {
+      const result = await precheckSiyuanKnowledge()
+      setSiyuanPrecheck(result)
+      setStatus(
+        result.ok
+          ? `SiYuan 可用：${result.notebooks.length} 个笔记本`
+          : result.error ?? "SiYuan 预检查失败",
+      )
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setCheckingSiyuan(false)
     }
   }
 
@@ -2281,7 +2313,10 @@ function KnowledgeSection() {
   }
 
   const statusTone =
-    status?.includes("已保存") || status?.includes("完成") || status?.includes("已复制")
+    status?.includes("已保存") ||
+    status?.includes("完成") ||
+    status?.includes("已复制") ||
+    status?.includes("可用")
       ? "success"
       : "warning"
 
@@ -2349,6 +2384,45 @@ function KnowledgeSection() {
               placeholder="1000000"
             />
             {stats?.vectorMessage && <div className="tk-muted-box">{stats.vectorMessage}</div>}
+            <div className="rounded-md border border-border p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">SiYuan 同步</h3>
+                  <p className="text-xs text-muted-foreground">使用「笔记集成」里的 SiYuan 配置导出 Markdown 入库</p>
+                </div>
+                <span className="tk-badge">
+                  {siyuanPrecheck?.ok ? `${siyuanPrecheck.notebooks.length} 个笔记本` : "未检查"}
+                </span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="tk-field">
+                  <span className="tk-label">同步范围</span>
+                  <select
+                    className="tk-select"
+                    value={siyuanNotebookId}
+                    onChange={(event) => setSiyuanNotebookId(event.target.value)}>
+                    <option value="">全部笔记本</option>
+                    {(siyuanPrecheck?.notebooks ?? []).map((notebook) => (
+                      <option key={notebook.id} value={notebook.id}>
+                        {notebook.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TextField
+                  label="测试同步上限"
+                  type="number"
+                  value={siyuanLimit}
+                  onChange={setSiyuanLimit}
+                  placeholder="留空 = 全量"
+                />
+              </div>
+              {siyuanPrecheck?.error && (
+                <div className="mt-3 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {siyuanPrecheck.error}
+                </div>
+              )}
+            </div>
           </div>
           <div className="tk-command-bar">
             <Button onClick={save} disabled={saving}>
@@ -2357,6 +2431,10 @@ function KnowledgeSection() {
             <Button variant="secondary" onClick={runReindex} disabled={reindexing}>
               <RefreshCw className={`h-4 w-4 ${reindexing ? "animate-spin" : ""}`} />
               {reindexing ? "重建中..." : "重建索引"}
+            </Button>
+            <Button variant="secondary" onClick={runSiyuanPrecheck} disabled={checkingSiyuan}>
+              <CheckCircle2 className="h-4 w-4" />
+              {checkingSiyuan ? "检查中..." : "检查 SiYuan"}
             </Button>
             <Button variant="secondary" onClick={runSiyuanSync} disabled={syncingSiyuan}>
               <BookOpen className="h-4 w-4" />
@@ -2444,7 +2522,11 @@ function KnowledgeSection() {
                 {searching ? "搜索中..." : "搜索"}
               </Button>
             </div>
-            <CitationList items={searchResult?.items ?? []} emptyText="暂无搜索结果" />
+            <CitationList
+              items={searchResult?.items ?? []}
+              emptyText="暂无搜索结果"
+              onStatus={setStatus}
+            />
           </div>
         </section>
 
@@ -2477,7 +2559,12 @@ function KnowledgeSection() {
             ) : (
               <div className="tk-muted-box">回答会基于下方引用片段生成，不会默认读取整个笔记库。</div>
             )}
-            <CitationList items={askResult?.citations ?? []} emptyText="暂无引用来源" compact />
+            <CitationList
+              items={askResult?.citations ?? []}
+              emptyText="暂无引用来源"
+              compact
+              onStatus={setStatus}
+            />
           </div>
         </section>
       </section>
@@ -2489,10 +2576,12 @@ function CitationList({
   items,
   emptyText,
   compact = false,
+  onStatus,
 }: {
   items: KnowledgeCitation[]
   emptyText: string
   compact?: boolean
+  onStatus?: (message: string) => void
 }) {
   if (items.length === 0) {
     return <div className="tk-muted-box">{emptyText}</div>
@@ -2506,10 +2595,26 @@ function CitationList({
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
               {item.title}
             </span>
+            <span className="tk-badge">{formatSourceType(item.sourceType)}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">
-            {item.url || item.path || item.documentId}
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {sourceTarget(item) || item.documentId}
+            </p>
+            <button
+              className="tk-icon-button"
+              title="打开来源"
+              disabled={!sourceTarget(item)}
+              onClick={() => openCitationSource(item, onStatus)}>
+              <Folder className="h-4 w-4" />
+            </button>
+            <button
+              className="tk-icon-button"
+              title="复制来源"
+              onClick={() => copyCitationSource(item, onStatus)}>
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
           {!compact && (
             <p className="mt-2 max-h-24 overflow-hidden whitespace-pre-wrap text-sm leading-6 text-slate-700">
               {item.content}
@@ -2884,6 +2989,47 @@ function formatSiyuanSyncStatus(result: KnowledgeSiyuanSyncResponse): string {
   const base = `SiYuan 同步${result.ok ? "完成" : "完成但有错误"}：扫描 ${result.notebooksScanned} 个笔记本，发现 ${result.documentsFound} 篇文档，更新 ${result.documentsIndexed} 篇，跳过 ${result.documentsSkipped} 篇`
   if (result.errors.length === 0) return base
   return `${base}；${result.errors.slice(0, 2).join("；")}`
+}
+
+function sourceTarget(item: KnowledgeCitation): string {
+  return item.url || item.path || ""
+}
+
+async function openCitationSource(
+  item: KnowledgeCitation,
+  onStatus?: (message: string) => void,
+): Promise<void> {
+  const target = sourceTarget(item)
+  if (!target) {
+    onStatus?.("这个来源没有可打开的路径")
+    return
+  }
+  try {
+    await openExternalTarget(target)
+    onStatus?.("已打开来源")
+  } catch (err) {
+    onStatus?.(`打开来源失败: ${errorMessage(err)}`)
+  }
+}
+
+async function copyCitationSource(
+  item: KnowledgeCitation,
+  onStatus?: (message: string) => void,
+): Promise<void> {
+  const target = sourceTarget(item) || item.documentId
+  try {
+    await navigator.clipboard.writeText(target)
+    onStatus?.("来源已复制")
+  } catch (err) {
+    onStatus?.(`复制来源失败: ${errorMessage(err)}`)
+  }
+}
+
+function formatSourceType(value: string): string {
+  if (value === "siyuan") return "SiYuan"
+  if (value === "markdown") return "Markdown"
+  if (value === "tabkeep_note") return "TabKeep"
+  return value || "来源"
 }
 
 function errorMessage(err: unknown): string {
