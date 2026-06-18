@@ -1,4 +1,3 @@
-import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -10,37 +9,24 @@ if str(ROOT) not in sys.path:
 from schemas.config import NoteAdapterConfig
 from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest
 from services import storage
-from services.knowledge import db, indexing, retrieval, siyuan_sync
+from services.knowledge import indexing, retrieval, siyuan_sync
 from services.note.base import DocNode, NotebookInfo
+from tests.helpers import IsolatedBackendState
 
 
 class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.tmp_dir = ROOT.parent / "tmp" / f"knowledge-test-{self._testMethodName}"
-        if self.tmp_dir.exists():
-            shutil.rmtree(self.tmp_dir)
-        self.tmp_dir.mkdir(parents=True)
-
-        self.old_data_dir = storage.DATA_DIR
-        self.old_config_file = storage.CONFIG_FILE
-        self.old_db_path = db.DB_PATH
+        self.workspace = IsolatedBackendState(f"knowledge-test-{self._testMethodName}")
+        self.tmp_dir = self.workspace.setup()
         self.old_get_note_adapter = storage.get_note_adapter
         self.old_get_knowledge_config = storage.get_knowledge_config
         self.old_siyuan_adapter = siyuan_sync.SiYuanAdapter
 
-        storage.DATA_DIR = self.tmp_dir
-        storage.CONFIG_FILE = self.tmp_dir / "config.json"
-        db.DB_PATH = self.tmp_dir / "knowledge.db"
-
     def tearDown(self) -> None:
-        storage.DATA_DIR = self.old_data_dir
-        storage.CONFIG_FILE = self.old_config_file
-        db.DB_PATH = self.old_db_path
         storage.get_note_adapter = self.old_get_note_adapter
         storage.get_knowledge_config = self.old_get_knowledge_config
         siyuan_sync.SiYuanAdapter = self.old_siyuan_adapter
-        if self.tmp_dir.exists():
-            shutil.rmtree(self.tmp_dir)
+        self.workspace.teardown()
 
     async def test_reindex_indexes_markdown_and_skips_large_files(self) -> None:
         notes_dir = self.tmp_dir / "notes"
