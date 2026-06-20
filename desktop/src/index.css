@@ -17,8 +17,10 @@
     --tk-blue: 214 89% 54%;
     --tk-green: 111 63% 54%;
     --tk-amber: 38 92% 50%;
+    --tk-coral: 8 80% 62%;
+    --tk-mint: 160 54% 42%;
     --tk-graphite: 216 30% 17%;
-    --tk-soft: 210 40% 98%;
+    --tk-soft: 205 26% 94%;
   }
 
   * {
@@ -52,40 +54,161 @@
   textarea {
     font: inherit;
   }
+
+  ::selection {
+    background: rgb(59 130 246 / 0.18);
+  }
 }
 
 @layer components {
+  .tk-app-frame {
+    @apply h-screen overflow-hidden bg-[hsl(var(--tk-graphite))] text-[hsl(var(--tk-graphite))];
+  }
+
+  .tk-window-titlebar {
+    @apply relative flex h-9 select-none items-center justify-between bg-[hsl(var(--tk-graphite))] text-slate-200;
+    background:
+      linear-gradient(90deg, rgb(20 30 45) 0%, rgb(26 38 56) 44%, rgb(31 45 61) 100%);
+  }
+
+  .tk-window-titlebar::after {
+    content: "";
+    @apply pointer-events-none absolute left-0 right-0 top-9 h-px opacity-70;
+    background: linear-gradient(90deg, hsl(var(--tk-blue)), hsl(var(--tk-mint)), transparent 72%);
+  }
+
+  .tk-window-drag-region {
+    @apply flex h-full min-w-0 flex-1 items-center gap-2 px-4;
+  }
+
+  .tk-window-mark {
+    @apply h-2.5 w-2.5 rounded-[3px];
+    background: linear-gradient(135deg, hsl(var(--tk-blue)), hsl(var(--tk-mint)));
+    box-shadow: 0 0 0 3px rgb(255 255 255 / 0.08);
+  }
+
+  .tk-window-title {
+    @apply flex min-w-0 items-center gap-1 text-xs font-medium tracking-normal text-slate-200;
+  }
+
+  .tk-window-title span:last-child {
+    @apply text-slate-400;
+  }
+
+  .tk-window-controls {
+    @apply relative z-20 flex h-full items-center;
+  }
+
+  .tk-window-control {
+    @apply relative flex h-9 w-11 items-center justify-center text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300/60;
+  }
+
+  .tk-window-control:hover {
+    @apply bg-white/10 text-white;
+  }
+
+  .tk-window-control-close:hover {
+    @apply bg-red-500 text-white;
+  }
+
+  .tk-window-control-min {
+    @apply h-px w-3 bg-current;
+  }
+
+  .tk-window-control-max {
+    @apply h-3 w-3 rounded-[2px] border border-current;
+  }
+
+  .tk-window-control-restore {
+    @apply relative h-3 w-3 rounded-[2px] border border-current;
+  }
+
+  .tk-window-control-restore::before {
+    content: "";
+    @apply absolute -right-1 -top-1 h-3 w-3 rounded-[2px] border border-current;
+  }
+
+  .tk-window-control-x {
+    @apply relative h-3.5 w-3.5;
+  }
+
+  .tk-window-control-x::before,
+  .tk-window-control-x::after {
+    content: "";
+    @apply absolute left-1/2 top-1/2 h-px w-4 -translate-x-1/2 -translate-y-1/2 bg-current;
+  }
+
+  .tk-window-control-x::before {
+    @apply rotate-45;
+  }
+
+  .tk-window-control-x::after {
+    @apply -rotate-45;
+  }
+
   .tk-desktop-shell {
-    @apply grid min-h-screen bg-[hsl(var(--tk-soft))] text-[hsl(var(--tk-graphite))];
-    grid-template-columns: 232px minmax(0, 1fr);
+    @apply grid min-h-0 text-[hsl(var(--tk-graphite))];
+    grid-template-columns: 244px minmax(0, 1fr);
+    height: calc(100vh - 36px);
+    background:
+      linear-gradient(rgb(30 41 59 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(30 41 59 / 0.035) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(235 241 240) 0%, rgb(226 237 233) 48%, rgb(235 239 241) 100%);
+    background-size:
+      28px 28px,
+      28px 28px,
+      auto;
   }
 
   .tk-sidebar {
-    @apply flex min-h-screen flex-col border-r border-border bg-white/85 px-4 py-5;
+    @apply sticky top-0 flex h-full flex-col overflow-hidden border-r border-white/10 bg-[hsl(var(--tk-graphite))] px-4 py-5 text-slate-200 shadow-[12px_0_36px_rgb(15_23_42/0.18)];
+  }
+
+  .tk-sidebar::before {
+    content: "";
+    @apply absolute inset-y-0 left-0 w-1;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--tk-blue)) 0%,
+      hsl(var(--tk-mint)) 42%,
+      hsl(var(--tk-coral)) 100%
+    );
+  }
+
+  .tk-sidebar::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-25;
+    background:
+      repeating-linear-gradient(135deg, rgb(255 255 255 / 0.08) 0 1px, transparent 1px 14px),
+      linear-gradient(180deg, rgb(255 255 255 / 0.08), transparent 38%);
+  }
+
+  .tk-sidebar > * {
+    @apply relative z-10;
   }
 
   .tk-wordmark {
-    @apply text-xl font-semibold tracking-normal text-[hsl(var(--tk-graphite))];
+    @apply text-xl font-semibold tracking-normal text-white;
   }
 
   .tk-wordmark-accent {
-    @apply text-[hsl(var(--tk-green))];
+    @apply text-[hsl(var(--tk-mint))];
   }
 
   .tk-sidebar-nav {
-    @apply mt-8 flex flex-1 flex-col gap-1;
+    @apply mt-8 flex flex-1 flex-col gap-1.5;
   }
 
   .tk-nav-item {
-    @apply flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors;
+    @apply flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200;
   }
 
   .tk-nav-item:hover {
-    @apply bg-slate-100 text-slate-950;
+    @apply bg-white/[0.08] text-white;
   }
 
   .tk-nav-item-active {
-    @apply bg-blue-50 text-[hsl(var(--tk-blue))];
+    @apply bg-white/[0.13] text-white shadow-sm ring-1 ring-white/10;
   }
 
   .tk-main {
@@ -93,7 +216,23 @@
   }
 
   .tk-topbar {
-    @apply mb-5 flex items-center justify-between gap-4;
+    @apply relative mb-5 flex items-start justify-between gap-4 overflow-hidden rounded-lg border border-white/60 bg-[rgb(240_246_244/0.84)] px-4 py-3 shadow-[0_18px_45px_rgb(15_23_42/0.07)] ring-1 ring-slate-900/5 backdrop-blur;
+  }
+
+  .tk-topbar::before {
+    content: "";
+    @apply absolute inset-x-0 top-0 h-1;
+    background: linear-gradient(90deg, hsl(var(--tk-blue)), hsl(var(--tk-mint)), hsl(var(--tk-coral)));
+  }
+
+  .tk-topbar::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-60;
+    background: linear-gradient(115deg, transparent 0 58%, rgb(255 255 255 / 0.42) 58% 59%, transparent 59% 100%);
+  }
+
+  .tk-topbar > * {
+    @apply relative z-10;
   }
 
   .tk-page-title {
@@ -101,7 +240,7 @@
   }
 
   .tk-page-subtitle {
-    @apply mt-1 text-sm text-muted-foreground;
+    @apply mt-1 text-sm text-slate-600;
   }
 
   .tk-status-grid {
@@ -110,11 +249,11 @@
   }
 
   .tk-status-card {
-    @apply flex min-h-20 items-center gap-3 rounded-lg border border-border bg-white px-4 py-3;
+    @apply flex min-h-20 items-center gap-3 rounded-lg border border-white/65 bg-[rgb(246_249_247)] px-4 py-3 shadow-[0_12px_30px_rgb(15_23_42/0.05)] ring-1 ring-slate-900/5 transition-colors hover:bg-[rgb(249_251_249)];
   }
 
   .tk-status-dot {
-    @apply h-2.5 w-2.5 rounded-full bg-[hsl(var(--tk-green))];
+    @apply h-2.5 w-2.5 rounded-full bg-[hsl(var(--tk-green))] shadow-[0_0_0_4px_rgb(34_197_94/0.12)];
   }
 
   .tk-status-dot-warning {
@@ -142,15 +281,25 @@
   }
 
   .tk-panel {
-    @apply rounded-lg border border-border bg-white;
+    @apply relative overflow-hidden rounded-lg border border-white/70 bg-[rgb(248_250_248)] shadow-[0_18px_45px_rgb(15_23_42/0.06)] ring-1 ring-slate-900/5;
+  }
+
+  .tk-panel::before {
+    content: "";
+    @apply absolute inset-y-0 left-0 w-1 opacity-75;
+    background: linear-gradient(180deg, hsl(var(--tk-blue)), hsl(var(--tk-mint)));
+  }
+
+  .tk-panel > * {
+    @apply relative z-10;
   }
 
   .tk-panel-header {
-    @apply flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-3;
+    @apply flex min-h-12 items-center justify-between gap-3 border-b border-slate-200/65 bg-[rgb(231_239_236/0.72)] px-4 py-3;
   }
 
   .tk-panel-title {
-    @apply text-sm font-semibold text-slate-900;
+    @apply text-sm font-semibold text-slate-950;
   }
 
   .tk-panel-body {
@@ -173,7 +322,7 @@
   .tk-input,
   .tk-select,
   .tk-textarea {
-    @apply w-full rounded-md border border-input bg-white px-3 text-sm text-slate-900 outline-none transition-colors;
+    @apply w-full rounded-md border border-slate-200/80 bg-[rgb(250_252_250)] px-3 text-sm text-slate-900 shadow-inner shadow-white/50 outline-none transition-colors placeholder:text-slate-400;
   }
 
   .tk-input,
@@ -192,11 +341,11 @@
   }
 
   .tk-command-bar {
-    @apply flex flex-wrap items-center gap-2 border-t border-border bg-slate-50/80 px-4 py-3;
+    @apply flex flex-wrap items-center gap-2 border-t border-slate-200/65 bg-[rgb(232_240_237/0.78)] px-4 py-3;
   }
 
   .tk-primary-button {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[hsl(var(--tk-blue))] px-3 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[hsl(var(--tk-blue))] px-3 text-sm font-medium text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .tk-primary-button:hover:not(:disabled) {
@@ -204,7 +353,7 @@
   }
 
   .tk-secondary-button {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input bg-white px-3 text-sm font-medium text-slate-700 transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200/80 bg-[rgb(248_250_248)] px-3 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-white/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-100 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .tk-secondary-button:hover:not(:disabled) {
@@ -212,7 +361,7 @@
   }
 
   .tk-ghost-button {
-    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-9 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-100 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .tk-ghost-button:hover:not(:disabled) {
@@ -220,7 +369,7 @@
   }
 
   .tk-icon-button {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors;
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-45;
   }
 
   .tk-icon-button:hover {
@@ -228,7 +377,7 @@
   }
 
   .tk-badge {
-    @apply inline-flex h-6 items-center rounded-md bg-slate-100 px-2 text-xs font-medium text-slate-600;
+    @apply inline-flex h-6 items-center rounded-md bg-slate-100 px-2 text-xs font-medium text-slate-600 ring-1 ring-slate-200/70;
   }
 
   .tk-badge-success {
@@ -245,7 +394,47 @@
   }
 
   .tk-muted-box {
-    @apply rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-muted-foreground;
+    @apply rounded-md border border-dashed border-slate-200/80 bg-[rgb(238_245_242/0.78)] px-3 py-2 text-sm leading-6 text-slate-600;
+  }
+
+  .tk-surface-soft {
+    @apply rounded-md border border-white/65 bg-[rgb(238_245_242/0.78)] ring-1 ring-slate-900/5;
+  }
+
+  .tk-card-hover {
+    @apply transition-colors hover:border-blue-200 hover:bg-blue-50/30;
+  }
+
+  .tk-visual-strip {
+    @apply grid gap-3 border-b border-slate-200/65 bg-[rgb(229_238_235/0.82)] px-4 py-3 md:grid-cols-3;
+  }
+
+  .tk-visual-tile {
+    --tile-accent: hsl(var(--tk-blue));
+    @apply relative overflow-hidden rounded-md border border-white/70 bg-[rgb(247_250_248)] px-3 py-2.5 pl-4 shadow-[0_10px_26px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5;
+  }
+
+  .tk-visual-tile::before {
+    content: "";
+    @apply absolute inset-y-0 left-0 w-1;
+    background: var(--tile-accent);
+  }
+
+  .tk-visual-tile::after {
+    content: "";
+    @apply pointer-events-none absolute -right-5 -top-8 h-24 w-20 rotate-12 border border-slate-200/50 bg-white/20;
+  }
+
+  .tk-visual-tile-mint {
+    --tile-accent: hsl(var(--tk-mint));
+  }
+
+  .tk-visual-tile-amber {
+    --tile-accent: hsl(var(--tk-amber));
+  }
+
+  .tk-visual-index {
+    @apply text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500;
   }
 
   .tk-translate-grid {

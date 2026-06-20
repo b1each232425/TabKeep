@@ -58,6 +58,7 @@ import {
   checkBackendHealth,
   clearCachedApiToken,
   closeRegionBox,
+  exportKnowledgeTopic,
   finishScreenSelection,
   enrichKnowledgeTopics,
   getCachedApiToken,
@@ -304,8 +305,10 @@ function DesktopApp() {
   }
 
   return (
-    <div className="tk-desktop-shell">
-      <aside className="tk-sidebar">
+    <div className="tk-app-frame">
+      <DesktopTitlebar />
+      <div className="tk-desktop-shell">
+        <aside className="tk-sidebar">
         <div>
           <div className="tk-wordmark">
             Tab<span className="tk-wordmark-accent">Keep</span>
@@ -339,9 +342,9 @@ function DesktopApp() {
             刷新状态
           </Button>
         </div>
-      </aside>
+        </aside>
 
-      <main className="tk-main">
+        <main className="tk-main">
         {section === "overview" && (
           <OverviewSection
             tabs={tabs}
@@ -372,7 +375,71 @@ function DesktopApp() {
         {section === "notes" && (
           <NotesSection config={noteAdapter} setConfig={setNoteAdapter} />
         )}
-      </main>
+        </main>
+      </div>
+    </div>
+  )
+}
+
+function DesktopTitlebar() {
+  const [maximized, setMaximized] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    getCurrentWindow()
+      .isMaximized()
+      .then((value) => {
+        if (mounted) setMaximized(value)
+      })
+      .catch(() => {})
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const startDrag = async (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail > 1) return
+    try {
+      await getCurrentWindow().startDragging()
+    } catch {
+      // Native dragging may be rejected if the pointer is already released.
+    }
+  }
+
+  const minimize = async () => {
+    await getCurrentWindow().minimize()
+  }
+
+  const toggleMaximize = async () => {
+    const currentWindow = getCurrentWindow()
+    await currentWindow.toggleMaximize()
+    setMaximized(await currentWindow.isMaximized())
+  }
+
+  const close = async () => {
+    await getCurrentWindow().close()
+  }
+
+  return (
+    <div className="tk-window-titlebar">
+      <div className="tk-window-drag-region" onMouseDown={startDrag} onDoubleClick={toggleMaximize}>
+        <div className="tk-window-mark" aria-hidden="true" />
+        <div className="tk-window-title">
+          <span>TabKeep</span>
+          <span>Desktop</span>
+        </div>
+      </div>
+      <div className="tk-window-controls">
+        <button className="tk-window-control" type="button" onClick={minimize} aria-label="最小化">
+          <span className="tk-window-control-min" />
+        </button>
+        <button className="tk-window-control" type="button" onClick={toggleMaximize} aria-label={maximized ? "还原" : "最大化"}>
+          <span className={maximized ? "tk-window-control-restore" : "tk-window-control-max"} />
+        </button>
+        <button className="tk-window-control tk-window-control-close" type="button" onClick={close} aria-label="关闭">
+          <span className="tk-window-control-x" />
+        </button>
+      </div>
     </div>
   )
 }
@@ -2681,6 +2748,7 @@ function TopicMapPanel({
   const [topicDetailLoading, setTopicDetailLoading] = useState(false)
   const [topicRebuilding, setTopicRebuilding] = useState(false)
   const [topicEnriching, setTopicEnriching] = useState(false)
+  const [topicExporting, setTopicExporting] = useState(false)
   const [topicAsking, setTopicAsking] = useState(false)
 
   const selectedTopic = topicDetail?.topic ?? topicResult?.topics.find((topic) => topic.id === selectedTopicId) ?? null
@@ -2792,6 +2860,30 @@ function TopicMapPanel({
     }
   }
 
+  const exportCurrentTopic = async () => {
+    if (!selectedTopicId) return
+    setTopicExporting(true)
+    try {
+      const result = await exportKnowledgeTopic(selectedTopicId)
+      if (!result.ok) {
+        onStatus(result.error ?? "主题目录页导出失败")
+        return
+      }
+      onStatus("主题目录页已写入笔记软件")
+      if (result.openTarget) {
+        try {
+          await openExternalTarget(result.openTarget)
+        } catch (err) {
+          onStatus(`主题目录页已生成，但打开失败: ${errorMessage(err)}`)
+        }
+      }
+    } catch (err) {
+      onStatus(`主题目录页导出失败: ${errorMessage(err)}`)
+    } finally {
+      setTopicExporting(false)
+    }
+  }
+
   const askCurrentTopic = async () => {
     if (!selectedTopic) return
     setTopicAsking(true)
@@ -2822,7 +2914,7 @@ function TopicMapPanel({
   }
 
   return (
-    <section className="tk-panel">
+    <section className="tk-panel overflow-hidden">
       <div className="tk-panel-header">
         <div>
           <h2 className="tk-panel-title">主题知识地图</h2>
@@ -2839,9 +2931,33 @@ function TopicMapPanel({
         </div>
       </div>
 
-      <div className="tk-panel-body">
-        <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-          <aside className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="tk-visual-strip">
+        <div className="tk-visual-tile">
+          <div className="min-w-0">
+            <div className="tk-visual-index">01 / SEARCH</div>
+            <div className="text-xs font-semibold text-slate-900">搜主题</div>
+            <div className="truncate text-xs text-muted-foreground">按关键词、来源或摘要定位知识区域</div>
+          </div>
+        </div>
+        <div className="tk-visual-tile tk-visual-tile-mint">
+          <div className="min-w-0">
+            <div className="tk-visual-index">02 / SOURCE</div>
+            <div className="text-xs font-semibold text-slate-900">回到原笔记</div>
+            <div className="truncate text-xs text-muted-foreground">打开 Obsidian / SiYuan / Markdown 来源</div>
+          </div>
+        </div>
+        <div className="tk-visual-tile tk-visual-tile-amber">
+          <div className="min-w-0">
+            <div className="tk-visual-index">03 / MAP</div>
+            <div className="text-xs font-semibold text-slate-900">沉淀目录页</div>
+            <div className="truncate text-xs text-muted-foreground">把主题地图写回笔记软件形成 MOC</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="tk-panel-body bg-[rgb(235_243_240/0.52)]">
+        <div className="grid items-start gap-4 xl:grid-cols-[310px_minmax(0,1fr)_360px]">
+          <aside className="sticky top-4 space-y-4 rounded-md border border-white/70 bg-[rgb(247_250_248)] p-3 shadow-[0_14px_34px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
             <div className="grid gap-3">
               <label className="tk-field">
                 <span className="tk-label">关键词</span>
@@ -2884,25 +3000,36 @@ function TopicMapPanel({
                 topicResult.topics.map((topic) => (
                   <button
                     key={topic.id}
-                    className={`rounded-md border bg-white px-3 py-2 text-left transition-colors ${
+                    className={`group relative overflow-hidden rounded-md border bg-[rgb(250_252_250)] px-3 py-3 text-left transition-colors ${
                       selectedTopicId === topic.id
-                        ? "border-blue-300 ring-2 ring-blue-100"
-                        : "border-slate-200 hover:border-blue-200"
+                        ? "border-blue-300 bg-blue-50/45 ring-2 ring-blue-100"
+                        : "border-white/70 ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-slate-50"
                     }`}
                     onClick={() => selectTopic(topic)}>
+                    <span
+                      className={`absolute inset-y-0 left-0 w-1 ${
+                        selectedTopicId === topic.id ? "bg-blue-500" : "bg-transparent group-hover:bg-blue-200"
+                      }`}
+                    />
                     <div className="flex items-start justify-between gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
                         {topic.title}
                       </span>
-                      <span className="tk-badge">{topic.documentCount}</span>
+                      <span className="tk-badge">{topic.documentCount} 篇</span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{topic.summary}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {topic.keywords.slice(0, 3).map((keyword) => (
-                        <span key={keyword} className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                        <span key={keyword} className="rounded-md bg-[rgb(241_247_244)] px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
                           {keyword}
                         </span>
                       ))}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                      <span>{Math.round(topic.confidence * 100)}% 置信</span>
+                      {topic.aiEnhanced && (
+                        <span className="rounded-sm bg-blue-100 px-1.5 py-0.5 font-medium text-blue-700">AI 整理</span>
+                      )}
                     </div>
                   </button>
                 ))
@@ -2914,7 +3041,7 @@ function TopicMapPanel({
             </div>
           </aside>
 
-          <main className="space-y-4 rounded-md border border-slate-200 bg-white p-4">
+          <main className="space-y-4 rounded-md border border-white/70 bg-[rgb(249_251_249)] p-4 shadow-[0_16px_38px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
             {selectedTopic ? (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2930,6 +3057,10 @@ function TopicMapPanel({
                     <p className="mt-2 text-sm leading-6 text-slate-600">{selectedTopic.summary}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button variant="secondary" onClick={exportCurrentTopic} disabled={topicExporting || !selectedTopicId}>
+                      <BookOpen className={`h-4 w-4 ${topicExporting ? "animate-pulse" : ""}`} />
+                      {topicExporting ? "生成中..." : "生成目录页"}
+                    </Button>
                     <Button variant="secondary" onClick={enrichCurrentTopic} disabled={topicEnriching || !selectedTopicId}>
                       <Sparkles className={`h-4 w-4 ${topicEnriching ? "animate-pulse" : ""}`} />
                       {topicEnriching ? "整理中..." : "AI 整理"}
@@ -2941,12 +3072,15 @@ function TopicMapPanel({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {selectedTopic.keywords.map((keyword) => (
-                    <span key={keyword} className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
-                      {keyword}
-                    </span>
-                  ))}
+                <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
+                  <div className="mb-2 text-xs font-semibold text-slate-700">主题关键词</div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTopic.keywords.map((keyword) => (
+                      <span key={keyword} className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5">
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 {topicDetailLoading ? (
@@ -2962,14 +3096,14 @@ function TopicMapPanel({
                         {(topicDetail?.documents ?? []).map((document) => (
                           <div
                             key={document.documentId}
-                            className={`rounded-md border p-3 text-left transition-colors ${
+                            className={`group rounded-md border p-3 text-left transition-colors ${
                               selectedTopicDocument?.documentId === document.documentId
-                                ? "border-blue-300 bg-blue-50/40"
-                                : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/20"
+                                ? "border-blue-300 bg-blue-50/50 ring-2 ring-blue-100"
+                                : "border-white/70 ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-blue-50/25"
                             }`}
                             onDoubleClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}>
                             <div className="mb-1 flex items-center gap-2">
-                              <BookOpen className="h-4 w-4 text-blue-600" />
+                              <span className="h-7 w-1.5 rounded-full bg-blue-400" />
                               <button
                                 className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900 hover:text-blue-700"
                                 title="查看这篇笔记在当前主题中的片段"
@@ -2978,7 +3112,7 @@ function TopicMapPanel({
                               </button>
                               <span className="tk-badge">{formatSourceType(document.sourceType)}</span>
                               <button
-                                className="tk-icon-button h-7 w-7"
+                                className="tk-icon-button h-7 w-7 bg-white/80 ring-1 ring-slate-200/70 group-hover:text-blue-700"
                                 title={formatTopicOpenTitle(document, noteAdapter)}
                                 onClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}
                                 disabled={!topicDocumentOpenTarget(document, noteAdapter)}>
@@ -2990,7 +3124,14 @@ function TopicMapPanel({
                               onClick={() => setSelectedTopicDocument(document)}
                               title="单击选中，双击卡片可打开原笔记">
                               <p className="line-clamp-2 text-xs leading-5 text-slate-600">{document.snippet}</p>
-                              <p className="mt-2 text-xs text-muted-foreground">{document.reason}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <span>{document.reason}</span>
+                                {document.anchor && (
+                                  <span className="rounded-md bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">
+                                    跳到 {document.anchor}
+                                  </span>
+                                )}
+                              </div>
                             </button>
                           </div>
                         ))}
@@ -2998,11 +3139,11 @@ function TopicMapPanel({
                     </section>
 
                     <section className="grid gap-3 md:grid-cols-2">
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                      <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
                         <h4 className="mb-2 text-sm font-semibold text-slate-900">为什么归类</h4>
                         <div className="grid max-h-48 gap-2 overflow-auto pr-1">
                           {(topicDetail?.evidence ?? []).slice(0, 16).map((item) => (
-                            <div key={item.id} className="rounded-md bg-white px-3 py-2 text-xs">
+                            <div key={item.id} className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-xs ring-1 ring-slate-900/5">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="font-medium text-slate-900">{item.label}</span>
                                 <span className="tk-badge">{formatTopicEvidenceKind(item.kind)}</span>
@@ -3013,14 +3154,14 @@ function TopicMapPanel({
                         </div>
                       </div>
 
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                      <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
                         <h4 className="mb-2 text-sm font-semibold text-slate-900">相关主题</h4>
                         <div className="grid max-h-48 gap-2 overflow-auto pr-1">
                           {selectedTopicRelations.length > 0 ? (
                             selectedTopicRelations.slice(0, 10).map(({ relation, topic }) => (
                               <button
                                 key={relation.id}
-                                className="rounded-md bg-white px-3 py-2 text-left text-xs transition-colors hover:bg-blue-50"
+                                className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-left text-xs ring-1 ring-slate-900/5 transition-colors hover:border-blue-200/80 hover:bg-blue-50"
                                 onClick={() => selectTopic(topic)}>
                                 <div className="font-medium text-slate-900">{topic.title}</div>
                                 <div className="mt-1 text-muted-foreground">{relation.label}</div>
@@ -3049,26 +3190,42 @@ function TopicMapPanel({
             )}
           </main>
 
-          <aside className="space-y-3 rounded-md border border-slate-200 bg-white p-3">
+          <aside className="sticky top-4 space-y-3 rounded-md border border-white/70 bg-[rgb(247_250_248)] p-3 shadow-[0_14px_34px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
             {selectedTopicDocument ? (
               <>
-                <div>
-                  <span className="tk-badge">{formatSourceType(selectedTopicDocument.sourceType)}</span>
-                  <h3 className="mt-2 text-sm font-semibold leading-6 text-slate-900">
+                <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="tk-badge">{formatSourceType(selectedTopicDocument.sourceType)}</span>
+                    {selectedTopicDocument.anchor && (
+                      <span className="rounded-md bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                        可定位
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm font-semibold leading-6 text-slate-950">
                     {selectedTopicDocument.title}
                   </h3>
-                  <p className="mt-1 break-all text-xs text-muted-foreground">
+                  <p className="mt-2 break-all rounded-md bg-white/70 px-2 py-1.5 text-xs text-muted-foreground ring-1 ring-slate-200/70">
                     {topicDocumentTarget(selectedTopicDocument) || selectedTopicDocument.documentId}
                   </p>
                 </div>
-                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
-                  {selectedTopicDocument.snippet || "暂无片段"}
+                <div className="rounded-md border border-white/70 bg-white/70 p-3 ring-1 ring-slate-900/5">
+                  <div className="mb-2 text-xs font-semibold text-slate-900">关键片段</div>
+                  <div className="text-sm leading-6 text-slate-700">
+                    {selectedTopicDocument.snippet || "暂无片段"}
+                  </div>
                 </div>
-                <div className="rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                <div className="rounded-md border border-white/70 bg-white/70 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-900/5">
                   <div className="mb-1 font-semibold text-slate-900">归类原因</div>
                   {selectedTopicDocument.reason || "来自主题聚类"}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                {selectedTopicDocument.anchor && (
+                  <div className="rounded-md border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900">
+                    <div className="mb-1 font-semibold">可定位标题</div>
+                    {selectedTopicDocument.anchor}
+                  </div>
+                )}
+                <div className="grid gap-2">
                   <Button
                     variant="secondary"
                     onClick={() => openTopicDocumentSource(selectedTopicDocument, onStatus, noteAdapter)}
@@ -3076,16 +3233,18 @@ function TopicMapPanel({
                     <Folder className="h-4 w-4" />
                     打开笔记
                   </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => copyTopicDocumentSource(selectedTopicDocument, onStatus)}>
-                    <Copy className="h-4 w-4" />
-                    复制来源
-                  </Button>
-                  <Button variant="secondary" onClick={copyTopicCitation}>
-                    <Clipboard className="h-4 w-4" />
-                    复制引用
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => copyTopicDocumentSource(selectedTopicDocument, onStatus)}>
+                      <Copy className="h-4 w-4" />
+                      复制来源
+                    </Button>
+                    <Button variant="secondary" onClick={copyTopicCitation}>
+                      <Clipboard className="h-4 w-4" />
+                      复制引用
+                    </Button>
+                  </div>
                 </div>
               </>
             ) : (
@@ -3957,9 +4116,9 @@ function StatusCard({
   return (
     <div className="tk-status-card">
       <span className={dotClass} />
-      <div>
+      <div className="min-w-0">
         <p className="tk-status-title">{title}</p>
-        <p className={valueClass}>{value}</p>
+        <p className={`${valueClass} truncate`}>{value}</p>
       </div>
     </div>
   )
@@ -3974,11 +4133,15 @@ function Notice({
 }) {
   const className =
     tone === "success"
-      ? "border-green-100 bg-green-50 text-green-700"
+      ? "border-green-100 bg-green-50 text-green-700 before:bg-green-500"
       : tone === "warning"
-        ? "border-amber-100 bg-amber-50 text-amber-800"
-        : "border-blue-100 bg-blue-50 text-blue-800"
-  return <div className={`rounded-md border px-3 py-2 text-sm ${className}`}>{children}</div>
+        ? "border-amber-100 bg-amber-50 text-amber-800 before:bg-amber-500"
+        : "border-blue-100 bg-blue-50 text-blue-800 before:bg-blue-500"
+  return (
+    <div className={`relative overflow-hidden rounded-md border px-3 py-2 pl-4 text-sm leading-6 before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-[''] ${className}`}>
+      {children}
+    </div>
+  )
 }
 
 function Button({
@@ -4007,8 +4170,9 @@ function Checkbox({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-slate-700">
+    <label className="flex items-center gap-3 rounded-md border border-white/70 bg-[rgb(247_250_248)] px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-900/5 transition-colors hover:bg-[rgb(250_252_250)]">
       <input
+        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-100"
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
@@ -4587,13 +4751,13 @@ function topicDocumentTarget(item: KnowledgeTopicDocument): string {
 
 function topicDocumentOpenTarget(item: KnowledgeTopicDocument, noteAdapter?: NoteAdapterConfig): string {
   if (item.sourceType === "markdown" && item.path && noteAdapter?.provider === "obsidian" && noteAdapter.vault) {
-    const obsidianTarget = obsidianOpenUri(item.path, noteAdapter.vault)
+    const obsidianTarget = obsidianOpenUri(item.path, noteAdapter.vault, item.anchor)
     if (obsidianTarget) return obsidianTarget
   }
   return topicDocumentTarget(item)
 }
 
-function obsidianOpenUri(path: string, vault: string): string {
+function obsidianOpenUri(path: string, vault: string, anchor?: string | null): string {
   const normalizedPath = normalizeLocalPath(path)
   const normalizedVault = normalizeLocalPath(vault).replace(/\/+$/, "")
   if (!normalizedPath || !normalizedVault) return ""
@@ -4605,7 +4769,8 @@ function obsidianOpenUri(path: string, vault: string): string {
   const vaultName = normalizedVault.split("/").filter(Boolean).pop()
   const relativeFile = normalizedPath.slice(normalizedVault.length).replace(/^\/+/, "").replace(/\.md$/i, "")
   if (!vaultName || !relativeFile) return ""
-  return `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(relativeFile)}`
+  const target = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(relativeFile)}`
+  return anchor ? `${target}&heading=${encodeURIComponent(anchor)}` : target
 }
 
 function normalizeLocalPath(value: string): string {
@@ -4614,7 +4779,9 @@ function normalizeLocalPath(value: string): string {
 
 function formatTopicOpenTitle(item: KnowledgeTopicDocument, noteAdapter?: NoteAdapterConfig): string {
   if (item.sourceType === "siyuan") return "在 SiYuan 中打开"
-  if (item.sourceType === "markdown" && noteAdapter?.provider === "obsidian") return "在 Obsidian 中打开"
+  if (item.sourceType === "markdown" && noteAdapter?.provider === "obsidian") {
+    return item.anchor ? `在 Obsidian 中打开到标题：${item.anchor}` : "在 Obsidian 中打开"
+  }
   if (item.url) return "打开网页来源"
   return "打开笔记来源"
 }
