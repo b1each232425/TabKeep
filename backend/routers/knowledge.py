@@ -18,6 +18,7 @@ from schemas.knowledge import (
     KnowledgeTopicDetailResponse,
     KnowledgeTopicEnrichRequest,
     KnowledgeTopicEnrichResponse,
+    KnowledgeTopicExportResponse,
     KnowledgeTopicListResponse,
     KnowledgeTopicRebuildResponse,
 )
@@ -102,6 +103,11 @@ def rebuild_topics() -> KnowledgeTopicRebuildResponse:
 @router.post("/topics/enrich", response_model=KnowledgeTopicEnrichResponse, summary="AI 整理主题知识地图")
 async def enrich_topics(req: KnowledgeTopicEnrichRequest) -> KnowledgeTopicEnrichResponse:
     return await service.enrich_topics(req.topicId)
+
+
+@router.post("/topics/{topic_id}/export", response_model=KnowledgeTopicExportResponse, summary="导出主题目录页到笔记软件")
+async def export_topic(topic_id: str) -> KnowledgeTopicExportResponse:
+    return await service.export_topic(topic_id)
 
 
 @router.get("/topics/{topic_id}", response_model=KnowledgeTopicDetailResponse, summary="读取主题详情")

@@ -230,6 +230,7 @@ export interface KnowledgeTopicDocument {
   url?: string | null
   path?: string | null
   noteId?: string | null
+  anchor?: string | null
   score: number
   reason: string
   snippet: string
@@ -280,6 +281,15 @@ export interface KnowledgeTopicRebuildResponse {
 export interface KnowledgeTopicEnrichResponse {
   ok: boolean
   topics: number
+  error?: string | null
+}
+
+export interface KnowledgeTopicExportResponse {
+  ok: boolean
+  topicId: string
+  noteId?: string | null
+  openTarget?: string | null
+  provider?: string | null
   error?: string | null
 }
 

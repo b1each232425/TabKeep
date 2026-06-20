@@ -14,6 +14,7 @@ import type {
   KnowledgeStats,
   KnowledgeTopicDetailResponse,
   KnowledgeTopicEnrichResponse,
+  KnowledgeTopicExportResponse,
   KnowledgeTopicListResponse,
   KnowledgeTopicRebuildResponse,
   ModelConfig,
@@ -280,6 +281,13 @@ export async function enrichKnowledgeTopics(topicId?: string | null): Promise<Kn
   return backendRequest<KnowledgeTopicEnrichResponse>("POST", "/knowledge/topics/enrich", {
     topicId: topicId || null,
   })
+}
+
+export async function exportKnowledgeTopic(topicId: string): Promise<KnowledgeTopicExportResponse> {
+  return backendRequest<KnowledgeTopicExportResponse>(
+    "POST",
+    `/knowledge/topics/${encodeURIComponent(topicId)}/export`,
+  )
 }
 
 export async function syncConfigToBackend(partial: {

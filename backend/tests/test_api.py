@@ -212,6 +212,12 @@ class ApiTestCase(unittest.TestCase):
         self.assertGreaterEqual(len(detail_data["documents"]), 1)
         self.assertGreaterEqual(len(detail_data["evidence"]), 1)
 
+        export = self.client.post(f"/knowledge/topics/{topic_id}/export", headers=self.headers)
+        self.assertEqual(export.status_code, 200, export.text)
+        export_data = export.json()
+        self.assertTrue(export_data["ok"], export_data.get("error"))
+        self.assertEqual(export_data["provider"], "local")
+
 
 if __name__ == "__main__":
     unittest.main()

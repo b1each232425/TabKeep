@@ -107,6 +107,7 @@ def init_db() -> None:
                 score REAL NOT NULL DEFAULT 0,
                 reason TEXT NOT NULL DEFAULT '',
                 snippet TEXT NOT NULL DEFAULT '',
+                anchor TEXT,
                 PRIMARY KEY(topic_id, document_id),
                 FOREIGN KEY(topic_id) REFERENCES knowledge_topics(id) ON DELETE CASCADE,
                 FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
@@ -156,6 +157,7 @@ def init_db() -> None:
             );
             """
         )
+        _ensure_column(conn, "knowledge_topic_documents", "anchor", "TEXT")
 
 
 def connect() -> sqlite3.Connection:
@@ -163,6 +165,13 @@ def connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    if any(row["name"] == column for row in rows):
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 @contextmanager

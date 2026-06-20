@@ -1,13 +1,13 @@
 """
 SiYuan 笔记适配器。
 
-通过 HTTP @ http://127.0.0.1:6806 操作思源笔记,需要 Authorization Token。
+通过 HTTP @ http://127.0.0.1:6806 操作思源笔记。
 
 按职能:
   1. __init__ / _headers / _post        — 基础设施
   2. test_connection                    — 验证 token / endpoint
   3. list_notebooks                     — 列笔记本
-  4. list_docs                          — 列笔记本内文档树(扁平转嵌套)
+  4. list_docs                          — 列笔记本内文档树
   5. save                               — 主入口:新建文档或追加到现有文档
   6. _create_doc / _append_to_doc       — save 内部辅助
   7. _resolve_doc_id                    — 解析 doc 路径成 block id
@@ -42,14 +42,13 @@ class SiYuanAdapter:
         )
 
     def _headers(self) -> dict[str, str]:
-        """SiYuan 要求所有请求带 Authorization: Token xxx。"""
+        """有 Token 时带 Authorization；未启用鉴权的本机 SiYuan 允许空 header。"""
+        if not self.token:
+            return {}
         return {"Authorization": f"Token {self.token}"}
 
     async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         """通用 POST:把网络错误 / 401 / 404 / 非 JSON 响应都包成可读错误 raise 出去。"""
-        if not self.token:
-            raise RuntimeError("SiYuan Token 为空,请在 Options 的笔记集成里填写 Token")
-
         url = f"{self.endpoint}{path}"
         logger.debug(f"siyuan POST {url} payload={_truncate(payload)}")
         try:
@@ -88,10 +87,6 @@ class SiYuanAdapter:
     async def test_connection(self) -> tuple[bool, str | None]:
         """POST /api/notebook/lsNotebooks 试探。"""
         logger.info(f"siyuan test_connection -> {self.endpoint}/api/notebook/lsNotebooks")
-        if not self.token:
-            err = "SiYuan Token 为空,请在 Options 的笔记集成里填写 Token"
-            logger.warning(f"siyuan test fail: {err}")
-            return False, err
         try:
             data = await self._post("/api/notebook/lsNotebooks", {})
         except RuntimeError as e:
@@ -135,9 +130,6 @@ class SiYuanAdapter:
           - 有 target_doc → append 到现有 doc 末尾
         link / full / summary 三种模式都使用统一 Markdown 头部格式。
         """
-        if not self.token:
-            return SaveResult(ok=False, error="SiYuan Token 为空,请在 Options 的笔记集成里填写 Token")
-
         notebook_id = req.notebook_id or (self.config.defaultNotebook or "")
         if not notebook_id:
             err = "未指定 SiYuan 笔记本,请在弹窗选择或在 Options 设置默认笔记本"
@@ -173,19 +165,93 @@ class SiYuanAdapter:
     # ─────────────────────────────────────────────────────────
     async def list_docs(self, notebook_id: str) -> list[DocNode]:
         """
-        列笔记本内的文档树。SiYuan /api/filetree/listDocsByNotebook 是**扁平**返回
-        (按 path 排序),由 _build_doc_tree 按 path 拼嵌套树。
+        列笔记本内的文档树。
+
+        优先走 SiYuan 的 blocks SQL 索引,这是最稳定的文档清单来源。
+        如果 SQL 不可用,再回退到文件树接口。
         """
         logger.info(f"siyuan list_docs notebook={notebook_id}")
-        data = await self._post("/api/filetree/listDocsByNotebook", {"notebook": notebook_id})
+        try:
+            tree = await self._list_docs_by_sql(notebook_id)
+            if tree:
+                logger.info(f"siyuan list_docs sql ok: {len(tree)} 个文档")
+                return tree
+        except RuntimeError as e:
+            logger.warning(f"siyuan list_docs sql fallback: {e}")
+
+        tree = await self._list_docs_by_path(notebook_id, "/", set())
+        logger.info(f"siyuan list_docs ok: 拼出 {len(tree)} 个根节点")
+        return tree
+
+    async def _list_docs_by_sql(self, notebook_id: str) -> list[DocNode]:
+        rows = await self._query_sql(
+            "SELECT id, path, hpath, name, content, type FROM blocks "
+            f"WHERE type = 'd' AND box = '{_sql_escape(notebook_id)}' "
+            "ORDER BY hpath, path"
+        )
+        result: list[DocNode] = []
+        for row in rows:
+            doc_id = str(row.get("id") or "")
+            if not doc_id:
+                continue
+            title = (
+                str(row.get("content") or "").strip()
+                or str(row.get("name") or "").strip()
+                or str(row.get("hpath") or "").strip().split("/")[-1]
+                or doc_id
+            )
+            result.append(
+                DocNode(
+                    id=doc_id,
+                    name=_strip_siyuan_suffix(title),
+                    path=str(row.get("path") or doc_id),
+                    type="Page",
+                    children=[],
+                )
+            )
+        return result
+
+    async def _list_docs_by_path(
+        self,
+        notebook_id: str,
+        path: str,
+        visited: set[str],
+    ) -> list[DocNode]:
+        normalized_path = path or "/"
+        visit_key = f"{notebook_id}:{normalized_path}"
+        if visit_key in visited:
+            return []
+        visited.add(visit_key)
+
+        data = await self._post(
+            "/api/filetree/listDocsByPath",
+            {"notebook": notebook_id, "path": normalized_path},
+        )
         if data.get("code") != 0:
             raise RuntimeError(
                 f"读取 SiYuan 文档树失败: code={data.get('code')} msg={data.get('msg')!r}"
             )
-        flat = data.get("data", {}).get("files", [])
-        tree = self._build_doc_tree(flat)
-        logger.info(f"siyuan list_docs ok: {len(flat)} 个文档,拼出 {len(tree)} 个根节点")
-        return tree
+        files = data.get("data", {}).get("files", []) or []
+        result: list[DocNode] = []
+        for item in files:
+            doc_path = str(item.get("path") or "")
+            doc_id = str(item.get("id") or "")
+            if not doc_path or not doc_id:
+                continue
+            child_path = doc_path if doc_path.startswith("/") else f"/{doc_path}"
+            children: list[DocNode] = []
+            if int(item.get("subFileCount") or 0) > 0:
+                children = await self._list_docs_by_path(notebook_id, child_path, visited)
+            result.append(
+                DocNode(
+                    id=doc_id,
+                    name=_strip_siyuan_suffix(str(item.get("name") or doc_id)),
+                    path=doc_path,
+                    type=str(item.get("type") or "Page"),
+                    children=children,
+                )
+            )
+        return result
 
     async def export_markdown(self, doc_id: str) -> tuple[str, str]:
         """
@@ -193,17 +259,66 @@ class SiYuanAdapter:
 
         SiYuan 官方接口: /api/export/exportMdContent
         返回 hPath + content,其中 content 是可用于 Obsidian/Markdown/RAG 的 Markdown。
+        如果导出接口不可用,回退到 blocks SQL 拼接基础文本。
         """
         logger.info(f"siyuan export markdown doc={doc_id}")
-        data = await self._post("/api/export/exportMdContent", {"id": doc_id})
+        try:
+            data = await self._post("/api/export/exportMdContent", {"id": doc_id})
+            if data.get("code") != 0:
+                raise RuntimeError(
+                    f"导出 SiYuan Markdown 失败: code={data.get('code')} msg={data.get('msg')!r}"
+                )
+            payload = data.get("data") or {}
+            h_path = str(payload.get("hPath") or "")
+            content = str(payload.get("content") or "")
+            if content.strip():
+                return h_path, content
+            logger.warning(f"siyuan export markdown empty, fallback sql doc={doc_id}")
+        except RuntimeError as e:
+            logger.warning(f"siyuan export markdown fallback sql doc={doc_id}: {e}")
+        return await self._export_markdown_from_blocks(doc_id)
+
+    async def _export_markdown_from_blocks(self, doc_id: str) -> tuple[str, str]:
+        doc_rows = await self._query_sql(
+            "SELECT id, hpath, content, name FROM blocks "
+            f"WHERE id = '{_sql_escape(doc_id)}' LIMIT 1"
+        )
+        if not doc_rows:
+            raise RuntimeError(f"找不到 SiYuan 文档:{doc_id}")
+
+        doc = doc_rows[0]
+        title = str(doc.get("content") or doc.get("name") or doc_id).strip() or doc_id
+        h_path = str(doc.get("hpath") or f"/{title}")
+        rows = await self._query_sql(
+            "SELECT id, type, subtype, content, markdown, sort FROM blocks "
+            f"WHERE root_id = '{_sql_escape(doc_id)}' "
+            "ORDER BY sort, id"
+        )
+
+        lines = [f"# {title}"]
+        for row in rows:
+            if row.get("id") == doc_id:
+                continue
+            text = str(row.get("markdown") or row.get("content") or "").strip()
+            if not text:
+                continue
+            block_type = str(row.get("type") or "")
+            subtype = str(row.get("subtype") or "")
+            if block_type == "h":
+                level = _heading_level(subtype)
+                text = f"{'#' * level} {text.lstrip('#').strip()}"
+            lines.append(text)
+
+        return h_path, "\n\n".join(lines).strip() + "\n"
+
+    async def _query_sql(self, stmt: str) -> list[dict[str, Any]]:
+        data = await self._post("/api/query/sql", {"stmt": stmt})
         if data.get("code") != 0:
-            raise RuntimeError(
-                f"导出 SiYuan Markdown 失败: code={data.get('code')} msg={data.get('msg')!r}"
-            )
-        payload = data.get("data") or {}
-        h_path = str(payload.get("hPath") or "")
-        content = str(payload.get("content") or "")
-        return h_path, content
+            raise RuntimeError(f"SiYuan SQL 失败: code={data.get('code')} msg={data.get('msg')!r}")
+        rows = data.get("data") or []
+        if not isinstance(rows, list):
+            raise RuntimeError("SiYuan SQL 返回格式异常")
+        return rows
 
     @staticmethod
     def _build_doc_tree(flat: list[dict]) -> list[DocNode]:
@@ -327,3 +442,17 @@ def _truncate(obj: Any, limit: int = 200) -> str:
     if len(s) > limit:
         return s[:limit] + f"... (truncated, total {len(s)} chars)"
     return s
+
+
+def _strip_siyuan_suffix(name: str) -> str:
+    return name[:-3] if name.endswith(".sy") else name
+
+
+def _sql_escape(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _heading_level(subtype: str) -> int:
+    if len(subtype) == 2 and subtype.startswith("h") and subtype[1].isdigit():
+        return max(1, min(6, int(subtype[1])))
+    return 2

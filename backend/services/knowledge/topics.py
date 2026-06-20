@@ -5,22 +5,28 @@ import math
 import re
 from dataclasses import dataclass, field
 from itertools import combinations
+from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import quote
 
 from schemas.knowledge import (
     KnowledgeTopic,
     KnowledgeTopicDetailResponse,
     KnowledgeTopicDocument,
     KnowledgeTopicEnrichResponse,
+    KnowledgeTopicExportResponse,
     KnowledgeTopicEvidence,
     KnowledgeTopicListResponse,
     KnowledgeTopicRebuildResponse,
     KnowledgeTopicRelation,
     KnowledgeTopicStats,
 )
+from schemas.config import NoteAdapterConfig
 from services import storage
 from services.knowledge import db, graph, vector_store
 from services.llm import chat_completion
+from services.note import build_note_adapter
+from services.note.base import SaveRequest
 
 MAX_TOPICS = 120
 MAX_TOPIC_DOCUMENTS = 30
@@ -49,6 +55,7 @@ class TopicDraft:
     document_scores: dict[str, float] = field(default_factory=dict)
     document_reasons: dict[str, set[str]] = field(default_factory=dict)
     document_snippets: dict[str, str] = field(default_factory=dict)
+    document_anchors: dict[str, str] = field(default_factory=dict)
     evidence: list[tuple[str, str, str, float]] = field(default_factory=list)
 
     def add_document(
@@ -64,6 +71,9 @@ class TopicDraft:
         self.document_scores[document.id] = self.document_scores.get(document.id, 0) + score
         self.document_reasons.setdefault(document.id, set()).add(reason)
         self.document_snippets.setdefault(document.id, _snippet(document.content, evidence_label))
+        anchor = _preferred_anchor(document, evidence_kind, evidence_label)
+        if anchor and document.id not in self.document_anchors:
+            self.document_anchors[document.id] = anchor
         self.evidence.append((evidence_kind, evidence_label, document.id, score))
 
 
@@ -118,8 +128,8 @@ def rebuild_topics() -> KnowledgeTopicRebuildResponse:
             )[:MAX_TOPIC_DOCUMENTS]:
                 conn.execute(
                     """
-                    INSERT INTO knowledge_topic_documents (topic_id, document_id, score, reason, snippet)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO knowledge_topic_documents (topic_id, document_id, score, reason, snippet, anchor)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
                         draft.id,
@@ -127,6 +137,7 @@ def rebuild_topics() -> KnowledgeTopicRebuildResponse:
                         score,
                         "、".join(sorted(draft.document_reasons.get(document_id, []))),
                         draft.document_snippets.get(document_id, ""),
+                        draft.document_anchors.get(document_id),
                     ),
                 )
                 topic_document_count += 1
@@ -237,6 +248,7 @@ def get_topic_detail(topic_id: str) -> KnowledgeTopicDetailResponse:
                 td.score,
                 td.reason,
                 td.snippet,
+                td.anchor,
                 d.title,
                 d.source_type,
                 d.url,
@@ -279,6 +291,7 @@ def get_topic_detail(topic_id: str) -> KnowledgeTopicDetailResponse:
                 url=row["url"],
                 path=row["path"],
                 noteId=row["note_id"],
+                anchor=row["anchor"],
                 score=row["score"],
                 reason=row["reason"],
                 snippet=row["snippet"],
@@ -306,6 +319,52 @@ def get_topic_detail(topic_id: str) -> KnowledgeTopicDetailResponse:
             )
             for row in relation_rows
         ],
+    )
+
+
+async def export_topic(topic_id: str) -> KnowledgeTopicExportResponse:
+    detail = get_topic_detail(topic_id)
+    if not detail.ok or not detail.topic:
+        return KnowledgeTopicExportResponse(ok=False, topicId=topic_id, error=detail.error or "主题不存在")
+
+    config = storage.get_note_adapter()
+    if not config:
+        return KnowledgeTopicExportResponse(ok=False, topicId=topic_id, error="未配置笔记集成")
+
+    content = _build_topic_moc_markdown(detail, config)
+    adapter = build_note_adapter(config)
+    req = SaveRequest(
+        title=f"主题地图 - {detail.topic.title}",
+        url=f"tabkeep://knowledge/topics/{topic_id}",
+        content=content,
+        excerpt=detail.topic.summary,
+        notebook_id=_topic_export_notebook(config),
+        target_doc=None,
+        mode="summary",
+    )
+    try:
+        result = await adapter.save(req)
+    except Exception as exc:
+        return KnowledgeTopicExportResponse(
+            ok=False,
+            topicId=topic_id,
+            provider=config.provider,
+            error=f"导出主题目录失败: {type(exc).__name__}: {exc}",
+        )
+    if not result.ok:
+        return KnowledgeTopicExportResponse(
+            ok=False,
+            topicId=topic_id,
+            provider=config.provider,
+            error=result.error or "导出主题目录失败",
+        )
+
+    return KnowledgeTopicExportResponse(
+        ok=True,
+        topicId=topic_id,
+        noteId=result.note_id,
+        openTarget=_export_open_target(result.note_id, config),
+        provider=config.provider,
     )
 
 
@@ -586,6 +645,19 @@ def _extract_path_topics(path: str | None) -> list[str]:
     return [_clean_label(part) for part in parts[-3:-1] if part and not part.endswith(".md")]
 
 
+def _preferred_anchor(document: TopicDocument, evidence_kind: str, evidence_label: str) -> str | None:
+    if evidence_kind == "heading":
+        return evidence_label
+    headings = graph._extract_headings(document.content)
+    if not headings:
+        return None
+    title_key = document.title.strip().lower()
+    for heading in headings:
+        if heading.strip().lower() != title_key:
+            return heading
+    return headings[0]
+
+
 def _fallback_topic_label(document: TopicDocument) -> str:
     title = _clean_label(document.title)
     if title:
@@ -659,6 +731,150 @@ def _save_enrichment(topic_id: str, payload: dict[str, Any]) -> None:
             f"UPDATE knowledge_topics SET {', '.join(updates)} WHERE id = ?",
             values,
         )
+
+
+def _build_topic_moc_markdown(
+    detail: KnowledgeTopicDetailResponse,
+    config: NoteAdapterConfig,
+) -> str:
+    assert detail.topic is not None
+    topic = detail.topic
+    lines = [
+        f"> {topic.summary}",
+        "",
+        "## 如何使用",
+        "",
+        "- 从下面的代表笔记进入原笔记继续阅读或编辑。",
+        "- 根据“为什么归类”补充标签、双链或标题，让主题地图更准确。",
+        "- 可以回到 TabKeep 围绕这个主题继续提问。",
+        "",
+        "## 代表笔记",
+        "",
+    ]
+
+    for item in detail.documents:
+        link = _topic_document_markdown_link(item, config)
+        reason = item.reason or "来自主题聚类"
+        lines.append(f"- {link}：{reason}")
+        if item.snippet:
+            lines.append(f"  - 片段：{_compact_markdown(item.snippet, 160)}")
+
+    lines.extend(["", "## 为什么归类", ""])
+    for item in detail.evidence[:24]:
+        lines.append(f"- **{_format_evidence_kind(item.kind)}**：{item.label}")
+
+    if detail.relations:
+        lines.extend(["", "## 相关主题", ""])
+        for item in detail.relations[:12]:
+            lines.append(f"- {item.label or '相关主题'}")
+
+    if topic.keywords:
+        lines.extend(["", "## 关键词", "", ", ".join(topic.keywords)])
+
+    return "\n".join(lines).strip() + "\n"
+
+
+def _topic_document_markdown_link(item: KnowledgeTopicDocument, config: NoteAdapterConfig) -> str:
+    label = _escape_markdown_text(item.title)
+    if item.sourceType == "markdown" and item.path and config.provider == "obsidian" and config.vault:
+        wikilink = _obsidian_wikilink(item, config)
+        if wikilink:
+            return wikilink
+    target = _topic_document_open_target(item, config)
+    if target:
+        return f"[{label}]({target})"
+    return label
+
+
+def _obsidian_wikilink(item: KnowledgeTopicDocument, config: NoteAdapterConfig) -> str:
+    if not item.path or not config.vault:
+        return ""
+    normalized_path = _normalize_path(item.path)
+    normalized_vault = _normalize_path(config.vault).rstrip("/")
+    if not normalized_path.lower().startswith(f"{normalized_vault.lower()}/"):
+        return ""
+    relative = normalized_path[len(normalized_vault):].lstrip("/")
+    relative = re.sub(r"\.md$", "", relative, flags=re.IGNORECASE)
+    if item.anchor:
+        relative = f"{relative}#{item.anchor}"
+    return f"[[{relative}|{item.title}]]"
+
+
+def _topic_document_open_target(item: KnowledgeTopicDocument, config: NoteAdapterConfig) -> str:
+    if item.sourceType == "siyuan" and item.noteId:
+        return f"siyuan://blocks/{quote(item.noteId)}"
+    if item.sourceType == "markdown" and item.path and config.provider == "obsidian" and config.vault:
+        target = _obsidian_open_uri(item.path, config.vault, item.anchor)
+        if target:
+            return target
+    return item.url or item.path or ""
+
+
+def _obsidian_open_uri(path: str, vault: str, anchor: str | None = None) -> str:
+    normalized_path = _normalize_path(path)
+    normalized_vault = _normalize_path(vault).rstrip("/")
+    if not normalized_path or not normalized_vault:
+        return ""
+    if not normalized_path.lower().startswith(f"{normalized_vault.lower()}/"):
+        return ""
+    vault_name = Path(normalized_vault).name
+    relative = normalized_path[len(normalized_vault):].lstrip("/")
+    relative = re.sub(r"\.md$", "", relative, flags=re.IGNORECASE)
+    if not vault_name or not relative:
+        return ""
+    target = f"obsidian://open?vault={quote(vault_name)}&file={quote(relative)}"
+    if anchor:
+        target += f"&heading={quote(anchor)}"
+    return target
+
+
+def _export_open_target(note_id: str | None, config: NoteAdapterConfig) -> str | None:
+    if not note_id:
+        return None
+    if config.provider == "siyuan":
+        return f"siyuan://blocks/{quote(note_id)}"
+    if config.provider == "obsidian" and config.vault:
+        path = str(Path(config.vault).expanduser() / note_id)
+        return _obsidian_open_uri(path, config.vault)
+    return None
+
+
+def _topic_export_notebook(config: NoteAdapterConfig) -> str:
+    if config.provider == "obsidian":
+        return "obsidian"
+    if config.provider == "local":
+        return config.defaultTargetDoc or config.defaultNotebook or "topic-map.md"
+    return config.defaultNotebook or ""
+
+
+def _normalize_path(value: str) -> str:
+    return str(Path(value).expanduser()).replace("\\", "/")
+
+
+def _compact_markdown(value: str, limit: int) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip()
+    cleaned = cleaned.replace("|", "\\|")
+    return cleaned[:limit] + ("..." if len(cleaned) > limit else "")
+
+
+def _escape_markdown_text(value: str) -> str:
+    return value.replace("[", "").replace("]", "").replace("\n", " ").strip() or "未命名笔记"
+
+
+def _format_evidence_kind(value: str) -> str:
+    if value == "tag":
+        return "标签"
+    if value == "wikilink":
+        return "双链"
+    if value == "heading":
+        return "标题"
+    if value == "path":
+        return "路径"
+    if value == "embedding":
+        return "语义相似"
+    if value == "fallback":
+        return "兜底"
+    return value or "证据"
 
 
 def _json_list(value: str | None) -> list[str]:

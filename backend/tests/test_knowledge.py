@@ -11,6 +11,7 @@ from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest
 from services import storage
 from services.knowledge import graph, indexing, retrieval, siyuan_sync, topics
 from services.note.base import DocNode, NotebookInfo
+from services.note.siyuan import SiYuanAdapter
 from tests.helpers import IsolatedBackendState
 
 
@@ -154,8 +155,19 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(detail.documents), 2)
         self.assertTrue(any(item.kind == "tag" and item.label == "rag" for item in detail.evidence))
         self.assertIn("共享标签", detail.documents[0].reason)
+        self.assertTrue(any(item.anchor == "Hybrid Search" for item in detail.documents))
         self.assertFalse(missing_model.ok)
         self.assertIn("modelConfig", missing_model.error or "")
+
+        storage._state["noteAdapter"] = NoteAdapterConfig(provider="local").model_dump()
+        exported = await topics.export_topic(topic.id)
+        self.assertTrue(exported.ok, exported.error)
+        self.assertEqual(exported.provider, "local")
+        topic_map = self.tmp_dir / "data" / "notes" / "topic-map.md"
+        self.assertTrue(topic_map.exists())
+        content = topic_map.read_text(encoding="utf-8")
+        self.assertIn("## 代表笔记", content)
+        self.assertIn("RAG Indexing", content)
 
     async def test_siyuan_sync_indexes_exported_markdown_and_reports_errors(self) -> None:
         storage.get_knowledge_config = lambda: KnowledgeConfig()
@@ -187,6 +199,25 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.ok)
         self.assertIn("SiYuan", result.error or "")
 
+    async def test_siyuan_adapter_allows_empty_token_for_local_no_auth(self) -> None:
+        adapter = SiYuanAdapter(NoteAdapterConfig(provider="siyuan", endpoint="http://127.0.0.1:6806"))
+
+        self.assertEqual(adapter._headers(), {})
+
+    async def test_siyuan_adapter_uses_sql_for_docs_and_markdown_fallback(self) -> None:
+        adapter = SqlOnlySiyuanAdapter(NoteAdapterConfig(provider="siyuan", endpoint="http://fake-siyuan"))
+
+        docs = await adapter.list_docs("nb1")
+        h_path, content = await adapter.export_markdown("doc1")
+
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0].id, "doc1")
+        self.assertEqual(docs[0].name, "SQL 文档")
+        self.assertEqual(h_path, "/SQL 文档")
+        self.assertIn("# SQL 文档", content)
+        self.assertIn("SQL 正文", content)
+        self.assertIn("## SQL 小节", content)
+
 
 class FakeSiyuanAdapter:
     def __init__(self, _config: NoteAdapterConfig) -> None:
@@ -208,6 +239,44 @@ class FakeSiyuanAdapter:
         if doc_id == "doc2":
             return "/空文档", ""
         raise RuntimeError("导出失败")
+
+
+class SqlOnlySiyuanAdapter(SiYuanAdapter):
+    async def _post(self, path: str, payload: dict) -> dict:
+        if path == "/api/export/exportMdContent":
+            raise RuntimeError("导出接口不可用")
+        if path != "/api/query/sql":
+            raise RuntimeError(f"不应调用 {path}")
+
+        stmt = str(payload.get("stmt") or "")
+        if "WHERE type = 'd'" in stmt:
+            return {
+                "code": 0,
+                "data": [
+                    {
+                        "id": "doc1",
+                        "path": "/doc1.sy",
+                        "hpath": "/SQL 文档",
+                        "content": "SQL 文档",
+                        "type": "d",
+                    }
+                ],
+            }
+        if "WHERE id = 'doc1'" in stmt:
+            return {
+                "code": 0,
+                "data": [{"id": "doc1", "hpath": "/SQL 文档", "content": "SQL 文档"}],
+            }
+        if "WHERE root_id = 'doc1'" in stmt:
+            return {
+                "code": 0,
+                "data": [
+                    {"id": "doc1", "type": "d", "content": "SQL 文档", "markdown": "", "sort": 0},
+                    {"id": "p1", "type": "p", "content": "SQL 正文", "markdown": "", "sort": 10},
+                    {"id": "h1", "type": "h", "subtype": "h2", "content": "SQL 小节", "markdown": "", "sort": 20},
+                ],
+            }
+        return {"code": 0, "data": []}
 
 
 if __name__ == "__main__":

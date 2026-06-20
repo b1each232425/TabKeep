@@ -9,11 +9,12 @@ from services.knowledge.graph import get_graph, rebuild_graph
 from services.knowledge.qa import ask_knowledge
 from services.knowledge.retrieval import search_knowledge
 from services.knowledge.siyuan_sync import precheck_siyuan_sync, sync_siyuan_notes
-from services.knowledge.topics import enrich_topics, get_topic_detail, list_topics, rebuild_topics
+from services.knowledge.topics import enrich_topics, export_topic, get_topic_detail, list_topics, rebuild_topics
 
 __all__ = [
     "ask_knowledge",
     "enrich_topics",
+    "export_topic",
     "get_graph",
     "get_topic_detail",
     "index_document",

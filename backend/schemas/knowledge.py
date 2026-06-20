@@ -167,6 +167,7 @@ class KnowledgeTopicDocument(BaseModel):
     url: str | None = None
     path: str | None = None
     noteId: str | None = None
+    anchor: str | None = None
     score: float = 0
     reason: str = ""
     snippet: str = ""
@@ -221,6 +222,15 @@ class KnowledgeTopicEnrichRequest(BaseModel):
 class KnowledgeTopicEnrichResponse(BaseModel):
     ok: bool
     topics: int = 0
+    error: str | None = None
+
+
+class KnowledgeTopicExportResponse(BaseModel):
+    ok: bool
+    topicId: str
+    noteId: str | None = None
+    openTarget: str | None = None
+    provider: str | None = None
     error: str | None = None
 
 
