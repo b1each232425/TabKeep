@@ -7,7 +7,7 @@ from schemas.knowledge import (
     KnowledgeSiyuanSyncResponse,
 )
 from services import storage
-from services.knowledge import db, vector_store
+from services.knowledge import db, topics, vector_store
 from services.knowledge.indexing import index_document
 from services.note.base import DocNode, NotebookInfo
 from services.note.siyuan import SiYuanAdapter
@@ -150,6 +150,11 @@ async def export_notebooks_to_knowledge(
         if len(errors) >= 20:
             break
 
+    try:
+        topics.rebuild_topics()
+    except Exception as exc:
+        errors.append(f"主题知识地图重建失败: {type(exc).__name__}: {exc}")
+
     return KnowledgeSiyuanSyncResponse(
         ok=len(errors) == 0,
         notebooksScanned=len(notebooks),
@@ -194,4 +199,3 @@ def build_siyuan_index_markdown(
         "---\n\n"
         f"{content.strip()}\n"
     )
-

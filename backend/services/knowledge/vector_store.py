@@ -67,6 +67,16 @@ def search(vector: list[float], limit: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def list_records(limit: int = 2000) -> list[dict[str, Any]]:
+    import lancedb
+
+    db = lancedb.connect(str(LANCE_DIR))
+    if TABLE_NAME not in set(db.table_names()):
+        return []
+    table = db.open_table(TABLE_NAME)
+    rows = table.to_list()
+    return [dict(row) for row in rows[: max(1, min(limit, 10000))]]
+
+
 def _quote(value: str) -> str:
     return value.replace("'", "''")
-

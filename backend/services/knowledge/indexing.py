@@ -5,7 +5,7 @@ from pathlib import Path
 from logger import logger
 from schemas.knowledge import KnowledgeConfig, KnowledgeReindexResponse
 from services import storage
-from services.knowledge import db, vector_store
+from services.knowledge import db, graph, topics, vector_store
 from services.knowledge.chunking import guess_title, normalize_text
 from services.knowledge.embeddings import embed_texts, embedding_config_ready
 from services.note.base import SaveRequest, SaveResult
@@ -38,6 +38,7 @@ async def index_saved_note(req: SaveRequest, result: SaveResult) -> None:
             url=req.url,
             note_id=result.note_id,
         )
+        topics.rebuild_topics()
     except Exception as exc:
         logger.warning(f"知识库索引收藏失败: {type(exc).__name__}: {exc}")
 
@@ -79,6 +80,16 @@ async def reindex_all(config: KnowledgeConfig | None = None) -> KnowledgeReindex
         except Exception as exc:
             errors.append(f"{md_path}: {type(exc).__name__}: {exc}")
 
+    try:
+        graph.rebuild_graph()
+    except Exception as exc:
+        errors.append(f"知识图谱重建失败: {type(exc).__name__}: {exc}")
+
+    try:
+        topics.rebuild_topics()
+    except Exception as exc:
+        errors.append(f"主题知识地图重建失败: {type(exc).__name__}: {exc}")
+
     return KnowledgeReindexResponse(
         ok=len(errors) == 0,
         documentsIndexed=documents_indexed,
@@ -108,22 +119,36 @@ async def index_document(
         path=path,
         note_id=note_id,
     )
+    graph_error = None
+    try:
+        graph.index_document_graph(
+            document_id=result.document_id,
+            source_type=source_type,
+            title=title.strip() or "未命名文档",
+            content=normalized,
+            url=url,
+            path=path,
+            note_id=note_id,
+        )
+    except Exception as exc:
+        graph_error = f"知识图谱更新失败: {type(exc).__name__}: {exc}"
+        logger.warning(graph_error)
     if not chunks or not embedding_config_ready(config.embedding):
-        return result, None
+        return result, graph_error
 
     vector_ok, vector_message = vector_store.availability()
     if not vector_ok:
         db.mark_embedding_status([chunk.id for chunk in chunks], "vector_unavailable")
-        return result, vector_message
+        return result, graph_error or vector_message
 
     try:
         vectors = await embed_texts(config.embedding, [chunk.content for chunk in chunks])
         vector_store.replace_document(chunks, vectors)
         db.mark_embedding_status([chunk.id for chunk in chunks], "ready")
-        return result, None
+        return result, graph_error
     except Exception as exc:
         db.mark_embedding_status([chunk.id for chunk in chunks], "error")
-        return result, f"embedding 失败: {type(exc).__name__}: {exc}"
+        return result, graph_error or f"embedding 失败: {type(exc).__name__}: {exc}"
 
 
 def discover_markdown_files(config: KnowledgeConfig) -> list[Path]:
@@ -163,4 +188,3 @@ def should_skip(path: Path, max_file_bytes: int) -> bool:
         return path.stat().st_size > max_file_bytes
     except OSError:
         return True
-

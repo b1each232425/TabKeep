@@ -2,6 +2,7 @@ import sys
 import unittest
 import warnings
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -57,6 +58,38 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(data["modelConfig"]["model"], "test-model")
         self.assertEqual(data["tabCategories"][0]["name"], "开发")
 
+    def test_auth_can_be_disabled_for_local_development(self) -> None:
+        with patch.dict("os.environ", {"TABKEEP_DISABLE_AUTH": "1"}):
+            config = self.client.get("/config")
+            self.assertEqual(config.status_code, 200, config.text)
+
+            self.initialize_config()
+            resync = self.client.post(
+                "/config/sync",
+                json={
+                    "apiToken": "fresh-dev-token",
+                    "modelConfig": {
+                        "model": "dev-model",
+                        "baseURL": "http://example.test/v1",
+                        "apiKey": "dev-key",
+                    },
+                },
+                headers={"X-TabKeep-Token": "stale-token"},
+            )
+            self.assertEqual(resync.status_code, 200, resync.text)
+
+            tabs = [
+                {
+                    "id": 1,
+                    "title": "No Auth",
+                    "url": "https://example.test/no-auth",
+                    "active": True,
+                    "pinned": False,
+                }
+            ]
+            saved = self.client.post("/tabs/", json=tabs)
+            self.assertEqual(saved.status_code, 200, saved.text)
+
     def test_tabs_roundtrip_requires_auth(self) -> None:
         self.initialize_config()
         tabs = [
@@ -110,7 +143,11 @@ class ApiTestCase(unittest.TestCase):
     def test_knowledge_reindex_from_markdown_path(self) -> None:
         notes_dir = self.tmp_dir / "markdown-source"
         notes_dir.mkdir()
-        (notes_dir / "rag.md").write_text("# 知识库接口测试\n\n接口重建索引可以搜索。", encoding="utf-8")
+        (notes_dir / "rag.md").write_text(
+            "---\ntags: [rag, graph]\n---\n\n# 知识库接口测试\n\n## 图谱接口\n\n接口重建索引可以搜索。相关 [[related]]。",
+            encoding="utf-8",
+        )
+        (notes_dir / "related.md").write_text("# related\n\n图谱关联文档。", encoding="utf-8")
         self.initialize_config(
             {
                 "knowledgeConfig": {
@@ -129,7 +166,7 @@ class ApiTestCase(unittest.TestCase):
 
         reindex = self.client.post("/knowledge/reindex", headers=self.headers)
         self.assertEqual(reindex.status_code, 200, reindex.text)
-        self.assertEqual(reindex.json()["documentsIndexed"], 1)
+        self.assertEqual(reindex.json()["documentsIndexed"], 2)
 
         search = self.client.post(
             "/knowledge/search",
@@ -138,6 +175,42 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertEqual(search.status_code, 200, search.text)
         self.assertEqual(len(search.json()["items"]), 1)
+
+        graph = self.client.get(
+            "/knowledge/graph",
+            params={"layer": "concepts", "query": "图谱", "limit": 100},
+            headers=self.headers,
+        )
+        self.assertEqual(graph.status_code, 200, graph.text)
+        graph_data = graph.json()
+        self.assertTrue(graph_data["ok"])
+        self.assertGreaterEqual(graph_data["stats"]["nodes"], 2)
+        self.assertTrue(any(node["kind"] == "heading" for node in graph_data["nodes"]))
+
+        first_rebuild = self.client.post("/knowledge/graph/rebuild", headers=self.headers)
+        second_rebuild = self.client.post("/knowledge/graph/rebuild", headers=self.headers)
+        self.assertEqual(first_rebuild.status_code, 200, first_rebuild.text)
+        self.assertEqual(second_rebuild.status_code, 200, second_rebuild.text)
+        self.assertEqual(first_rebuild.json()["nodes"], second_rebuild.json()["nodes"])
+        self.assertEqual(first_rebuild.json()["edges"], second_rebuild.json()["edges"])
+
+        topics = self.client.get(
+            "/knowledge/topics",
+            params={"query": "rag", "limit": 20},
+            headers=self.headers,
+        )
+        self.assertEqual(topics.status_code, 200, topics.text)
+        topics_data = topics.json()
+        self.assertTrue(topics_data["ok"])
+        self.assertGreaterEqual(topics_data["stats"]["topics"], 1)
+
+        topic_id = topics_data["topics"][0]["id"]
+        detail = self.client.get(f"/knowledge/topics/{topic_id}", headers=self.headers)
+        self.assertEqual(detail.status_code, 200, detail.text)
+        detail_data = detail.json()
+        self.assertTrue(detail_data["ok"])
+        self.assertGreaterEqual(len(detail_data["documents"]), 1)
+        self.assertGreaterEqual(len(detail_data["evidence"]), 1)
 
 
 if __name__ == "__main__":

@@ -443,16 +443,6 @@ async fn capture(
     Json(payload): Json<CapturePayload>,
 ) -> Response {
     remember_token_from_headers(&state.desktop, &headers);
-    let Some(token) = get_cached_token(&state.desktop) else {
-        return json_response(
-            StatusCode::UNAUTHORIZED,
-            json!({
-                "ok": false,
-                "error": "TabKeep desktop has no API token yet"
-            }),
-        );
-    };
-
     if payload.source != "tabkeep" {
         return json_response(
             StatusCode::BAD_REQUEST,
@@ -478,14 +468,16 @@ async fn capture(
         }
     });
 
-    let result = state
+    let mut req = state
         .desktop
         .client
         .post(format!("{BACKEND_URL}/notes/save"))
-        .header("X-TabKeep-Token", token)
-        .json(&body)
-        .send()
-        .await;
+        .json(&body);
+    if let Some(token) = get_cached_token(&state.desktop) {
+        req = req.header("X-TabKeep-Token", token);
+    }
+
+    let result = req.send().await;
 
     let Ok(res) = result else {
         return json_response(
@@ -594,17 +586,8 @@ async fn translate(
         );
     }
 
-    let Some(token) = get_cached_token(&state.desktop) else {
-        return json_response(
-            StatusCode::UNAUTHORIZED,
-            json!({
-                "ok": false,
-                "error": "TabKeep desktop has no API token yet"
-            }),
-        );
-    };
-
-    let model_config = match load_model_config(&state.desktop, &token).await {
+    let token = get_cached_token(&state.desktop);
+    let model_config = match load_model_config(&state.desktop, token.as_deref()).await {
         Ok(config) => config,
         Err((status, value)) => return json_response(status, value),
     };
@@ -674,12 +657,16 @@ async fn ocr_translate(
 
 async fn load_model_config(
     state: &DesktopState,
-    token: &str,
+    token: Option<&str>,
 ) -> Result<ModelConfigPayload, (StatusCode, Value)> {
-    let result = state
+    let mut req = state
         .client
-        .get(format!("{BACKEND_URL}/config"))
-        .header("X-TabKeep-Token", token)
+        .get(format!("{BACKEND_URL}/config"));
+    if let Some(token) = token {
+        req = req.header("X-TabKeep-Token", token);
+    }
+
+    let result = req
         .send()
         .await
         .map_err(|err| {
@@ -1228,9 +1215,9 @@ async fn backend_request(
     let mut req = state.client.request(method, url);
 
     if path != "/" {
-        let token =
-            get_cached_token(&state).ok_or_else(|| "桌面端还没有 TabKeep API token".to_string())?;
-        req = req.header("X-TabKeep-Token", token);
+        if let Some(token) = get_cached_token(&state) {
+            req = req.header("X-TabKeep-Token", token);
+        }
     }
     if let Some(body) = body {
         req = req.json(&body);
@@ -1715,10 +1702,8 @@ async fn translate_desktop_text(
         ));
     }
 
-    let token = get_cached_token(state).ok_or_else(|| {
-        "桌面端还没有 TabKeep API token,请先打开扩展 popup 或在桌面端保存 Token".to_string()
-    })?;
-    let model_config = load_model_config(state, &token)
+    let token = get_cached_token(state);
+    let model_config = load_model_config(state, token.as_deref())
         .await
         .map_err(error_from_json_response)?;
     let model = model_config.model.clone();
@@ -1736,10 +1721,8 @@ async fn translate_desktop_text(
 }
 
 async fn test_openai_compatible_provider(state: &DesktopState) -> Result<String, String> {
-    let token = get_cached_token(state).ok_or_else(|| {
-        "桌面端还没有 TabKeep API token,请先打开扩展 popup 或在桌面端保存 Token".to_string()
-    })?;
-    let model_config = load_model_config(state, &token)
+    let token = get_cached_token(state);
+    let model_config = load_model_config(state, token.as_deref())
         .await
         .map_err(error_from_json_response)?;
     call_translation_model(

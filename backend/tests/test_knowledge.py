@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
 from schemas.config import NoteAdapterConfig
 from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest
 from services import storage
-from services.knowledge import indexing, retrieval, siyuan_sync
+from services.knowledge import graph, indexing, retrieval, siyuan_sync, topics
 from services.note.base import DocNode, NotebookInfo
 from tests.helpers import IsolatedBackendState
 
@@ -66,6 +66,96 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(old_search.items), 0)
         self.assertEqual(len(new_search.items), 1)
+
+    async def test_graph_builds_tags_headings_and_wikilinks(self) -> None:
+        config = KnowledgeConfig()
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Alpha Note",
+            path="Alpha Note.md",
+            content=(
+                "---\n"
+                "tags: [rag, graph]\n"
+                "---\n\n"
+                "# Alpha Note\n\n"
+                "## Runtime Map\n\n"
+                "关联 [[Beta Note]] 和 [[Unindexed Idea]]。"
+            ),
+        )
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Beta Note",
+            path="Beta Note.md",
+            content="# Beta Note\n\n图谱目标节点。",
+        )
+
+        first = graph.rebuild_graph()
+        second = graph.rebuild_graph()
+        all_graph = graph.get_graph(layer="all", limit=100)
+        concepts = graph.get_graph(layer="concepts", query="Runtime", limit=100)
+        documents = graph.get_graph(layer="documents", query="Beta", limit=100)
+
+        self.assertTrue(first.ok)
+        self.assertEqual(first.nodes, second.nodes)
+        self.assertEqual(first.edges, second.edges)
+        self.assertIn("tag", {node.kind for node in all_graph.nodes})
+        self.assertIn("heading", {node.kind for node in all_graph.nodes})
+        self.assertIn("concept", {node.kind for node in all_graph.nodes})
+        self.assertIn("has_tag", {edge.kind for edge in all_graph.edges})
+        self.assertIn("has_heading", {edge.kind for edge in all_graph.edges})
+        self.assertIn("links_to_document", {edge.kind for edge in all_graph.edges})
+        self.assertTrue(any(node.label == "Runtime Map" for node in concepts.nodes))
+        self.assertTrue(any(node.label == "Beta Note" for node in documents.nodes))
+
+    async def test_topics_build_workbench_from_explicit_signals(self) -> None:
+        config = KnowledgeConfig()
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="RAG Indexing",
+            path=str(self.tmp_dir / "rag" / "RAG Indexing.md"),
+            content=(
+                "---\n"
+                "tags: [rag, retrieval]\n"
+                "---\n\n"
+                "# RAG Indexing\n\n"
+                "## Hybrid Search\n\n"
+                "混合检索会连接 [[Vector Search]] 和全文检索。"
+            ),
+        )
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Retrieval Notes",
+            path=str(self.tmp_dir / "rag" / "Retrieval Notes.md"),
+            content=(
+                "---\n"
+                "tags: [rag]\n"
+                "---\n\n"
+                "# Retrieval Notes\n\n"
+                "这里记录 RAG 召回和排序。"
+            ),
+        )
+
+        first = topics.rebuild_topics()
+        second = topics.rebuild_topics()
+        listing = topics.list_topics(query="rag", limit=20)
+        topic = next(item for item in listing.topics if item.title == "rag")
+        detail = topics.get_topic_detail(topic.id)
+        missing_model = await topics.enrich_topics(topic.id)
+
+        self.assertTrue(first.ok)
+        self.assertEqual(first.topics, second.topics)
+        self.assertTrue(listing.ok)
+        self.assertGreaterEqual(listing.stats.topics, 1)
+        self.assertTrue(detail.ok)
+        self.assertEqual(len(detail.documents), 2)
+        self.assertTrue(any(item.kind == "tag" and item.label == "rag" for item in detail.evidence))
+        self.assertIn("共享标签", detail.documents[0].reason)
+        self.assertFalse(missing_model.ok)
+        self.assertIn("modelConfig", missing_model.error or "")
 
     async def test_siyuan_sync_indexes_exported_markdown_and_reports_errors(self) -> None:
         storage.get_knowledge_config = lambda: KnowledgeConfig()

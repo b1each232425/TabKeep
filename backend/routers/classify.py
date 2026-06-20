@@ -11,7 +11,7 @@ from logger import logger
 from schemas.classify import ClassifyRequest, ClassifyResponse
 from schemas.config import ModelConfig, SyncConfigRequest, TabCategory
 from services import storage
-from services.auth import require_api_token
+from services.auth import is_auth_disabled, require_api_token
 from services.classifier import classify_tabs
 
 router = APIRouter(tags=["配置与分类"])
@@ -24,7 +24,7 @@ router = APIRouter(tags=["配置与分类"])
 def get_config() -> dict[str, ModelConfig | list[TabCategory]]:
     """前端初始化时调用,一次拿全 model + categories。"""
     return {
-        "modelConfig": storage.get_model_config(),
+        "modelConfig": storage.get_model_config() or ModelConfig(model="", baseURL="", apiKey=""),
         "tabCategories": storage.get_tab_categories(),
     }
 
@@ -40,11 +40,12 @@ def sync_config(
     首次启动时后端还没有 token,允许扩展把 apiToken 写入。
     一旦 token 已存在,后续同步也必须带正确的 X-TabKeep-Token。
     """
-    expected = storage.get_api_token()
-    if expected and x_tabkeep_token != expected:
-        raise HTTPException(status_code=401, detail="TabKeep API token 无效")
-    if not expected and not req.apiToken:
-        raise HTTPException(status_code=401, detail="TabKeep API token 未初始化,请先打开扩展")
+    if not is_auth_disabled():
+        expected = storage.get_api_token()
+        if expected and x_tabkeep_token != expected:
+            raise HTTPException(status_code=401, detail="TabKeep API token 无效")
+        if not expected and not req.apiToken:
+            raise HTTPException(status_code=401, detail="TabKeep API token 未初始化,请先打开扩展")
     storage.sync_config(req)
     return {"ok": True}
 

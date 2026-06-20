@@ -48,13 +48,17 @@ tags: [tabkeep, tauri, desktop, translation]
 
 TabKeep 桌面伴侣选择 Tauri 2，而不是 Electron。主要原因是常驻后台工具需要更低内存、更小包体，并且全局快捷键、OCR、截图、托盘、本地 HTTP 服务都更适合在 Rust 侧实现。
 
+## 系统能力边界
+
 当前桌面端已经形成三类能力：
 
 - 浏览器扩展桥接：通过 `127.0.0.1:38472` 和扩展通信。
 - 翻译体验：输入翻译、固定区域 OCR 翻译、任意 App 划词翻译。
 - 知识库体验：本地 RAG、Markdown/Obsidian 扫描、SiYuan 同步。
 
-相关笔记：[[Projects/TabKeep/OCR and Region Translation]], [[Projects/TabKeep/Selection Translate MVP]], [[Projects/TabKeep/RAG Knowledge Base Design]]
+## 下一阶段关系
+
+相关笔记：[[Projects/TabKeep/OCR and Region Translation]], [[Projects/TabKeep/Selection Translate MVP]], [[Projects/TabKeep/RAG Knowledge Base Design]], [[Concepts/Local First Knowledge Graph]]
 """,
     "Projects/TabKeep/OCR and Region Translation.md": """
 ---
@@ -105,6 +109,8 @@ tags: [rag, knowledge-base, sqlite, lancedb]
 
 TabKeep 的 RAG 是自己的本地知识库，不写回 Obsidian 或 SiYuan。笔记软件只是知识来源，TabKeep 负责索引、检索和问答。
 
+## 数据源边界
+
 数据流：
 
 ```text
@@ -118,7 +124,9 @@ SQLite 是 source of truth，保存文档、chunk、FTS、RAG 会话和轻量图
 
 未配置 embedding 时，TabKeep 使用 SQLite FTS5 和 LLM 基于引用片段回答。这样即使用户没有向量模型，知识库仍然可用。
 
-相关：[[Research/LanceDB 与 SQLite 混合检索]], [[Projects/TabKeep/SiYuan Sync Flow]]
+## 可视化方向
+
+知识图谱用于展示已入库笔记之间的来源、标签、双链和显式概念关系。相关：[[Research/LanceDB 与 SQLite 混合检索]], [[Projects/TabKeep/SiYuan Sync Flow]], [[Concepts/Local First Knowledge Graph]]
 """,
     "Projects/TabKeep/SiYuan Sync Flow.md": """
 ---
@@ -153,13 +161,38 @@ tags: [lancedb, sqlite, hybrid-search, rrf]
 
 TabKeep 选择 SQLite + LanceDB 的原因：
 
+## 存储职责
+
 - SQLite 负责文档元数据、chunk、FTS5、会话和轻量关系。
 - LanceDB 负责 embedding 向量召回。
 - RRF 负责融合关键词检索和语义检索结果。
 
 这种方案比单独使用向量数据库更稳，因为用户经常搜索项目名、错误码、函数名和命令行。关键词精确查找不能完全交给 embedding。
 
+## 降级策略
+
 如果 LanceDB 未安装或 embedding 配置错误，TabKeep 自动退回 FTS 模式。
+""",
+    "Concepts/Local First Knowledge Graph.md": """
+---
+source: tabkeep-mock
+type: concept
+tags: [knowledge-graph, local-first, visualization]
+---
+
+# Local First Knowledge Graph
+
+本地优先知识图谱不需要把笔记上传到远程图数据库。TabKeep 可以直接在 SQLite 里保存节点和边，再在桌面端渲染。
+
+## 文档关系层
+
+文档关系层展示笔记来源、文档之间的 Obsidian 双链，以及 TabKeep 收藏和外部笔记的连接。
+
+## 概念关系层
+
+概念关系层展示 frontmatter tags、Markdown 标题和未解析的 `[[双链]]` 概念。它适合快速判断知识库到底索引出了什么主题。
+
+相关：[[Projects/TabKeep/RAG Knowledge Base Design]], [[Research/LanceDB 与 SQLite 混合检索]]
 """,
     "Research/RAG 问答 Prompt 约束.md": """
 ---

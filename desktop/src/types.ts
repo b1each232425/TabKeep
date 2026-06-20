@@ -157,6 +157,132 @@ export interface KnowledgeAskResponse {
   error?: string | null
 }
 
+export type KnowledgeGraphLayer = "all" | "documents" | "concepts"
+
+export interface KnowledgeGraphNode {
+  id: string
+  kind: "document" | "source" | "tag" | "heading" | "concept" | string
+  label: string
+  documentId?: string | null
+  sourceType?: string | null
+  url?: string | null
+  path?: string | null
+  noteId?: string | null
+  degree: number
+}
+
+export interface KnowledgeGraphEdge {
+  id: string
+  source: string
+  target: string
+  kind: string
+  weight: number
+}
+
+export interface KnowledgeGraphStats {
+  nodes: number
+  edges: number
+  totalNodes: number
+  totalEdges: number
+}
+
+export interface KnowledgeGraphResponse {
+  ok: boolean
+  layer: KnowledgeGraphLayer
+  nodes: KnowledgeGraphNode[]
+  edges: KnowledgeGraphEdge[]
+  stats: KnowledgeGraphStats
+  error?: string | null
+}
+
+export interface KnowledgeGraphRebuildResponse {
+  ok: boolean
+  nodes: number
+  edges: number
+  error?: string | null
+}
+
+export interface KnowledgeTopicStats {
+  topics: number
+  documents: number
+  relations: number
+  totalTopics: number
+}
+
+export interface KnowledgeTopic {
+  id: string
+  title: string
+  summary: string
+  keywords: string[]
+  sourceTypes: string[]
+  documentCount: number
+  evidenceCount: number
+  relationCount: number
+  confidence: number
+  aiEnhanced: boolean
+  updatedAt?: string | null
+}
+
+export interface KnowledgeTopicDocument {
+  documentId: string
+  title: string
+  sourceType: string
+  url?: string | null
+  path?: string | null
+  noteId?: string | null
+  score: number
+  reason: string
+  snippet: string
+}
+
+export interface KnowledgeTopicEvidence {
+  id: string
+  kind: string
+  label: string
+  documentId?: string | null
+  weight: number
+}
+
+export interface KnowledgeTopicRelation {
+  id: string
+  sourceTopicId: string
+  targetTopicId: string
+  kind: string
+  label: string
+  weight: number
+}
+
+export interface KnowledgeTopicListResponse {
+  ok: boolean
+  topics: KnowledgeTopic[]
+  stats: KnowledgeTopicStats
+  error?: string | null
+}
+
+export interface KnowledgeTopicDetailResponse {
+  ok: boolean
+  topic?: KnowledgeTopic | null
+  documents: KnowledgeTopicDocument[]
+  evidence: KnowledgeTopicEvidence[]
+  relations: KnowledgeTopicRelation[]
+  error?: string | null
+}
+
+export interface KnowledgeTopicRebuildResponse {
+  ok: boolean
+  topics: number
+  topicDocuments: number
+  evidence: number
+  relations: number
+  error?: string | null
+}
+
+export interface KnowledgeTopicEnrichResponse {
+  ok: boolean
+  topics: number
+  error?: string | null
+}
+
 export interface ClassifyResponse {
   result?: Record<string, string>
   raw?: string

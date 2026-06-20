@@ -86,6 +86,54 @@ def init_db() -> None:
                 created_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS knowledge_topics (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                summary TEXT NOT NULL DEFAULT '',
+                keywords_json TEXT NOT NULL DEFAULT '[]',
+                source_types_json TEXT NOT NULL DEFAULT '[]',
+                document_count INTEGER NOT NULL DEFAULT 0,
+                evidence_count INTEGER NOT NULL DEFAULT 0,
+                relation_count INTEGER NOT NULL DEFAULT 0,
+                confidence REAL NOT NULL DEFAULT 0,
+                ai_enhanced INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_topic_documents (
+                topic_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                score REAL NOT NULL DEFAULT 0,
+                reason TEXT NOT NULL DEFAULT '',
+                snippet TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY(topic_id, document_id),
+                FOREIGN KEY(topic_id) REFERENCES knowledge_topics(id) ON DELETE CASCADE,
+                FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_topic_evidence (
+                id TEXT PRIMARY KEY,
+                topic_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                label TEXT NOT NULL,
+                document_id TEXT,
+                weight REAL NOT NULL DEFAULT 1,
+                FOREIGN KEY(topic_id) REFERENCES knowledge_topics(id) ON DELETE CASCADE,
+                FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_topic_relations (
+                id TEXT PRIMARY KEY,
+                source_topic_id TEXT NOT NULL,
+                target_topic_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                label TEXT NOT NULL DEFAULT '',
+                weight REAL NOT NULL DEFAULT 1,
+                FOREIGN KEY(source_topic_id) REFERENCES knowledge_topics(id) ON DELETE CASCADE,
+                FOREIGN KEY(target_topic_id) REFERENCES knowledge_topics(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS rag_sessions (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,

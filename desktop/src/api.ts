@@ -4,11 +4,18 @@ import type {
   DesktopStatus,
   KnowledgeAskResponse,
   KnowledgeConfig,
+  KnowledgeGraphLayer,
+  KnowledgeGraphRebuildResponse,
+  KnowledgeGraphResponse,
   KnowledgeReindexResponse,
   KnowledgeSearchResponse,
   KnowledgeSiyuanPrecheckResponse,
   KnowledgeSiyuanSyncResponse,
   KnowledgeStats,
+  KnowledgeTopicDetailResponse,
+  KnowledgeTopicEnrichResponse,
+  KnowledgeTopicListResponse,
+  KnowledgeTopicRebuildResponse,
   ModelConfig,
   NoteAdapterConfig,
   OcrConfig,
@@ -228,6 +235,50 @@ export async function askKnowledge(
     question,
     sessionId,
     limit,
+  })
+}
+
+export async function getKnowledgeGraph(options: {
+  layer?: KnowledgeGraphLayer
+  query?: string
+  sourceType?: string
+  limit?: number
+} = {}): Promise<KnowledgeGraphResponse> {
+  const params = new URLSearchParams()
+  params.set("layer", options.layer ?? "all")
+  params.set("limit", String(options.limit ?? 300))
+  if (options.query?.trim()) params.set("query", options.query.trim())
+  if (options.sourceType?.trim()) params.set("sourceType", options.sourceType.trim())
+  return backendRequest<KnowledgeGraphResponse>("GET", `/knowledge/graph?${params.toString()}`)
+}
+
+export async function rebuildKnowledgeGraph(): Promise<KnowledgeGraphRebuildResponse> {
+  return backendRequest<KnowledgeGraphRebuildResponse>("POST", "/knowledge/graph/rebuild")
+}
+
+export async function getKnowledgeTopics(options: {
+  query?: string
+  sourceType?: string
+  limit?: number
+} = {}): Promise<KnowledgeTopicListResponse> {
+  const params = new URLSearchParams()
+  params.set("limit", String(options.limit ?? 80))
+  if (options.query?.trim()) params.set("query", options.query.trim())
+  if (options.sourceType?.trim()) params.set("sourceType", options.sourceType.trim())
+  return backendRequest<KnowledgeTopicListResponse>("GET", `/knowledge/topics?${params.toString()}`)
+}
+
+export async function getKnowledgeTopicDetail(topicId: string): Promise<KnowledgeTopicDetailResponse> {
+  return backendRequest<KnowledgeTopicDetailResponse>("GET", `/knowledge/topics/${encodeURIComponent(topicId)}`)
+}
+
+export async function rebuildKnowledgeTopics(): Promise<KnowledgeTopicRebuildResponse> {
+  return backendRequest<KnowledgeTopicRebuildResponse>("POST", "/knowledge/topics/rebuild")
+}
+
+export async function enrichKnowledgeTopics(topicId?: string | null): Promise<KnowledgeTopicEnrichResponse> {
+  return backendRequest<KnowledgeTopicEnrichResponse>("POST", "/knowledge/topics/enrich", {
+    topicId: topicId || null,
   })
 }
 

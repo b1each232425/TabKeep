@@ -18,7 +18,7 @@ $AllTargets = @(
     Id = "backend"
     Name = "TabKeep Backend :38471"
     WorkingDirectory = Join-Path $Root.Path "backend"
-    Command = "Initialize-CondaTabKeep; python main.py"
+    Command = 'Initialize-CondaTabKeep; $env:TABKEEP_DISABLE_AUTH = "1"; python main.py'
   },
   @{
     Id = "extension"
@@ -62,6 +62,7 @@ function Start-TabKeepTarget {
   $WorkingDirectory = Resolve-Path -LiteralPath $Target.WorkingDirectory
   $Name = $Target.Name
   $Command = $Target.Command
+  $PlasmoGuardPath = Join-Path $Root.Path "scripts\plasmo-parcel-hmr-guard.cjs"
 
   if ($DryRun) {
     Write-Output "[$Name]"
@@ -114,6 +115,26 @@ function Initialize-ExtensionDevEnvironment {
   Write-Host "Note: Plasmo may try to check its latest version online. If you see 'Extension re-packaged', the extension build is running." -ForegroundColor Yellow
 }
 
+function Enable-PlasmoParcelHmrGuard {
+  `$guardPath = "$PlasmoGuardPath".Replace("\", "/")
+  if (-not (Test-Path -LiteralPath `$guardPath)) {
+    throw "Plasmo HMR guard was not found: `$guardPath"
+  }
+
+  if (`$env:NODE_OPTIONS -and `$env:NODE_OPTIONS.Contains(`$guardPath)) {
+    return
+  }
+
+  `$requireOption = '--require "' + `$guardPath + '"'
+  if ([string]::IsNullOrWhiteSpace(`$env:NODE_OPTIONS)) {
+    `$env:NODE_OPTIONS = `$requireOption
+  } else {
+    `$env:NODE_OPTIONS = `$requireOption + " " + `$env:NODE_OPTIONS
+  }
+
+  Write-Host "Enabled Plasmo Parcel HMR guard for this dev process." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "[$Name]" -ForegroundColor Cyan
 Write-Host "Working directory: $($WorkingDirectory.Path)"
@@ -127,6 +148,7 @@ try {
 
   if ("$($Target.Id)" -eq "extension") {
     Initialize-ExtensionDevEnvironment
+    Enable-PlasmoParcelHmrGuard
   }
 
   $Command
