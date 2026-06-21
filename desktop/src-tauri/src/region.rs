@@ -106,7 +106,7 @@ pub fn open_windows(app: &AppHandle) -> Result<RegionBoxConfig, String> {
     .background_color(Color(0, 0, 0, 0))
     .always_on_top(true)
     .resizable(false)
-    .visible(false)
+    .visible(true)
     .build()
     .map_err(|err| format!("打开区域翻译面板失败: {err}"))?;
 
@@ -167,6 +167,9 @@ pub fn apply_window_config(app: &AppHandle, config: &RegionBoxConfig) -> Result<
         window
             .set_always_on_top(true)
             .map_err(|err| format!("设置区域翻译面板置顶失败: {err}"))?;
+        window
+            .show()
+            .map_err(|err| format!("显示区域翻译面板失败: {err}"))?;
     }
     Ok(())
 }
@@ -192,12 +195,42 @@ pub fn sync_from_box_window(app: &AppHandle) -> Result<RegionBoxConfig, String> 
 }
 
 pub fn set_passthrough(app: &AppHandle, pass_through: bool) -> Result<RegionBoxConfig, String> {
-    let mut config = sync_from_box_window(app).unwrap_or_else(|_| load_config(app));
+    let mut config = load_config(app);
+    if let Some(window) = app.get_webview_window("region-box") {
+        if let Ok(position) = window.outer_position() {
+            config.x = position.x;
+            config.y = position.y;
+        }
+        if let Ok(size) = window.outer_size() {
+            config.width = size.width;
+            config.height = size.height;
+        }
+    }
     config.pass_through = pass_through;
     let config = save_config(app, &config)?;
-    apply_window_config(app, &config)?;
+    apply_box_passthrough(app, config.pass_through)?;
     emit_config(app, &config);
     Ok(config)
+}
+
+fn apply_box_passthrough(app: &AppHandle, pass_through: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("region-box") {
+        window
+            .set_always_on_top(true)
+            .map_err(|err| format!("设置区域框置顶失败: {err}"))?;
+        window
+            .set_ignore_cursor_events(pass_through)
+            .map_err(|err| format!("设置区域框鼠标穿透失败: {err}"))?;
+    }
+    if let Some(window) = app.get_webview_window("region-panel") {
+        window
+            .set_always_on_top(true)
+            .map_err(|err| format!("设置区域翻译面板置顶失败: {err}"))?;
+        window
+            .show()
+            .map_err(|err| format!("显示区域翻译面板失败: {err}"))?;
+    }
+    Ok(())
 }
 
 pub fn save_live_box_config(

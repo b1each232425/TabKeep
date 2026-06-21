@@ -5,7 +5,7 @@ use std::{
 };
 
 use base64::{engine::general_purpose, Engine};
-use image::GenericImageView;
+use image::{imageops::FilterType, DynamicImage, GenericImageView};
 use screenshots::{Compression, Screen};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager};
 const OCR_CONFIG_FILE: &str = "ocr-config.json";
 const FULL_SCREENSHOT_FILE: &str = "tabkeep_screenshot.png";
 const CUT_SCREENSHOT_FILE: &str = "tabkeep_screenshot_cut.png";
+const PREPROCESSED_OCR_FILE: &str = "tabkeep_ocr_preprocessed.png";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -24,7 +25,7 @@ pub enum OcrProvider {
 
 impl Default for OcrProvider {
     fn default() -> Self {
-        Self::WindowsOcr
+        Self::PaddleocrJson
     }
 }
 
@@ -38,15 +39,42 @@ pub struct OcrConfig {
     pub paddle_models_path: String,
     #[serde(rename = "paddleConfigPath", default)]
     pub paddle_config_path: String,
+    #[serde(rename = "paddleMinScore", default = "default_paddle_min_score")]
+    pub paddle_min_score: f32,
+    #[serde(rename = "preprocessEnabled", default = "default_true")]
+    pub preprocess_enabled: bool,
+    #[serde(rename = "preprocessScale", default = "default_preprocess_scale")]
+    pub preprocess_scale: u32,
+    #[serde(rename = "preprocessGrayscale", default = "default_true")]
+    pub preprocess_grayscale: bool,
+    #[serde(rename = "preprocessContrast", default = "default_preprocess_contrast")]
+    pub preprocess_contrast: f32,
+    #[serde(rename = "preprocessSharpen", default = "default_true")]
+    pub preprocess_sharpen: bool,
+    #[serde(rename = "preprocessThreshold", default)]
+    pub preprocess_threshold: bool,
+    #[serde(rename = "textPostprocessEnabled", default = "default_true")]
+    pub text_postprocess_enabled: bool,
+    #[serde(rename = "textMergeLines", default)]
+    pub text_merge_lines: bool,
 }
 
 impl Default for OcrConfig {
     fn default() -> Self {
         Self {
-            provider: OcrProvider::WindowsOcr,
+            provider: OcrProvider::PaddleocrJson,
             paddle_exe_path: String::new(),
             paddle_models_path: String::new(),
             paddle_config_path: String::new(),
+            paddle_min_score: default_paddle_min_score(),
+            preprocess_enabled: true,
+            preprocess_scale: default_preprocess_scale(),
+            preprocess_grayscale: true,
+            preprocess_contrast: default_preprocess_contrast(),
+            preprocess_sharpen: true,
+            preprocess_threshold: false,
+            text_postprocess_enabled: true,
+            text_merge_lines: false,
         }
     }
 }
@@ -194,10 +222,17 @@ pub fn recognize(
     image_path: &Path,
     lang: &str,
 ) -> Result<String, String> {
-    match provider {
-        OcrProvider::WindowsOcr => recognize_windows(image_path, lang),
-        OcrProvider::PaddleocrJson => recognize_paddle(app, config, image_path),
-    }
+    let preprocessed_path = if config.preprocess_enabled {
+        Some(preprocess_image(app, config, image_path)?)
+    } else {
+        None
+    };
+    let ocr_image_path = preprocessed_path.as_deref().unwrap_or(image_path);
+    let text = match provider {
+        OcrProvider::WindowsOcr => recognize_windows(ocr_image_path, lang),
+        OcrProvider::PaddleocrJson => recognize_paddle(config, ocr_image_path),
+    }?;
+    Ok(postprocess_ocr_text(&text, lang, config))
 }
 
 pub fn image_data_url(path: &Path) -> Option<String> {
@@ -292,6 +327,22 @@ fn default_screenshot() -> bool {
     true
 }
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_preprocess_scale() -> u32 {
+    2
+}
+
+fn default_preprocess_contrast() -> f32 {
+    18.0
+}
+
+fn default_paddle_min_score() -> f32 {
+    0.45
+}
+
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
         .path()
@@ -309,11 +360,44 @@ fn cache_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
     Ok(dir.join(name))
 }
 
-fn recognize_paddle(
-    _app: &AppHandle,
-    config: &OcrConfig,
-    image_path: &Path,
-) -> Result<String, String> {
+fn preprocess_image(app: &AppHandle, config: &OcrConfig, image_path: &Path) -> Result<PathBuf, String> {
+    let mut image = image::open(image_path).map_err(|err| format!("读取 OCR 图片失败: {err}"))?;
+    let scale = config.preprocess_scale.clamp(1, 4);
+    if scale > 1 {
+        let width = image.width().saturating_mul(scale).max(1);
+        let height = image.height().saturating_mul(scale).max(1);
+        image = image.resize_exact(width, height, FilterType::CatmullRom);
+    }
+    if config.preprocess_grayscale {
+        image = image.grayscale();
+    }
+    let contrast = config.preprocess_contrast.clamp(-60.0, 80.0);
+    if contrast.abs() > f32::EPSILON {
+        image = image.adjust_contrast(contrast);
+    }
+    if config.preprocess_sharpen {
+        image = image.unsharpen(1.0, 1);
+    }
+    if config.preprocess_threshold {
+        image = threshold_image(image);
+    }
+
+    let path = cache_file(app, PREPROCESSED_OCR_FILE)?;
+    image
+        .save(&path)
+        .map_err(|err| format!("保存 OCR 预处理图片失败: {err}"))?;
+    Ok(path)
+}
+
+fn threshold_image(image: DynamicImage) -> DynamicImage {
+    let mut gray = image.to_luma8();
+    for pixel in gray.pixels_mut() {
+        pixel.0[0] = if pixel.0[0] >= 168 { 255 } else { 0 };
+    }
+    DynamicImage::ImageLuma8(gray)
+}
+
+fn recognize_paddle(config: &OcrConfig, image_path: &Path) -> Result<String, String> {
     if config.paddle_exe_path.trim().is_empty() {
         return Err("未配置 PaddleOCR-json.exe 路径".to_string());
     }
@@ -323,6 +407,9 @@ fn recognize_paddle(
     }
 
     let mut command = Command::new(&exe);
+    if let Some(parent) = exe.parent() {
+        command.current_dir(parent);
+    }
     command.arg(format!("-image_path={}", image_path.display()));
     if !config.paddle_models_path.trim().is_empty() {
         command.arg(format!("-models_path={}", config.paddle_models_path.trim()));
@@ -344,10 +431,10 @@ fn recognize_paddle(
         });
     }
 
-    parse_paddle_output(&stdout)
+    parse_paddle_output(&stdout, config.paddle_min_score)
 }
 
-fn parse_paddle_output(stdout: &str) -> Result<String, String> {
+fn parse_paddle_output(stdout: &str, min_score: f32) -> Result<String, String> {
     let Some(line) = stdout
         .lines()
         .rev()
@@ -369,6 +456,12 @@ fn parse_paddle_output(stdout: &str) -> Result<String, String> {
                 .map(|items| {
                     items
                         .iter()
+                        .filter(|item| {
+                            match item.get("score").and_then(Value::as_f64) {
+                                Some(score) => score >= min_score.clamp(0.0, 1.0) as f64,
+                                None => true,
+                            }
+                        })
                         .filter_map(|item| item.get("text").and_then(Value::as_str))
                         .map(str::trim)
                         .filter(|text| !text.is_empty())
@@ -455,6 +548,103 @@ fn clean_ocr_text(text: &str, lang: &str) -> String {
     } else {
         text.to_string()
     }
+}
+
+fn postprocess_ocr_text(text: &str, lang: &str, config: &OcrConfig) -> String {
+    let basic = clean_ocr_text(text, lang);
+    if !config.text_postprocess_enabled {
+        return basic;
+    }
+
+    let mut seen_adjacent = String::new();
+    let mut lines = Vec::new();
+    for raw_line in basic.replace("\r\n", "\n").replace('\r', "\n").lines() {
+        let line = normalize_ocr_line(raw_line);
+        if line.is_empty() || looks_like_noise_line(&line) {
+            continue;
+        }
+        let key = line.to_lowercase();
+        if key == seen_adjacent {
+            continue;
+        }
+        seen_adjacent = key;
+        lines.push(line);
+    }
+
+    if config.text_merge_lines {
+        merge_ocr_lines(&lines)
+    } else {
+        lines.join("\n")
+    }
+}
+
+fn normalize_ocr_line(line: &str) -> String {
+    let collapsed = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    remove_cjk_spacing(&collapsed).trim().to_string()
+}
+
+fn remove_cjk_spacing(value: &str) -> String {
+    let chars = value.chars().collect::<Vec<_>>();
+    let mut output = String::new();
+    for (index, ch) in chars.iter().enumerate() {
+        if ch.is_whitespace() {
+            let previous = index.checked_sub(1).and_then(|idx| chars.get(idx)).copied();
+            let next = chars.get(index + 1).copied();
+            if previous.is_some_and(is_cjk_like) && next.is_some_and(is_cjk_like) {
+                continue;
+            }
+        }
+        output.push(*ch);
+    }
+    output
+}
+
+fn looks_like_noise_line(line: &str) -> bool {
+    let mut meaningful = 0;
+    for ch in line.chars() {
+        if ch.is_alphanumeric() || is_cjk_like(ch) {
+            meaningful += 1;
+        }
+    }
+    meaningful == 0 || (meaningful == 1 && line.chars().count() <= 2)
+}
+
+fn merge_ocr_lines(lines: &[String]) -> String {
+    let mut merged = String::new();
+    for line in lines {
+        if merged.is_empty() {
+            merged.push_str(line);
+            continue;
+        }
+        let previous = merged.chars().rev().find(|ch| !ch.is_whitespace());
+        if previous.is_some_and(is_sentence_end) {
+            merged.push('\n');
+        } else if previous.is_some_and(is_cjk_like) && line.chars().next().is_some_and(is_cjk_like) {
+            // CJK subtitles usually do not need an inserted space between wrapped lines.
+        } else {
+            merged.push(' ');
+        }
+        merged.push_str(line);
+    }
+    merged
+}
+
+fn is_sentence_end(ch: char) -> bool {
+    matches!(
+        ch,
+        '.' | '!' | '?' | ':' | ';' | '。' | '！' | '？' | '：' | '；' | '」' | '』' | '）' | ')'
+    )
+}
+
+fn is_cjk_like(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{3040}'..='\u{30ff}'
+            | '\u{3400}'..='\u{4dbf}'
+            | '\u{4e00}'..='\u{9fff}'
+            | '\u{ac00}'..='\u{d7af}'
+            | '\u{f900}'..='\u{faff}'
+    )
 }
 
 fn path_to_string(path: &Path) -> String {

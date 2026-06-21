@@ -285,7 +285,7 @@ function DesktopApp() {
     { id: "overview", label: "概览", icon: LayoutDashboard },
     { id: "translate", label: "翻译", icon: Languages },
     { id: "knowledge", label: "知识库", icon: Database },
-    { id: "graph", label: "知识地图", icon: ChartNetwork },
+    { id: "graph", label: "知识工作台", icon: ChartNetwork },
     { id: "categories", label: "分组", icon: Folder },
     { id: "modelApi", label: "模型 API", icon: Brain },
     { id: "notes", label: "笔记集成", icon: BookOpen },
@@ -313,7 +313,7 @@ function DesktopApp() {
           <div className="tk-wordmark">
             Tab<span className="tk-wordmark-accent">Keep</span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Desktop Companion</p>
+          <p className="mt-1 text-xs text-muted-foreground">Desktop Status</p>
         </div>
 
         <nav className="tk-sidebar-nav">
@@ -497,7 +497,7 @@ function OverviewSection({
 
       <section className="tk-status-grid">
         <StatusCard
-          title="桌面伴侣"
+          title="桌面状态"
           value={desktopStatus?.ok ? "运行中" : "未就绪"}
           tone={desktopStatus?.ok ? "success" : "warning"}
         />
@@ -618,7 +618,7 @@ function OverviewSection({
               </Button>
             </div>
             <div className="tk-muted-box">
-              打开扩展 popup 或设置页后，桌面伴侣会自动缓存扩展传来的 token。
+              打开扩展 popup 或设置页后，桌面状态会自动缓存扩展传来的 token。
             </div>
           </div>
         </section>
@@ -768,6 +768,18 @@ function TranslateSection() {
     } finally {
       setOcrSaving(false)
     }
+  }
+
+  const updateOcrNumber = (
+    key: "paddleMinScore" | "preprocessScale" | "preprocessContrast",
+    value: string,
+    fallback: number,
+  ) => {
+    const numeric = Number(value)
+    setOcrConfigState({
+      ...ocrConfig,
+      [key]: Number.isFinite(numeric) ? numeric : fallback,
+    })
   }
 
   const saveTranslateProviderSettings = async () => {
@@ -1262,6 +1274,84 @@ function TranslateSection() {
               onChange={(value) => setOcrConfigState({ ...ocrConfig, paddleConfigPath: value })}
               placeholder="可留空"
             />
+            <TextField
+              label="Paddle 最低置信度"
+              type="number"
+              value={String(ocrConfig.paddleMinScore)}
+              onChange={(value) => updateOcrNumber("paddleMinScore", value, DEFAULT_OCR_CONFIG.paddleMinScore)}
+              placeholder="0.45"
+            />
+          </div>
+
+          <div className="rounded-md border border-white/70 bg-[rgb(247_250_248)] p-3 ring-1 ring-slate-900/5">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-slate-900">图像预处理</h3>
+              <p className="mt-1 text-xs text-muted-foreground">适合小字、字幕描边和复杂背景，二值化建议只在普通增强不够时开启</p>
+            </div>
+            <div className="tk-form-grid">
+              <Checkbox
+                label="启用图像预处理"
+                checked={ocrConfig.preprocessEnabled}
+                onChange={(checked) => setOcrConfigState({ ...ocrConfig, preprocessEnabled: checked })}
+              />
+              <label className="tk-field">
+                <span className="tk-label">放大倍率</span>
+                <select
+                  className="tk-select"
+                  value={String(ocrConfig.preprocessScale)}
+                  onChange={(event) =>
+                    updateOcrNumber("preprocessScale", event.target.value, DEFAULT_OCR_CONFIG.preprocessScale)
+                  }>
+                  <option value="1">1x</option>
+                  <option value="2">2x</option>
+                  <option value="3">3x</option>
+                  <option value="4">4x</option>
+                </select>
+              </label>
+              <TextField
+                label="对比度增强"
+                type="number"
+                value={String(ocrConfig.preprocessContrast)}
+                onChange={(value) =>
+                  updateOcrNumber("preprocessContrast", value, DEFAULT_OCR_CONFIG.preprocessContrast)
+                }
+                placeholder="18"
+              />
+              <Checkbox
+                label="灰度化"
+                checked={ocrConfig.preprocessGrayscale}
+                onChange={(checked) => setOcrConfigState({ ...ocrConfig, preprocessGrayscale: checked })}
+              />
+              <Checkbox
+                label="锐化文字边缘"
+                checked={ocrConfig.preprocessSharpen}
+                onChange={(checked) => setOcrConfigState({ ...ocrConfig, preprocessSharpen: checked })}
+              />
+              <Checkbox
+                label="二值化"
+                checked={ocrConfig.preprocessThreshold}
+                onChange={(checked) => setOcrConfigState({ ...ocrConfig, preprocessThreshold: checked })}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-md border border-white/70 bg-[rgb(247_250_248)] p-3 ring-1 ring-slate-900/5">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-slate-900">文本后处理</h3>
+              <p className="mt-1 text-xs text-muted-foreground">清理 OCR 空格、噪声和相邻重复行，翻译前会先使用处理后的文本</p>
+            </div>
+            <div className="tk-form-grid">
+              <Checkbox
+                label="启用文本后处理"
+                checked={ocrConfig.textPostprocessEnabled}
+                onChange={(checked) => setOcrConfigState({ ...ocrConfig, textPostprocessEnabled: checked })}
+              />
+              <Checkbox
+                label="合并换行"
+                checked={ocrConfig.textMergeLines}
+                onChange={(checked) => setOcrConfigState({ ...ocrConfig, textMergeLines: checked })}
+              />
+            </div>
           </div>
         </div>
         <div className="tk-command-bar">
@@ -1273,7 +1363,7 @@ function TranslateSection() {
             variant="ghost"
             onClick={() => setOcrConfigState(DEFAULT_OCR_CONFIG)}>
             <RotateCcw className="h-4 w-4" />
-            重置为 Windows OCR
+            重置为 PaddleOCR-json
           </Button>
         </div>
       </section>
@@ -1478,10 +1568,8 @@ function OcrResultWindow() {
 
 function RegionBoxWindow() {
   const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
-  const [busy, setBusy] = useState<"translate" | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const configRef = useRef(config)
-  const languageOptions = ["auto", "简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
 
   useEffect(() => {
     configRef.current = config
@@ -1555,9 +1643,6 @@ function RegionBoxWindow() {
                 ? "正在翻译..."
                 : null),
       )
-      if (payload.phase !== "translate") {
-        setBusy(null)
-      }
     }).then((value) => {
       unlistenResult = value
     })
@@ -1594,43 +1679,6 @@ function RegionBoxWindow() {
       } catch {
         // The command path is authoritative; this is only a UI fallback.
       }
-    }
-  }
-
-  const updateConfig = async (partial: Partial<RegionBoxConfig>) => {
-    if (config.passThrough) return
-    try {
-      const next = await setRegionBoxConfig({ ...configRef.current, ...partial })
-      configRef.current = next
-      setConfig(next)
-    } catch (err) {
-      setNotice(errorMessage(err))
-    }
-  }
-
-  const togglePassthrough = async () => {
-    if (config.passThrough) return
-    try {
-      const next = await setRegionBoxPassthrough(true)
-      configRef.current = next
-      setConfig(next)
-      setNotice("区域框已穿透")
-    } catch (err) {
-      setNotice(errorMessage(err))
-    }
-  }
-
-  const runTranslate = async () => {
-    if (config.passThrough) return
-    setBusy("translate")
-    setNotice("正在识别并翻译区域...")
-    try {
-      const value = await runRegionTranslate()
-      setNotice(value.message ?? (value.ok ? "翻译完成" : value.error ?? "翻译未完成"))
-    } catch (err) {
-      setNotice(errorMessage(err))
-    } finally {
-      setBusy(null)
     }
   }
 
@@ -1698,52 +1746,6 @@ function RegionBoxWindow() {
           </div>
         )}
       </div>
-      {!config.passThrough && (
-        <div
-          className="tk-region-edge-toolbar"
-          onMouseDown={(event) => {
-            event.stopPropagation()
-          }}>
-          <select
-            className="tk-select tk-region-edge-select"
-            value={config.sourceLang}
-            onChange={(event) => updateConfig({ sourceLang: event.target.value })}
-            title="源语言">
-            <option value="auto">自动</option>
-            {languageOptions
-              .filter((lang) => lang !== "auto")
-              .map((lang) => (
-                <option key={lang} value={lang}>
-                  {lang}
-                </option>
-              ))}
-          </select>
-          <select
-            className="tk-select tk-region-edge-select"
-            value={config.targetLang}
-            onChange={(event) => updateConfig({ targetLang: event.target.value })}
-            title="目标语言">
-            {languageOptions
-              .filter((lang) => lang !== "auto")
-              .map((lang) => (
-                <option key={lang} value={lang}>
-                  {lang}
-                </option>
-              ))}
-          </select>
-          <Button className="h-8" onClick={runTranslate} disabled={busy !== null}>
-            <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
-            {busy === "translate" ? "翻译中" : "翻译"}
-          </Button>
-          <Button className="h-8" variant="ghost" onClick={togglePassthrough}>
-            <MousePointer2 className="h-4 w-4" />
-            穿透
-          </Button>
-          <button className="tk-icon-button" onClick={closeRegion} title="关闭固定翻译框">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
       {!config.passThrough &&
         handles.map((handle) => (
           <button
@@ -1763,7 +1765,15 @@ function RegionBoxWindow() {
 
 function RegionPanelWindow() {
   const [result, setResult] = useState<OcrFlowResult | null>(null)
+  const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
+  const [busy, setBusy] = useState<"translate" | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const configRef = useRef(config)
+  const languageOptions = ["auto", "简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
+
+  useEffect(() => {
+    configRef.current = config
+  }, [config])
 
   useEffect(() => {
     const previousHtmlBg = document.documentElement.style.background
@@ -1786,13 +1796,28 @@ function RegionPanelWindow() {
 
   useEffect(() => {
     let unlistenResult: (() => void) | undefined
+    let unlistenConfig: (() => void) | undefined
+    getRegionBoxConfig().then((value) => {
+      configRef.current = value
+      setConfig(value)
+    })
+    listen<RegionBoxConfig>("region-config-updated", (event) => {
+      configRef.current = event.payload
+      setConfig(event.payload)
+    }).then((value) => {
+      unlistenConfig = value
+    })
     listen<OcrFlowResult>("region-result-updated", (event) => {
       setResult(event.payload)
       setNotice(event.payload.message ?? (event.payload.ok ? "完成" : event.payload.error ?? "未完成"))
+      if (event.payload.phase !== "translate") {
+        setBusy(null)
+      }
     }).then((value) => {
       unlistenResult = value
     })
     return () => {
+      unlistenConfig?.()
       unlistenResult?.()
     }
   }, [])
@@ -1809,9 +1834,44 @@ function RegionPanelWindow() {
 
   const close = async () => {
     try {
-      await getCurrentWindow().hide()
+      await closeRegionBox()
     } catch (err) {
       setNotice(errorMessage(err))
+    }
+  }
+
+  const updateConfig = async (partial: Partial<RegionBoxConfig>) => {
+    try {
+      const next = await setRegionBoxConfig({ ...configRef.current, ...partial })
+      configRef.current = next
+      setConfig(next)
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const togglePassthrough = async () => {
+    try {
+      const next = await setRegionBoxPassthrough(!configRef.current.passThrough)
+      configRef.current = next
+      setConfig(next)
+      setNotice(next.passThrough ? "内容区域已穿透，按钮仍可使用" : "已回到编辑模式")
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const runTranslate = async () => {
+    setBusy("translate")
+    setNotice("正在识别并翻译区域...")
+    try {
+      const value = await runRegionTranslate()
+      setResult(value)
+      setNotice(value.message ?? (value.ok ? "翻译完成" : value.error ?? "翻译未完成"))
+    } catch (err) {
+      setNotice(errorMessage(err))
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -1841,7 +1901,7 @@ function RegionPanelWindow() {
         title="按住拖动译文窗口">
         <div className="tk-region-result-title-inline">
           <Languages className="h-4 w-4 text-blue-600" />
-          <span>译文{result?.model ? ` · ${result.model}` : ""}</span>
+          <span>固定区域翻译{result?.model ? ` · ${result.model}` : ""}</span>
         </div>
         <button
           className="tk-icon-button"
@@ -1850,9 +1910,47 @@ function RegionPanelWindow() {
           disabled={!result?.translatedText}>
           <Copy className="h-4 w-4" />
         </button>
-        <button className="tk-icon-button" onClick={close} title="关闭译文">
+        <button className="tk-icon-button" onClick={close} title="关闭固定翻译框">
           <X className="h-4 w-4" />
         </button>
+      </div>
+
+      <div className="tk-region-panel-controls">
+        <select
+          className="tk-select tk-region-select"
+          value={config.sourceLang}
+          onChange={(event) => updateConfig({ sourceLang: event.target.value })}
+          title="源语言">
+          <option value="auto">自动</option>
+          {languageOptions
+            .filter((lang) => lang !== "auto")
+            .map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+        </select>
+        <select
+          className="tk-select tk-region-select"
+          value={config.targetLang}
+          onChange={(event) => updateConfig({ targetLang: event.target.value })}
+          title="目标语言">
+          {languageOptions
+            .filter((lang) => lang !== "auto")
+            .map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+        </select>
+        <Button className="h-8" onClick={runTranslate} disabled={busy !== null}>
+          <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
+          {busy === "translate" ? "翻译中" : "翻译"}
+        </Button>
+        <Button className="h-8" variant="ghost" onClick={togglePassthrough}>
+          <MousePointer2 className="h-4 w-4" />
+          {config.passThrough ? "编辑" : "穿透"}
+        </Button>
       </div>
 
       {notice && <div className="tk-region-notice">{notice}</div>}
@@ -2720,8 +2818,8 @@ function KnowledgeGraphSection({ noteAdapter }: { noteAdapter: NoteAdapterConfig
     <div className="space-y-5">
       <header className="tk-topbar">
         <div>
-          <h1 className="tk-page-title">知识地图</h1>
-          <p className="tk-page-subtitle">按主题浏览知识库、查看归类证据，并围绕主题继续提问</p>
+          <h1 className="tk-page-title">知识工作台</h1>
+          <p className="tk-page-subtitle">围绕主题查笔记、看证据、回到原文，并继续整理知识</p>
         </div>
       </header>
       {status && <Notice tone={statusTone}>{status}</Notice>}
@@ -2776,7 +2874,7 @@ function TopicMapPanel({
       })
       setTopicResult(result)
       if (!result.ok) {
-        onStatus(result.error ?? "主题知识地图加载失败")
+        onStatus(result.error ?? "主题工作台加载失败")
         return
       }
       const nextTopicId = preferredTopicId && result.topics.some((topic) => topic.id === preferredTopicId)
@@ -2790,7 +2888,7 @@ function TopicMapPanel({
         setSelectedTopicDocument(null)
       }
     } catch (err) {
-      onStatus(`主题知识地图加载失败: ${errorMessage(err)}`)
+      onStatus(`主题工作台加载失败: ${errorMessage(err)}`)
     } finally {
       setTopicLoading(false)
     }
@@ -2830,13 +2928,13 @@ function TopicMapPanel({
     try {
       const result = await rebuildKnowledgeTopics()
       if (!result.ok) {
-        onStatus(result.error ?? "主题知识地图重建失败")
+        onStatus(result.error ?? "主题工作台重建失败")
         return
       }
-      onStatus(`主题知识地图已重建：${result.topics} 个主题，${result.topicDocuments} 条文档归属`)
+      onStatus(`主题工作台已重建：${result.topics} 个主题，${result.topicDocuments} 篇笔记`)
       await loadTopics(selectedTopicId)
     } catch (err) {
-      onStatus(`主题知识地图重建失败: ${errorMessage(err)}`)
+      onStatus(`主题工作台重建失败: ${errorMessage(err)}`)
     } finally {
       setTopicRebuilding(false)
     }
@@ -2917,10 +3015,10 @@ function TopicMapPanel({
     <section className="tk-panel overflow-hidden">
       <div className="tk-panel-header">
         <div>
-          <h2 className="tk-panel-title">主题知识地图</h2>
+          <h2 className="tk-panel-title">主题工作台</h2>
           <p className="text-xs text-muted-foreground">
             {topicResult
-              ? `当前 ${topicResult.stats.topics}/${topicResult.stats.totalTopics} 个主题，覆盖 ${topicResult.stats.documents} 条文档归属`
+              ? `当前 ${topicResult.stats.topics}/${topicResult.stats.totalTopics} 个主题，覆盖 ${topicResult.stats.documents} 篇笔记`
               : "从已索引知识库生成主题"}
           </p>
         </div>
@@ -2934,23 +3032,23 @@ function TopicMapPanel({
       <div className="tk-visual-strip">
         <div className="tk-visual-tile">
           <div className="min-w-0">
-            <div className="tk-visual-index">01 / SEARCH</div>
+            <div className="tk-visual-index">01 / FIND</div>
             <div className="text-xs font-semibold text-slate-900">搜主题</div>
-            <div className="truncate text-xs text-muted-foreground">按关键词、来源或摘要定位知识区域</div>
+            <div className="truncate text-xs text-muted-foreground">按关键词、来源或摘要定位知识范围</div>
           </div>
         </div>
         <div className="tk-visual-tile tk-visual-tile-mint">
           <div className="min-w-0">
-            <div className="tk-visual-index">02 / SOURCE</div>
+            <div className="tk-visual-index">02 / READ</div>
             <div className="text-xs font-semibold text-slate-900">回到原笔记</div>
             <div className="truncate text-xs text-muted-foreground">打开 Obsidian / SiYuan / Markdown 来源</div>
           </div>
         </div>
         <div className="tk-visual-tile tk-visual-tile-amber">
           <div className="min-w-0">
-            <div className="tk-visual-index">03 / MAP</div>
-            <div className="text-xs font-semibold text-slate-900">沉淀目录页</div>
-            <div className="truncate text-xs text-muted-foreground">把主题地图写回笔记软件形成 MOC</div>
+            <div className="tk-visual-index">03 / BUILD</div>
+            <div className="text-xs font-semibold text-slate-900">整理主题页</div>
+            <div className="truncate text-xs text-muted-foreground">把主题工作台写回笔记软件形成目录</div>
           </div>
         </div>
       </div>
@@ -3026,7 +3124,7 @@ function TopicMapPanel({
                       ))}
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                      <span>{Math.round(topic.confidence * 100)}% 置信</span>
+                      <span>{Math.round(topic.confidence * 100)}% 匹配</span>
                       {topic.aiEnhanced && (
                         <span className="rounded-sm bg-blue-100 px-1.5 py-0.5 font-medium text-blue-700">AI 整理</span>
                       )}
@@ -3048,7 +3146,7 @@ function TopicMapPanel({
                   <div className="min-w-0">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <span className="tk-badge">{selectedTopic.documentCount} 篇笔记</span>
-                      <span className="tk-badge">{Math.round(selectedTopic.confidence * 100)}% 置信</span>
+                      <span className="tk-badge">{Math.round(selectedTopic.confidence * 100)}% 匹配</span>
                       {selectedTopic.sourceTypes.map((source) => (
                         <span key={source} className="tk-badge">{formatSourceType(source)}</span>
                       ))}
@@ -3089,24 +3187,27 @@ function TopicMapPanel({
                   <>
                     <section>
                       <div className="mb-2 flex items-center justify-between">
-                        <h4 className="text-sm font-semibold text-slate-900">代表笔记</h4>
+                        <h4 className="text-sm font-semibold text-slate-900">推荐阅读顺序</h4>
                         <span className="tk-badge">{topicDetail?.documents.length ?? 0}</span>
                       </div>
-                      <div className="grid gap-2 md:grid-cols-2">
-                        {(topicDetail?.documents ?? []).map((document) => (
+                      <div className="grid gap-2">
+                        {(topicDetail?.documents ?? []).map((document, index) => (
                           <div
                             key={document.documentId}
-                            className={`group rounded-md border p-3 text-left transition-colors ${
+                            className={`group relative rounded-md border p-3 pl-12 text-left transition-colors ${
                               selectedTopicDocument?.documentId === document.documentId
                                 ? "border-blue-300 bg-blue-50/50 ring-2 ring-blue-100"
                                 : "border-white/70 ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-blue-50/25"
                             }`}
                             onDoubleClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}>
+                            <div className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-md bg-[rgb(238_245_242)] text-xs font-semibold text-slate-700 ring-1 ring-slate-200/80">
+                              {String(index + 1).padStart(2, "0")}
+                            </div>
                             <div className="mb-1 flex items-center gap-2">
                               <span className="h-7 w-1.5 rounded-full bg-blue-400" />
                               <button
                                 className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900 hover:text-blue-700"
-                                title="查看这篇笔记在当前主题中的片段"
+                                title="查看这篇笔记的关键片段"
                                 onClick={() => setSelectedTopicDocument(document)}>
                                 {document.title}
                               </button>
@@ -3128,7 +3229,7 @@ function TopicMapPanel({
                                 <span>{document.reason}</span>
                                 {document.anchor && (
                                   <span className="rounded-md bg-blue-50 px-1.5 py-0.5 font-medium text-blue-700">
-                                    跳到 {document.anchor}
+                                    可跳到 {document.anchor}
                                   </span>
                                 )}
                               </div>
@@ -3138,39 +3239,21 @@ function TopicMapPanel({
                       </div>
                     </section>
 
-                    <section className="grid gap-3 md:grid-cols-2">
-                      <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
-                        <h4 className="mb-2 text-sm font-semibold text-slate-900">为什么归类</h4>
-                        <div className="grid max-h-48 gap-2 overflow-auto pr-1">
-                          {(topicDetail?.evidence ?? []).slice(0, 16).map((item) => (
-                            <div key={item.id} className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-xs ring-1 ring-slate-900/5">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium text-slate-900">{item.label}</span>
-                                <span className="tk-badge">{formatTopicEvidenceKind(item.kind)}</span>
-                              </div>
-                              <p className="mt-1 text-muted-foreground">权重 {item.weight.toFixed(1)}</p>
+                    <section className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
+                      <h4 className="mb-2 text-sm font-semibold text-slate-900">主题证据</h4>
+                      <div className="grid max-h-52 gap-2 overflow-auto pr-1 md:grid-cols-2">
+                        {(topicDetail?.evidence ?? []).slice(0, 16).map((item) => (
+                          <div key={item.id} className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-xs ring-1 ring-slate-900/5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-900">{item.label}</span>
+                              <span className="tk-badge">{formatTopicEvidenceKind(item.kind)}</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
-                        <h4 className="mb-2 text-sm font-semibold text-slate-900">相关主题</h4>
-                        <div className="grid max-h-48 gap-2 overflow-auto pr-1">
-                          {selectedTopicRelations.length > 0 ? (
-                            selectedTopicRelations.slice(0, 10).map(({ relation, topic }) => (
-                              <button
-                                key={relation.id}
-                                className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-left text-xs ring-1 ring-slate-900/5 transition-colors hover:border-blue-200/80 hover:bg-blue-50"
-                                onClick={() => selectTopic(topic)}>
-                                <div className="font-medium text-slate-900">{topic.title}</div>
-                                <div className="mt-1 text-muted-foreground">{relation.label}</div>
-                              </button>
-                            ))
-                          ) : (
-                            <div className="tk-muted-box">暂无明显关联主题</div>
-                          )}
-                        </div>
+                            <p className="mt-1 text-muted-foreground">关联强度 {item.weight.toFixed(1)}</p>
+                          </div>
+                        ))}
+                        {(topicDetail?.evidence ?? []).length === 0 && (
+                          <div className="tk-muted-box md:col-span-2">暂无可展示的主题证据</div>
+                        )}
                       </div>
                     </section>
 
@@ -3186,7 +3269,7 @@ function TopicMapPanel({
                 )}
               </>
             ) : (
-              <div className="tk-muted-box">选择左侧主题后，这里会展示主题摘要、代表笔记和归类证据。</div>
+              <div className="tk-muted-box">选择左侧主题后，这里会展示主题摘要、推荐阅读和主题证据。</div>
             )}
           </main>
 
@@ -3216,8 +3299,8 @@ function TopicMapPanel({
                   </div>
                 </div>
                 <div className="rounded-md border border-white/70 bg-white/70 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-900/5">
-                  <div className="mb-1 font-semibold text-slate-900">归类原因</div>
-                  {selectedTopicDocument.reason || "来自主题聚类"}
+                  <div className="mb-1 font-semibold text-slate-900">推荐原因</div>
+                  {selectedTopicDocument.reason || "来自主题匹配"}
                 </div>
                 {selectedTopicDocument.anchor && (
                   <div className="rounded-md border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900">
@@ -3248,7 +3331,31 @@ function TopicMapPanel({
                 </div>
               </>
             ) : (
-              <div className="tk-muted-box">点击代表笔记后，这里会显示来源、片段和操作。</div>
+              <div className="tk-muted-box">点击推荐笔记后，这里会显示来源、片段和操作。</div>
+            )}
+
+            {selectedTopic && (
+              <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-slate-900">继续探索</h4>
+                  <span className="tk-badge">{selectedTopicRelations.length}</span>
+                </div>
+                <div className="grid max-h-64 gap-2 overflow-auto pr-1">
+                  {selectedTopicRelations.length > 0 ? (
+                    selectedTopicRelations.slice(0, 10).map(({ relation, topic }) => (
+                      <button
+                        key={relation.id}
+                        className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-left text-xs ring-1 ring-slate-900/5 transition-colors hover:border-blue-200/80 hover:bg-blue-50"
+                        onClick={() => selectTopic(topic)}>
+                        <div className="font-medium text-slate-900">{topic.title}</div>
+                        <div className="mt-1 text-muted-foreground">{relation.label || "相关主题"}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="tk-muted-box">暂无相关主题</div>
+                  )}
+                </div>
+              </div>
             )}
           </aside>
         </div>

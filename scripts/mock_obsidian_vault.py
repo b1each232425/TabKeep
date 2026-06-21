@@ -31,12 +31,12 @@ tags: [tabkeep, mock, rag]
 
 入口笔记：
 
-- [[Projects/TabKeep/Desktop Companion Roadmap]]
+- [[Projects/TabKeep/Desktop Status Roadmap]]
 - [[Projects/TabKeep/RAG Knowledge Base Design]]
 - [[Research/LanceDB 与 SQLite 混合检索]]
 - [[Meetings/2026-06-18 RAG 稳定化复盘]]
 """,
-    "Projects/TabKeep/Desktop Companion Roadmap.md": """
+    "Projects/TabKeep/Desktop Status Roadmap.md": """
 ---
 source: tabkeep-mock
 project: TabKeep
@@ -44,9 +44,9 @@ status: active
 tags: [tabkeep, tauri, desktop, translation]
 ---
 
-# Desktop Companion Roadmap
+# Desktop Status Roadmap
 
-TabKeep 桌面伴侣选择 Tauri 2，而不是 Electron。主要原因是常驻后台工具需要更低内存、更小包体，并且全局快捷键、OCR、截图、托盘、本地 HTTP 服务都更适合在 Rust 侧实现。
+TabKeep 桌面状态选择 Tauri 2，而不是 Electron。主要原因是常驻后台工具需要更低内存、更小包体，并且全局快捷键、OCR、截图、托盘、本地 HTTP 服务都更适合在 Rust 侧实现。
 
 ## 系统能力边界
 
@@ -290,7 +290,7 @@ tags: [glossary]
 
 # TabKeep Terms
 
-- Desktop Companion：TabKeep 的 Tauri 桌面伴侣。
+- Desktop Status：TabKeep 的 Tauri 桌面状态。
 - Knowledge DB：TabKeep 本地 SQLite 知识库。
 - LanceDB：可选向量检索层。
 - FTS：SQLite Full-Text Search。

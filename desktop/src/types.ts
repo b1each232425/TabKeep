@@ -349,6 +349,15 @@ export interface OcrConfig {
   paddleExePath: string
   paddleModelsPath: string
   paddleConfigPath: string
+  paddleMinScore: number
+  preprocessEnabled: boolean
+  preprocessScale: number
+  preprocessGrayscale: boolean
+  preprocessContrast: number
+  preprocessSharpen: boolean
+  preprocessThreshold: boolean
+  textPostprocessEnabled: boolean
+  textMergeLines: boolean
 }
 
 export interface OcrRequest {

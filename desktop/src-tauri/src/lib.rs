@@ -1749,7 +1749,7 @@ fn error_from_json_response((_status, value): (StatusCode, Value)) -> String {
 fn status_payload(state: &DesktopState) -> DesktopStatus {
     DesktopStatus {
         ok: true,
-        app: "TabKeep Desktop Companion",
+        app: "TabKeep Desktop Status",
         version: env!("CARGO_PKG_VERSION"),
         backend_url: BACKEND_URL,
         desktop_url: format!("http://127.0.0.1:{DESKTOP_PORT}"),

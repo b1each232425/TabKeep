@@ -47,10 +47,19 @@ export const DEFAULT_NOTE_ADAPTER: NoteAdapterConfig = {
 }
 
 export const DEFAULT_OCR_CONFIG: OcrConfig = {
-  provider: "windows_ocr",
+  provider: "paddleocr_json",
   paddleExePath: "",
   paddleModelsPath: "",
   paddleConfigPath: "",
+  paddleMinScore: 0.45,
+  preprocessEnabled: true,
+  preprocessScale: 2,
+  preprocessGrayscale: true,
+  preprocessContrast: 18,
+  preprocessSharpen: true,
+  preprocessThreshold: false,
+  textPostprocessEnabled: true,
+  textMergeLines: false,
 }
 
 export const DEFAULT_REGION_BOX_CONFIG: RegionBoxConfig = {

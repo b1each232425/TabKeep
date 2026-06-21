@@ -1,7 +1,7 @@
 [package]
 name = "tabkeep-desktop"
 version = "0.1.0"
-description = "TabKeep Desktop Companion"
+description = "TabKeep Desktop Status"
 authors = ["TabKeep"]
 license = "MIT"
 edition = "2021"
