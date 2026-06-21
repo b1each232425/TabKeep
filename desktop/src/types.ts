@@ -389,6 +389,24 @@ export interface OcrFlowResult {
   message?: string | null
 }
 
+export interface OcrDebugResult {
+  ok: boolean
+  provider: OcrProvider
+  sourceLang: string
+  originalImagePath: string
+  originalImageDataUrl?: string | null
+  originalWidth: number
+  originalHeight: number
+  preprocessedImagePath?: string | null
+  preprocessedImageDataUrl?: string | null
+  preprocessedWidth?: number | null
+  preprocessedHeight?: number | null
+  rawText: string
+  text: string
+  elapsedMs: number
+  config: OcrConfig
+}
+
 export interface RegionBoxConfig {
   x: number
   y: number

@@ -20,6 +20,7 @@ import type {
   ModelConfig,
   NoteAdapterConfig,
   OcrConfig,
+  OcrDebugResult,
   OcrFlowResult,
   OcrRequest,
   RegionBoxConfig,
@@ -382,6 +383,10 @@ export async function cancelScreenSelection(): Promise<void> {
 
 export async function getLatestOcrResult(): Promise<OcrFlowResult | null> {
   return invoke<OcrFlowResult | null>("get_latest_ocr_result")
+}
+
+export async function debugRegionOcr(): Promise<OcrDebugResult> {
+  return invoke<OcrDebugResult>("debug_region_ocr")
 }
 
 export async function openRegionBox(): Promise<RegionBoxConfig> {

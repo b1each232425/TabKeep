@@ -199,6 +199,14 @@
     @apply mt-8 flex flex-1 flex-col gap-1.5;
   }
 
+  .tk-sidebar-debug {
+    @apply mb-4 space-y-2 border-t border-white/10 pt-4;
+  }
+
+  .tk-sidebar-debug-label {
+    @apply px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500;
+  }
+
   .tk-nav-item {
     @apply flex h-10 w-full items-center gap-3 rounded-md px-3 text-sm font-medium text-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200;
   }
@@ -448,6 +456,46 @@
 
   .tk-translate-textarea {
     @apply min-h-72 resize-y;
+  }
+
+  .tk-ocr-debug-layout {
+    @apply grid gap-4;
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .tk-ocr-debug-images,
+  .tk-ocr-debug-text-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tk-ocr-debug-preview,
+  .tk-ocr-debug-text-block {
+    @apply overflow-hidden rounded-md border border-slate-200/75 bg-[rgb(250_252_250)] ring-1 ring-slate-900/5;
+  }
+
+  .tk-ocr-debug-image-stage {
+    @apply flex h-72 items-center justify-center bg-[rgb(235_241_238)] p-3;
+    background-image:
+      linear-gradient(45deg, rgb(148 163 184 / 0.13) 25%, transparent 25%),
+      linear-gradient(-45deg, rgb(148 163 184 / 0.13) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgb(148 163 184 / 0.13) 75%),
+      linear-gradient(-45deg, transparent 75%, rgb(148 163 184 / 0.13) 75%);
+    background-position:
+      0 0,
+      0 8px,
+      8px -8px,
+      -8px 0;
+    background-size: 16px 16px;
+  }
+
+  .tk-ocr-debug-image {
+    @apply max-h-full max-w-full rounded-sm border border-white/80 bg-white object-contain shadow-sm;
+    image-rendering: auto;
+  }
+
+  .tk-ocr-debug-text {
+    @apply min-h-52 max-h-80 overflow-auto whitespace-pre-wrap break-words bg-[rgb(248_250_248)] p-3 text-sm leading-6 text-slate-800;
   }
 
   .tk-capture-root {

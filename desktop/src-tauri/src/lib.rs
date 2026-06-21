@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -120,6 +121,36 @@ struct TranslateResponse {
 }
 
 #[derive(Serialize)]
+struct OcrDebugResponse {
+    ok: bool,
+    provider: ocr::OcrProvider,
+    #[serde(rename = "sourceLang")]
+    source_lang: String,
+    #[serde(rename = "originalImagePath")]
+    original_image_path: String,
+    #[serde(rename = "originalImageDataUrl")]
+    original_image_data_url: Option<String>,
+    #[serde(rename = "originalWidth")]
+    original_width: u32,
+    #[serde(rename = "originalHeight")]
+    original_height: u32,
+    #[serde(rename = "preprocessedImagePath")]
+    preprocessed_image_path: Option<String>,
+    #[serde(rename = "preprocessedImageDataUrl")]
+    preprocessed_image_data_url: Option<String>,
+    #[serde(rename = "preprocessedWidth")]
+    preprocessed_width: Option<u32>,
+    #[serde(rename = "preprocessedHeight")]
+    preprocessed_height: Option<u32>,
+    #[serde(rename = "rawText")]
+    raw_text: String,
+    text: String,
+    #[serde(rename = "elapsedMs")]
+    elapsed_ms: u128,
+    config: ocr::OcrConfig,
+}
+
+#[derive(Serialize)]
 struct TranslateProviderTestResponse {
     ok: bool,
     provider: String,
@@ -222,6 +253,7 @@ pub fn run() {
             test_translate_provider,
             start_ocr_recognize,
             start_ocr_translate,
+            debug_region_ocr,
             finish_screen_selection,
             cancel_screen_selection,
             get_latest_ocr_result,
@@ -925,6 +957,68 @@ async fn start_ocr_translate(
         payload.unwrap_or_default(),
     )
     .await
+}
+
+#[tauri::command]
+async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, String> {
+    let region_config =
+        region::sync_from_box_window(&app).unwrap_or_else(|_| region::load_config(&app));
+    let ocr_config = ocr::load_config(&app);
+    let provider = ocr_config.provider.clone();
+    let source_lang = normalize_ocr_lang(Some(&region_config.source_lang));
+
+    hide_region_windows(&app);
+    sleep(Duration::from_millis(140)).await;
+    let capture_result = region::capture_region(&app, &region_config);
+    show_region_windows(&app, &region_config);
+
+    let image_path = capture_result?;
+    let original_dimensions = image::image_dimensions(&image_path).unwrap_or((0, 0));
+
+    let app_for_ocr = app.clone();
+    let config_for_ocr = ocr_config.clone();
+    let provider_for_ocr = provider.clone();
+    let path_for_ocr = image_path.clone();
+    let lang_for_ocr = source_lang.clone();
+    let debug = tauri::async_runtime::spawn_blocking(move || {
+        ocr::recognize_with_debug(
+            &app_for_ocr,
+            &config_for_ocr,
+            provider_for_ocr,
+            &path_for_ocr,
+            &lang_for_ocr,
+        )
+    })
+    .await
+    .map_err(|err| format!("OCR 调试任务失败: {err}"))??;
+
+    let preprocessed_path = debug
+        .preprocessed_image_path
+        .as_deref()
+        .map(PathBuf::from);
+    let preprocessed_dimensions = preprocessed_path
+        .as_deref()
+        .and_then(|path| image::image_dimensions(path).ok());
+
+    Ok(OcrDebugResponse {
+        ok: true,
+        provider,
+        source_lang,
+        original_image_path: image_path.to_string_lossy().replace("\\\\?\\", ""),
+        original_image_data_url: ocr::image_data_url(&image_path),
+        original_width: original_dimensions.0,
+        original_height: original_dimensions.1,
+        preprocessed_image_path: debug.preprocessed_image_path,
+        preprocessed_image_data_url: preprocessed_path
+            .as_deref()
+            .and_then(ocr::image_data_url),
+        preprocessed_width: preprocessed_dimensions.map(|value| value.0),
+        preprocessed_height: preprocessed_dimensions.map(|value| value.1),
+        raw_text: debug.raw_text,
+        text: debug.text,
+        elapsed_ms: debug.elapsed_ms,
+        config: ocr_config,
+    })
 }
 
 #[tauri::command]

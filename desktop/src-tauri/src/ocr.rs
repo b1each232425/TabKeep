@@ -2,6 +2,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    time::Instant,
 };
 
 use base64::{engine::general_purpose, Engine};
@@ -138,6 +139,17 @@ pub struct OcrFlowResult {
     pub message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct OcrRecognitionDebug {
+    #[serde(rename = "rawText")]
+    pub raw_text: String,
+    pub text: String,
+    #[serde(rename = "preprocessedImagePath")]
+    pub preprocessed_image_path: Option<String>,
+    #[serde(rename = "elapsedMs")]
+    pub elapsed_ms: u128,
+}
+
 pub fn load_config(app: &AppHandle) -> OcrConfig {
     let Ok(path) = config_path(app) else {
         return OcrConfig::default();
@@ -222,17 +234,34 @@ pub fn recognize(
     image_path: &Path,
     lang: &str,
 ) -> Result<String, String> {
+    recognize_with_debug(app, config, provider, image_path, lang).map(|result| result.text)
+}
+
+pub fn recognize_with_debug(
+    app: &AppHandle,
+    config: &OcrConfig,
+    provider: OcrProvider,
+    image_path: &Path,
+    lang: &str,
+) -> Result<OcrRecognitionDebug, String> {
+    let started = Instant::now();
     let preprocessed_path = if config.preprocess_enabled {
         Some(preprocess_image(app, config, image_path)?)
     } else {
         None
     };
     let ocr_image_path = preprocessed_path.as_deref().unwrap_or(image_path);
-    let text = match provider {
+    let raw_text = match provider {
         OcrProvider::WindowsOcr => recognize_windows(ocr_image_path, lang),
         OcrProvider::PaddleocrJson => recognize_paddle(config, ocr_image_path),
     }?;
-    Ok(postprocess_ocr_text(&text, lang, config))
+    let text = postprocess_ocr_text(&raw_text, lang, config);
+    Ok(OcrRecognitionDebug {
+        raw_text,
+        text,
+        preprocessed_image_path: preprocessed_path.as_deref().map(path_to_string),
+        elapsed_ms: started.elapsed().as_millis(),
+    })
 }
 
 pub fn image_data_url(path: &Path) -> Option<String> {
