@@ -2140,9 +2140,52 @@ function RegionPanelWindow() {
   useEffect(() => {
     let unlistenResult: (() => void) | undefined
     let unlistenConfig: (() => void) | undefined
+    let unlistenMoved: (() => void) | undefined
+    let unlistenResized: (() => void) | undefined
+    let geometryTimer: number | undefined
+    const currentWindow = getCurrentWindow()
+
+    const syncPanelGeometry = () => {
+      if (geometryTimer) window.clearTimeout(geometryTimer)
+      geometryTimer = window.setTimeout(async () => {
+        try {
+          const [position, size] = await Promise.all([
+            currentWindow.outerPosition(),
+            currentWindow.innerSize(),
+          ])
+          const current = configRef.current
+          if (
+            current.panelX === position.x &&
+            current.panelY === position.y &&
+            current.panelWidth === size.width &&
+            current.panelHeight === size.height
+          ) {
+            return
+          }
+          const next = await setRegionBoxConfig({
+            ...current,
+            panelX: position.x,
+            panelY: position.y,
+            panelWidth: size.width,
+            panelHeight: size.height,
+          })
+          configRef.current = next
+          setConfig(next)
+        } catch {
+          // Resize/move events may fire while the panel is closing.
+        }
+      }, 140)
+    }
+
     getRegionBoxConfig().then((value) => {
       configRef.current = value
       setConfig(value)
+    })
+    currentWindow.onMoved(syncPanelGeometry).then((value) => {
+      unlistenMoved = value
+    })
+    currentWindow.onResized(syncPanelGeometry).then((value) => {
+      unlistenResized = value
     })
     listen<RegionBoxConfig>("region-config-updated", (event) => {
       configRef.current = event.payload
@@ -2160,6 +2203,9 @@ function RegionPanelWindow() {
       unlistenResult = value
     })
     return () => {
+      if (geometryTimer) window.clearTimeout(geometryTimer)
+      unlistenMoved?.()
+      unlistenResized?.()
       unlistenConfig?.()
       unlistenResult?.()
     }
@@ -2229,6 +2275,25 @@ function RegionPanelWindow() {
     }
   }
 
+  const startPanelResize = async (direction: ResizeDirection) => {
+    try {
+      await getCurrentWindow().startResizeDragging(direction)
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const panelResizeHandles: { direction: ResizeDirection; className: string }[] = [
+    { direction: "North", className: "tk-region-panel-resize-n" },
+    { direction: "South", className: "tk-region-panel-resize-s" },
+    { direction: "West", className: "tk-region-panel-resize-w" },
+    { direction: "East", className: "tk-region-panel-resize-e" },
+    { direction: "NorthWest", className: "tk-region-panel-resize-nw" },
+    { direction: "NorthEast", className: "tk-region-panel-resize-ne" },
+    { direction: "SouthWest", className: "tk-region-panel-resize-sw" },
+    { direction: "SouthEast", className: "tk-region-panel-resize-se" },
+  ]
+
   const translationText =
     result?.translatedText ||
     (result?.error ? `翻译失败: ${result.error}` : "等待译文")
@@ -2237,7 +2302,7 @@ function RegionPanelWindow() {
     : translationText
 
   return (
-    <div className="tk-region-panel tk-region-translation-panel">
+    <div className="tk-region-panel tk-region-translation-panel tk-region-panel-resizable">
       <div
         className="tk-region-panel-toolbar tk-region-panel-dragbar"
         onMouseDown={startPanelDrag}
@@ -2304,6 +2369,18 @@ function RegionPanelWindow() {
         }`}>
         {formattedTranslationText}
       </pre>
+      {panelResizeHandles.map((handle) => (
+        <button
+          key={handle.direction}
+          className={`tk-region-panel-resize-handle ${handle.className}`}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            startPanelResize(handle.direction)
+          }}
+          title="调整译文框大小"
+        />
+      ))}
     </div>
   )
 }

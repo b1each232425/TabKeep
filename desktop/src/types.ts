@@ -415,6 +415,10 @@ export interface RegionBoxConfig {
   passThrough: boolean
   sourceLang: string
   targetLang: string
+  panelX?: number | null
+  panelY?: number | null
+  panelWidth: number
+  panelHeight: number
 }
 
 export interface SelectionTranslateConfig {

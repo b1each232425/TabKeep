@@ -71,6 +71,10 @@ export const DEFAULT_REGION_BOX_CONFIG: RegionBoxConfig = {
   passThrough: false,
   sourceLang: "auto",
   targetLang: "简体中文",
+  panelX: null,
+  panelY: null,
+  panelWidth: 420,
+  panelHeight: 150,
 }
 
 export const DEFAULT_TRANSLATE_PROVIDER_CONFIG: TranslateProviderConfig = {

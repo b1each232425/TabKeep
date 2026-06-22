@@ -9,8 +9,10 @@ use tauri::{
 
 const REGION_CONFIG_FILE: &str = "region-box-config.json";
 const REGION_SCREENSHOT_FILE: &str = "tabkeep_region.png";
-const REGION_PANEL_WIDTH: f64 = 520.0;
-const REGION_PANEL_HEIGHT: f64 = 220.0;
+const DEFAULT_REGION_PANEL_WIDTH: u32 = 420;
+const DEFAULT_REGION_PANEL_HEIGHT: u32 = 150;
+const MIN_REGION_PANEL_WIDTH: u32 = 280;
+const MIN_REGION_PANEL_HEIGHT: u32 = 140;
 const REGION_PANEL_GAP: i32 = 10;
 const MIN_REGION_WIDTH: u32 = 120;
 const MIN_REGION_HEIGHT: u32 = 60;
@@ -28,6 +30,14 @@ pub struct RegionBoxConfig {
     pub source_lang: String,
     #[serde(rename = "targetLang")]
     pub target_lang: String,
+    #[serde(rename = "panelX", default, skip_serializing_if = "Option::is_none")]
+    pub panel_x: Option<i32>,
+    #[serde(rename = "panelY", default, skip_serializing_if = "Option::is_none")]
+    pub panel_y: Option<i32>,
+    #[serde(rename = "panelWidth", default = "default_panel_width")]
+    pub panel_width: u32,
+    #[serde(rename = "panelHeight", default = "default_panel_height")]
+    pub panel_height: u32,
 }
 
 impl Default for RegionBoxConfig {
@@ -40,6 +50,10 @@ impl Default for RegionBoxConfig {
             pass_through: false,
             source_lang: "auto".to_string(),
             target_lang: "简体中文".to_string(),
+            panel_x: None,
+            panel_y: None,
+            panel_width: default_panel_width(),
+            panel_height: default_panel_height(),
         }
     }
 }
@@ -99,13 +113,14 @@ pub fn open_windows(app: &AppHandle) -> Result<RegionBoxConfig, String> {
         WebviewUrl::App("index.html?view=region-panel".into()),
     )
     .title("TabKeep Region Translator")
-    .inner_size(REGION_PANEL_WIDTH, REGION_PANEL_HEIGHT)
+    .inner_size(config.panel_width as f64, config.panel_height as f64)
+    .min_inner_size(MIN_REGION_PANEL_WIDTH as f64, MIN_REGION_PANEL_HEIGHT as f64)
     .position(panel_position.0 as f64, panel_position.1 as f64)
     .decorations(false)
     .transparent(true)
     .background_color(Color(0, 0, 0, 0))
     .always_on_top(true)
-    .resizable(false)
+    .resizable(true)
     .visible(true)
     .build()
     .map_err(|err| format!("打开区域翻译面板失败: {err}"))?;
@@ -164,6 +179,7 @@ pub fn apply_window_config(app: &AppHandle, config: &RegionBoxConfig) -> Result<
                 position.0, position.1,
             )))
             .map_err(|err| format!("移动区域翻译面板失败: {err}"))?;
+        set_panel_size_if_needed(&window, config.panel_width, config.panel_height)?;
         window
             .set_always_on_top(true)
             .map_err(|err| format!("设置区域翻译面板置顶失败: {err}"))?;
@@ -188,6 +204,7 @@ pub fn sync_from_box_window(app: &AppHandle) -> Result<RegionBoxConfig, String> 
         config.width = size.width;
         config.height = size.height;
     }
+    sync_panel_from_window(app, &mut config);
     let config = save_config(app, &config)?;
     apply_window_config(app, &config)?;
     emit_config(app, &config);
@@ -206,6 +223,7 @@ pub fn set_passthrough(app: &AppHandle, pass_through: bool) -> Result<RegionBoxC
             config.height = size.height;
         }
     }
+    sync_panel_from_window(app, &mut config);
     config.pass_through = pass_through;
     let config = save_config(app, &config)?;
     apply_box_passthrough(app, config.pass_through)?;
@@ -245,6 +263,7 @@ pub fn save_live_box_config(
                 position.0, position.1,
             )))
             .map_err(|err| format!("移动区域翻译面板失败: {err}"))?;
+        set_panel_size_if_needed(&window, config.panel_width, config.panel_height)?;
         window
             .set_always_on_top(true)
             .map_err(|err| format!("设置区域翻译面板置顶失败: {err}"))?;
@@ -285,6 +304,8 @@ pub fn emit_config(app: &AppHandle, config: &RegionBoxConfig) {
 fn sanitize_config(mut config: RegionBoxConfig) -> RegionBoxConfig {
     config.width = config.width.max(MIN_REGION_WIDTH);
     config.height = config.height.max(MIN_REGION_HEIGHT);
+    config.panel_width = config.panel_width.max(MIN_REGION_PANEL_WIDTH);
+    config.panel_height = config.panel_height.max(MIN_REGION_PANEL_HEIGHT);
     if config.source_lang.trim().is_empty() {
         config.source_lang = "auto".to_string();
     }
@@ -312,8 +333,18 @@ fn fit_config_to_visible_area(mut config: RegionBoxConfig) -> RegionBoxConfig {
         .saturating_sub(screen_top)
         .saturating_sub(SCREEN_PADDING * 2)
         .max(MIN_REGION_HEIGHT as i32) as u32;
+    let usable_panel_width = screen_right
+        .saturating_sub(screen_left)
+        .saturating_sub(SCREEN_PADDING * 2)
+        .max(MIN_REGION_PANEL_WIDTH as i32) as u32;
+    let usable_panel_height = screen_bottom
+        .saturating_sub(screen_top)
+        .saturating_sub(SCREEN_PADDING * 2)
+        .max(MIN_REGION_PANEL_HEIGHT as i32) as u32;
     config.width = config.width.min(usable_width);
     config.height = config.height.min(usable_height);
+    config.panel_width = config.panel_width.min(usable_panel_width);
+    config.panel_height = config.panel_height.min(usable_panel_height);
 
     let min_x = screen_left.saturating_add(SCREEN_PADDING);
     let max_x = screen_right
@@ -327,6 +358,21 @@ fn fit_config_to_visible_area(mut config: RegionBoxConfig) -> RegionBoxConfig {
         .max(min_y);
     config.x = config.x.clamp(min_x, max_x);
     config.y = config.y.clamp(min_y, max_y);
+
+    if let (Some(panel_x), Some(panel_y)) = (config.panel_x, config.panel_y) {
+        let panel_width = config.panel_width as i32;
+        let panel_height = config.panel_height as i32;
+        let max_panel_x = screen_right
+            .saturating_sub(SCREEN_PADDING)
+            .saturating_sub(panel_width)
+            .max(min_x);
+        let max_panel_y = screen_bottom
+            .saturating_sub(SCREEN_PADDING)
+            .saturating_sub(panel_height)
+            .max(min_y);
+        config.panel_x = Some(panel_x.clamp(min_x, max_panel_x));
+        config.panel_y = Some(panel_y.clamp(min_y, max_panel_y));
+    }
     config
 }
 
@@ -357,16 +403,31 @@ fn point_in_screen(screen: &Screen, x: i32, y: i32) -> bool {
 }
 
 fn panel_position(config: &RegionBoxConfig) -> (i32, i32) {
+    if let (Some(x), Some(y)) = (config.panel_x, config.panel_y) {
+        return (x, y);
+    }
+
+    let panel_width = config.panel_width as i32;
+    let panel_height = config.panel_height as i32;
+    let default_x = config
+        .x
+        .saturating_add(config.width as i32)
+        .saturating_sub(panel_width)
+        .saturating_sub(REGION_PANEL_GAP);
     let default_y = config
         .y
         .saturating_add(config.height as i32)
-        .saturating_add(REGION_PANEL_GAP);
+        .saturating_sub(panel_height)
+        .saturating_sub(REGION_PANEL_GAP);
     let Ok(screen) = Screen::from_point(
         config.x.saturating_add((config.width / 2) as i32),
         config.y.saturating_add((config.height / 2) as i32),
     )
     .or_else(|_| Screen::from_point(config.x, config.y)) else {
-        return (config.x, default_y);
+        return (
+            default_x.max(config.x.saturating_add(REGION_PANEL_GAP)),
+            default_y.max(config.y.saturating_add(REGION_PANEL_GAP)),
+        );
     };
 
     let info = screen.display_info;
@@ -374,26 +435,56 @@ fn panel_position(config: &RegionBoxConfig) -> (i32, i32) {
     let screen_top = info.y;
     let screen_right = info.x.saturating_add(info.width as i32);
     let screen_bottom = info.y.saturating_add(info.height as i32);
-    let panel_width = REGION_PANEL_WIDTH as i32;
-    let panel_height = REGION_PANEL_HEIGHT as i32;
-
-    let max_x = screen_right.saturating_sub(panel_width).max(screen_left);
-    let x = config.x.clamp(screen_left, max_x);
-
-    let below = default_y;
-    let above = config
-        .y
+    let max_x = screen_right
+        .saturating_sub(SCREEN_PADDING)
+        .saturating_sub(panel_width)
+        .max(screen_left.saturating_add(SCREEN_PADDING));
+    let max_y = screen_bottom
+        .saturating_sub(SCREEN_PADDING)
         .saturating_sub(panel_height)
-        .saturating_sub(REGION_PANEL_GAP);
-    let y = if below.saturating_add(panel_height) <= screen_bottom {
-        below
-    } else if above >= screen_top {
-        above
-    } else {
-        screen_top
-    };
+        .max(screen_top.saturating_add(SCREEN_PADDING));
+    let min_x = screen_left.saturating_add(SCREEN_PADDING);
+    let min_y = screen_top.saturating_add(SCREEN_PADDING);
+    let x = default_x.max(config.x.saturating_add(REGION_PANEL_GAP)).clamp(min_x, max_x);
+    let y = default_y.max(config.y.saturating_add(REGION_PANEL_GAP)).clamp(min_y, max_y);
 
     (x, y)
+}
+
+fn sync_panel_from_window(app: &AppHandle, config: &mut RegionBoxConfig) {
+    if let Some(window) = app.get_webview_window("region-panel") {
+        if let Ok(position) = window.outer_position() {
+            config.panel_x = Some(position.x);
+            config.panel_y = Some(position.y);
+        }
+        if let Ok(size) = window.inner_size() {
+            config.panel_width = size.width.max(MIN_REGION_PANEL_WIDTH);
+            config.panel_height = size.height.max(MIN_REGION_PANEL_HEIGHT);
+        }
+    }
+}
+
+fn set_panel_size_if_needed(
+    window: &tauri::WebviewWindow,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if let Ok(size) = window.inner_size() {
+        if size.width == width && size.height == height {
+            return Ok(());
+        }
+    }
+    window
+        .set_size(Size::Physical(PhysicalSize::new(width, height)))
+        .map_err(|err| format!("调整区域翻译面板尺寸失败: {err}"))
+}
+
+fn default_panel_width() -> u32 {
+    DEFAULT_REGION_PANEL_WIDTH
+}
+
+fn default_panel_height() -> u32 {
+    DEFAULT_REGION_PANEL_HEIGHT
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {

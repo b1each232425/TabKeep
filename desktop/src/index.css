@@ -642,8 +642,12 @@
   }
 
   .tk-region-panel {
-    @apply flex h-screen flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 p-3 text-[hsl(var(--tk-graphite))] shadow-xl;
+    @apply relative flex h-screen flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/95 p-3 text-[hsl(var(--tk-graphite))] shadow-xl;
     box-sizing: border-box;
+  }
+
+  .tk-region-panel-resizable {
+    @apply ring-1 ring-white/60;
   }
 
   .tk-region-panel-toolbar {
@@ -704,5 +708,58 @@
 
   .tk-region-result-error {
     @apply bg-rose-50 text-rose-700;
+  }
+
+  .tk-region-panel-resize-handle {
+    @apply absolute z-50 bg-transparent;
+  }
+
+  .tk-region-panel-resize-n,
+  .tk-region-panel-resize-s {
+    @apply left-4 right-4 h-2 cursor-ns-resize;
+  }
+
+  .tk-region-panel-resize-n {
+    @apply top-0;
+  }
+
+  .tk-region-panel-resize-s {
+    @apply bottom-0;
+  }
+
+  .tk-region-panel-resize-e,
+  .tk-region-panel-resize-w {
+    @apply bottom-4 top-4 w-2 cursor-ew-resize;
+  }
+
+  .tk-region-panel-resize-e {
+    @apply right-0;
+  }
+
+  .tk-region-panel-resize-w {
+    @apply left-0;
+  }
+
+  .tk-region-panel-resize-nw,
+  .tk-region-panel-resize-ne,
+  .tk-region-panel-resize-sw,
+  .tk-region-panel-resize-se {
+    @apply h-4 w-4;
+  }
+
+  .tk-region-panel-resize-nw {
+    @apply left-0 top-0 cursor-nwse-resize;
+  }
+
+  .tk-region-panel-resize-ne {
+    @apply right-0 top-0 cursor-nesw-resize;
+  }
+
+  .tk-region-panel-resize-sw {
+    @apply bottom-0 left-0 cursor-nesw-resize;
+  }
+
+  .tk-region-panel-resize-se {
+    @apply bottom-0 right-0 cursor-nwse-resize;
   }
 }
