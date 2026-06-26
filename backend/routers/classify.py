@@ -67,7 +67,7 @@ async def classify(req: ClassifyRequest) -> ClassifyResponse:
     model_config = storage.get_model_config()
     if not model_config or not model_config.model or not model_config.baseURL or not model_config.apiKey:
         logger.warning("classify: modelConfig 不完整")
-        return ClassifyResponse(error="modelConfig 不完整,先在仪表盘配置")
+        return ClassifyResponse(error="modelConfig 不完整,先在桌面端「模型 API」配置")
 
     categories = storage.get_tab_categories()
     if not categories:

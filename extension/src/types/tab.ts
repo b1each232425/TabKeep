@@ -36,7 +36,7 @@ export interface TabGroupConfig {
   collapsed?: boolean
 }
 
-// 仪表盘"概览"页可配置的样式(存 chrome.storage.local)
+// Tab Group 默认样式(存 chrome.storage.local,由桌面端统一配置)
 export interface TabGroupStyleOptions {
   // 颜色分配模式:
   //   - "random":按域名哈希生成 9 色打乱序列,保证 ≤9 组不重复 / ≤18 组每色最多 3 次

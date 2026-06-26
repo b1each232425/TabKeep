@@ -23,7 +23,7 @@ async def precheck_siyuan_sync() -> KnowledgeSiyuanPrecheckResponse:
     if not note_config or note_config.provider != "siyuan":
         return KnowledgeSiyuanPrecheckResponse(
             ok=False,
-            error="当前笔记集成不是 SiYuan,请先在「笔记集成」里配置思源笔记",
+            error="当前笔记集成不是 SiYuan,请先在桌面端「笔记集成」里配置思源笔记",
         )
 
     adapter = SiYuanAdapter(note_config)

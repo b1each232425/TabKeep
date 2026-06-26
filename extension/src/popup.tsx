@@ -7,7 +7,7 @@
 //   4. DocTree 递归子组件
 
 import { useEffect, useState } from "react"
-import { Bookmark, BookmarkCheck, Camera, ChevronDown, ChevronRight, Copy, Languages, Settings, Sparkles, Star, StarOff, X } from "lucide-react"
+import { Bookmark, BookmarkCheck, Camera, ChevronDown, ChevronRight, Copy, Languages, Sparkles, Star, StarOff, X } from "lucide-react"
 import type { DocNode, NotebookInfo, TabData } from "./types"
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
@@ -42,11 +42,6 @@ type TranslationState = {
   model?: string
   error?: string
 } | null
-
-const openDashboard = () => {
-  chrome.tabs.create({ url: chrome.runtime.getURL("options.html") })
-}
-
 
 // ─────────────────────────────────────────────────────────────
 // 2. IndexPopup 主组件
@@ -268,14 +263,6 @@ function IndexPopup() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1">
           <h3 className="text-lg font-semibold">TabKeep</h3>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-7 w-7"
-            onClick={openDashboard}
-            title="打开仪表盘">
-            <Settings className="h-4 w-4" />
-          </Button>
           <span
             className={`text-[11px] ${
               backendReady === null
@@ -908,7 +895,7 @@ function NotebookPickerModal({
               没有笔记本
               <br />
               <span className="text-xs text-gray-400">
-                请在仪表盘配置笔记适配器(当前可能不是 SiYuan)
+                请在桌面端配置笔记集成(当前可能不是 SiYuan)
               </span>
             </p>
           ) : (

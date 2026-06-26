@@ -116,7 +116,7 @@ async def save_tab(req: SaveRequest) -> SaveResult:
     config = storage.get_note_adapter()
     if not config:
         logger.warning("/notes/save: 未配置 noteAdapter")
-        return SaveResult(ok=False, error="未配置 noteAdapter,请先在「笔记集成」里设置")
+        return SaveResult(ok=False, error="未配置 noteAdapter,请先在桌面端「笔记集成」里设置")
 
     effective_notebook = req.notebook_id or config.defaultNotebook or ""
     effective_target = req.target_doc or config.defaultTargetDoc
@@ -174,7 +174,7 @@ async def summarize(req: SummarizeRequest) -> SummarizeResponse:
     cfg = storage.get_model_config()
     if not cfg or not cfg.model or not cfg.baseURL or not cfg.apiKey:
         logger.warning("/notes/summarize: modelConfig 不完整")
-        return SummarizeResponse(ok=False, error="modelConfig 不完整,先在仪表盘配置 LLM")
+        return SummarizeResponse(ok=False, error="modelConfig 不完整,先在桌面端「模型 API」配置 LLM")
     if not req.content.strip():
         logger.warning("/notes/summarize: content 为空")
         return SummarizeResponse(ok=False, error="content 为空,无法摘录")

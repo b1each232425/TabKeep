@@ -3,7 +3,7 @@
 //  - twMerge: 处理 tailwind 类名冲突(后面的覆盖前面的)
 //
 // cn() 把两者结合:既能传条件类名,又能正确去重。
-// popup / options 里所有动态 className 都用 cn(...)
+// popup 里所有动态 className 都用 cn(...)
 
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"

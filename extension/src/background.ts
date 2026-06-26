@@ -13,7 +13,7 @@
 //   8. 收藏:saveTabToNote(仅链接)/ saveTabToNoteFull(全文旧版,已不再被 popup 触发)
 //   9. LLM 分类:classifyCurrentWindowTabs / classifyAndGroupCurrentWindowTabs
 //  10. 浏览器事件监听 + 定时任务
-//  11. 启动恢复:restoreConfigToBackend + 初始保存
+//  11. Token 初始化 + 初始保存
 
 import { groupTabsByDomain } from "./utils/tabUtils"
 import { saveToIDB } from "./utils/indexedDB"
@@ -602,7 +602,7 @@ const notifyUser = (title: string, message: string) => {
 // ─────────────────────────────────────────────────────────────
 /**
  * 仅链接收藏。notebook/target_doc 都留空 → 后端用 config.default* 兜底。
- * 现在主要给 options 里"测试保存"或老路径用,popup 已经不用了。
+ * 现在主要给老消息路径和未来快捷键用,popup 已经不用了。
  */
 const saveTabToNote = async (tab: TabData) => {
   console.log(`[TabKeep] 收藏(链接) tab=${tab.id} title=${tab.title} url=${tab.url}`)
@@ -792,45 +792,33 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 
 // ─────────────────────────────────────────────────────────────
-// 11. 启动恢复 + 初始保存
+// 11. Token 初始化 + 初始保存
 // ─────────────────────────────────────────────────────────────
 /**
- * 启动时从 chrome.storage.local 把所有配置推给后端。
- * 防止后端 config.json 丢失 / 损坏 / 后端重启后内存为空时,后端没有这些配置。
- * 后端 sync_config 走合并模式,只覆盖前端发的字段,所以这里把所有键都发一遍是安全的。
+ * 插件端不再维护模型、分组、笔记等配置,这些统一由桌面端保存。
+ * 这里仅确保后端有 API token,避免旧 chrome.storage 配置覆盖桌面端配置。
  */
-const restoreConfigToBackend = async () => {
+const initializeApiToken = async () => {
   try {
-    const stored = await chrome.storage.local.get([
-      "modelConfig",
-      "tabCategories",
-      "noteAdapter"
-    ])
     const token = await ensureApiToken()
-    const body: Record<string, unknown> = { apiToken: token }
-    if (stored.modelConfig) body.modelConfig = stored.modelConfig
-    if (Array.isArray(stored.tabCategories)) body.tabCategories = stored.tabCategories
-    if (stored.noteAdapter) body.noteAdapter = stored.noteAdapter
     const res = await apiFetch("/config/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ apiToken: token })
     })
     const data = await res.json()
     if (data.ok) {
-      console.log(
-        `[TabKeep] 启动恢复: 已把本地配置推给后端 (${Object.keys(body).join(", ")})`
-      )
+      console.log("[TabKeep] API token 已初始化")
     } else {
-      console.warn(`[TabKeep] 启动恢复失败: ${data.error}`)
+      console.warn(`[TabKeep] API token 初始化失败: ${data.error}`)
     }
   } catch (e) {
-    console.warn(`[TabKeep] 启动恢复异常: ${e}`)
+    console.warn(`[TabKeep] API token 初始化异常: ${e}`)
   }
 }
 
 // 入口
 saveTabsData()
-restoreConfigToBackend().then(syncToBackend)
+initializeApiToken().then(syncToBackend)
 
 console.log("TabKeep background loaded")

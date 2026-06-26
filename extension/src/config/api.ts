@@ -1,7 +1,7 @@
 // Extension-side API constants and helpers.
 //
-// Keep backend URLs and auth header construction in one place so popup,
-// options, and background use the same endpoints.
+// Keep backend URLs and auth header construction in one place so popup
+// and background use the same endpoints.
 
 export const FASTAPI_URL = "http://127.0.0.1:38471"
 export const DESKTOP_URL = "http://127.0.0.1:38472"
