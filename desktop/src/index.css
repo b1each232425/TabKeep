@@ -537,45 +537,33 @@
   }
 
   .tk-region-box {
-    @apply fixed inset-0 select-none overflow-hidden rounded-md border-[3px] border-emerald-400;
+    @apply fixed inset-0 select-none overflow-hidden rounded-sm border-2 border-dashed border-emerald-400;
     box-sizing: border-box;
   }
 
   .tk-region-box-passthrough {
-    @apply border-2 border-dashed;
+    @apply border border-dashed opacity-80;
   }
 
   .tk-region-drag-surface {
     @apply absolute inset-0 z-10 cursor-move;
     background:
-      linear-gradient(90deg, rgb(16 185 129 / 0.32) 50%, transparent 0) top left / 12px 2px repeat-x,
-      linear-gradient(90deg, rgb(16 185 129 / 0.32) 50%, transparent 0) bottom left / 12px 2px repeat-x,
-      linear-gradient(0deg, rgb(16 185 129 / 0.32) 50%, transparent 0) top left / 2px 12px repeat-y,
-      linear-gradient(0deg, rgb(16 185 129 / 0.32) 50%, transparent 0) top right / 2px 12px repeat-y;
+      linear-gradient(90deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) top left / 72px 2px no-repeat,
+      linear-gradient(90deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) top right / 72px 2px no-repeat,
+      linear-gradient(90deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) bottom left / 72px 2px no-repeat,
+      linear-gradient(90deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) bottom right / 72px 2px no-repeat,
+      linear-gradient(0deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) top left / 2px 72px no-repeat,
+      linear-gradient(0deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) top right / 2px 72px no-repeat,
+      linear-gradient(0deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) bottom left / 2px 72px no-repeat,
+      linear-gradient(0deg, rgb(16 185 129 / 0.42) 0 18px, transparent 18px) bottom right / 2px 72px no-repeat;
   }
 
-  .tk-region-frame-toolbar {
-    @apply absolute left-2 right-2 top-2 z-40 flex h-9 cursor-move items-center gap-2 rounded-md border border-white/25 bg-slate-950/90 px-2 text-xs text-white shadow-lg;
+  .tk-region-corner-brand {
+    @apply pointer-events-none absolute bottom-1.5 right-1.5 z-40 rounded-sm border border-emerald-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700 shadow-sm backdrop-blur-[2px];
   }
 
-  .tk-region-frame-title {
-    @apply inline-flex min-w-0 shrink-0 items-center gap-1.5 font-semibold;
-  }
-
-  .tk-region-frame-hint {
-    @apply min-w-0 flex-1 truncate text-[11px] font-normal text-white/70;
-  }
-
-  .tk-region-frame-close {
-    @apply inline-flex h-7 w-7 shrink-0 cursor-default items-center justify-center rounded-md text-white/75 transition-colors;
-  }
-
-  .tk-region-frame-close:hover {
-    @apply bg-white/15 text-white;
-  }
-
-  .tk-region-box-label {
-    @apply absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md border border-white/40 bg-white/85 px-2 py-1 text-[11px] font-semibold text-emerald-700 shadow-sm;
+  .tk-region-box-passthrough .tk-region-corner-brand {
+    @apply bg-white/80 text-emerald-700;
   }
 
   .tk-region-edge-toolbar {
@@ -588,7 +576,7 @@
   }
 
   .tk-region-handle {
-    @apply absolute z-50 rounded-full border-2 border-white bg-emerald-400 shadow-md;
+    @apply absolute z-50 rounded-full border border-white/80 bg-emerald-400/90 shadow-sm;
     pointer-events: auto;
   }
 

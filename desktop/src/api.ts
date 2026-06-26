@@ -4,19 +4,31 @@ import type {
   DesktopStatus,
   KnowledgeAskResponse,
   KnowledgeConfig,
+  KnowledgeEvalCase,
+  KnowledgeEvalCaseRequest,
+  KnowledgeEvalDeleteResponse,
+  KnowledgeEvalRunRequest,
+  KnowledgeEvalRunResponse,
   KnowledgeGraphLayer,
   KnowledgeGraphRebuildResponse,
   KnowledgeGraphResponse,
+  KnowledgeHitTestResponse,
+  KnowledgeIndexHealthResponse,
+  KnowledgeIndexRepairResponse,
   KnowledgeReindexResponse,
+  KnowledgeSearchMode,
   KnowledgeSearchResponse,
   KnowledgeSiyuanPrecheckResponse,
   KnowledgeSiyuanSyncResponse,
   KnowledgeStats,
+  KnowledgeSyncAllResponse,
+  KnowledgeSyncLogResponse,
   KnowledgeTopicDetailResponse,
   KnowledgeTopicEnrichResponse,
   KnowledgeTopicExportResponse,
   KnowledgeTopicListResponse,
   KnowledgeTopicRebuildResponse,
+  KnowledgeVectorInspectResponse,
   ModelConfig,
   NoteAdapterConfig,
   OcrConfig,
@@ -36,6 +48,15 @@ import type {
 import { generateToken } from "./utils"
 
 const DESKTOP_URL = "http://127.0.0.1:38472"
+const BROWSER_API_BASE_URL_KEY = "tabkeep.eval.apiBaseUrl"
+const BROWSER_API_TOKEN_KEY = "tabkeep.eval.apiToken"
+const importMetaEnv = (import.meta as ImportMeta & {
+  env?: Record<string, string | boolean | undefined>
+}).env
+const DEFAULT_BROWSER_API_BASE_URL =
+  typeof importMetaEnv?.VITE_TABKEEP_API_BASE_URL === "string"
+    ? importMetaEnv.VITE_TABKEEP_API_BASE_URL
+    : "http://127.0.0.1:38471"
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   model: "",
@@ -61,6 +82,7 @@ export const DEFAULT_OCR_CONFIG: OcrConfig = {
   preprocessThreshold: false,
   textPostprocessEnabled: true,
   textMergeLines: false,
+  textLayoutMode: "auto",
 }
 
 export const DEFAULT_REGION_BOX_CONFIG: RegionBoxConfig = {
@@ -94,15 +116,18 @@ export const DEFAULT_SELECTION_TRANSLATE_CONFIG: SelectionTranslateConfig = {
   hotkeyError: null,
 }
 
+export const DEFAULT_EMBEDDING_BASE_URL = "https://api.siliconflow.cn/v1"
+export const DEFAULT_EMBEDDING_MODEL = "BAAI/bge-m3"
+
 export const DEFAULT_KNOWLEDGE_CONFIG: KnowledgeConfig = {
   enabled: true,
   markdownPaths: [],
   maxFileBytes: 1_000_000,
   embedding: {
     enabled: false,
-    baseURL: "",
+    baseURL: DEFAULT_EMBEDDING_BASE_URL,
     apiKey: "",
-    model: "",
+    model: DEFAULT_EMBEDDING_MODEL,
   },
 }
 
@@ -159,6 +184,9 @@ export async function backendRequest<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
+  if (!isTauriRuntime()) {
+    return browserBackendRequest<T>(method, path, body)
+  }
   const res = await invoke<BackendResponse<T>>("backend_request", {
     method,
     path,
@@ -169,6 +197,73 @@ export async function backendRequest<T>(
     throw new BackendRequestError(detail, res.status, res.data)
   }
   return res.data
+}
+
+export function getBrowserApiBaseUrl(): string {
+  if (typeof localStorage === "undefined") return DEFAULT_BROWSER_API_BASE_URL
+  return localStorage.getItem(BROWSER_API_BASE_URL_KEY)?.trim() || DEFAULT_BROWSER_API_BASE_URL
+}
+
+export function setBrowserApiBaseUrl(value: string): void {
+  if (typeof localStorage === "undefined") return
+  const clean = value.trim().replace(/\/+$/, "")
+  if (clean) {
+    localStorage.setItem(BROWSER_API_BASE_URL_KEY, clean)
+  } else {
+    localStorage.removeItem(BROWSER_API_BASE_URL_KEY)
+  }
+}
+
+export function getBrowserApiToken(): string {
+  if (typeof localStorage === "undefined") return ""
+  return localStorage.getItem(BROWSER_API_TOKEN_KEY) ?? ""
+}
+
+export function setBrowserApiToken(value: string): void {
+  if (typeof localStorage === "undefined") return
+  const clean = value.trim()
+  if (clean) {
+    localStorage.setItem(BROWSER_API_TOKEN_KEY, clean)
+  } else {
+    localStorage.removeItem(BROWSER_API_TOKEN_KEY)
+  }
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+}
+
+async function browserBackendRequest<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  if (!path.startsWith("/") || path.includes("://")) {
+    throw new BackendRequestError("非法后端路径")
+  }
+  const headers: Record<string, string> = {}
+  if (body !== undefined && body !== null) headers["Content-Type"] = "application/json"
+  const token = getBrowserApiToken()
+  if (token && path !== "/") headers["X-TabKeep-Token"] = token
+  const res = await fetch(`${getBrowserApiBaseUrl()}${path}`, {
+    method,
+    headers,
+    body: body === undefined || body === null ? undefined : JSON.stringify(body),
+  })
+  const data = await readJsonResponse<T>(res)
+  if (!res.ok) {
+    const detail = extractErrorMessage(data) ?? `HTTP ${res.status}`
+    throw new BackendRequestError(detail, res.status, data)
+  }
+  return data
+}
+
+async function readJsonResponse<T>(res: Response): Promise<T> {
+  try {
+    return (await res.json()) as T
+  } catch (err) {
+    return { detail: `后端返回非 JSON: ${err instanceof Error ? err.message : String(err)}` } as T
+  }
 }
 
 export async function checkBackendHealth(): Promise<boolean> {
@@ -196,19 +291,32 @@ export async function loadBackendConfig(): Promise<{
 
 export async function getKnowledgeConfig(): Promise<KnowledgeConfig> {
   const config = await backendRequest<KnowledgeConfig>("GET", "/knowledge/config")
-  return {
+  return normalizeKnowledgeConfig({
     ...DEFAULT_KNOWLEDGE_CONFIG,
     ...config,
     embedding: { ...DEFAULT_KNOWLEDGE_CONFIG.embedding, ...(config.embedding ?? {}) },
-  }
+  })
 }
 
 export async function setKnowledgeConfig(config: KnowledgeConfig): Promise<KnowledgeConfig> {
-  const saved = await backendRequest<KnowledgeConfig>("POST", "/knowledge/config", config)
-  return {
+  const saved = await backendRequest<KnowledgeConfig>("POST", "/knowledge/config", normalizeKnowledgeConfig(config))
+  return normalizeKnowledgeConfig({
     ...DEFAULT_KNOWLEDGE_CONFIG,
     ...saved,
     embedding: { ...DEFAULT_KNOWLEDGE_CONFIG.embedding, ...(saved.embedding ?? {}) },
+  })
+}
+
+function normalizeKnowledgeConfig(config: KnowledgeConfig): KnowledgeConfig {
+  return {
+    ...DEFAULT_KNOWLEDGE_CONFIG,
+    ...config,
+    embedding: {
+      ...DEFAULT_KNOWLEDGE_CONFIG.embedding,
+      ...(config.embedding ?? {}),
+      baseURL: config.embedding?.baseURL?.trim() || DEFAULT_EMBEDDING_BASE_URL,
+      model: config.embedding?.model?.trim() || DEFAULT_EMBEDDING_MODEL,
+    },
   }
 }
 
@@ -216,8 +324,24 @@ export async function getKnowledgeStats(): Promise<KnowledgeStats> {
   return backendRequest<KnowledgeStats>("GET", "/knowledge/stats")
 }
 
+export async function getKnowledgeIndexHealth(): Promise<KnowledgeIndexHealthResponse> {
+  return backendRequest<KnowledgeIndexHealthResponse>("GET", "/knowledge/index/health")
+}
+
+export async function repairKnowledgeIndex(): Promise<KnowledgeIndexRepairResponse> {
+  return backendRequest<KnowledgeIndexRepairResponse>("POST", "/knowledge/index/repair")
+}
+
 export async function reindexKnowledge(): Promise<KnowledgeReindexResponse> {
   return backendRequest<KnowledgeReindexResponse>("POST", "/knowledge/reindex")
+}
+
+export async function syncAllKnowledge(): Promise<KnowledgeSyncAllResponse> {
+  return backendRequest<KnowledgeSyncAllResponse>("POST", "/knowledge/sync/all")
+}
+
+export async function getKnowledgeSyncLogs(): Promise<KnowledgeSyncLogResponse> {
+  return backendRequest<KnowledgeSyncLogResponse>("GET", "/knowledge/sync/logs")
 }
 
 export async function precheckSiyuanKnowledge(): Promise<KnowledgeSiyuanPrecheckResponse> {
@@ -241,6 +365,43 @@ export async function searchKnowledge(
   return backendRequest<KnowledgeSearchResponse>("POST", "/knowledge/search", { query, limit })
 }
 
+export async function hitTestKnowledge(options: {
+  query: string
+  limit?: number
+  searchMode?: KnowledgeSearchMode
+  minScore?: number
+}): Promise<KnowledgeHitTestResponse> {
+  return backendRequest<KnowledgeHitTestResponse>("POST", "/knowledge/hit-test", {
+    query: options.query,
+    limit: options.limit ?? 8,
+    searchMode: options.searchMode ?? "hybrid",
+    minScore: options.minScore ?? 0,
+  })
+}
+
+export async function listKnowledgeEvalCases(): Promise<KnowledgeEvalCase[]> {
+  return backendRequest<KnowledgeEvalCase[]>("GET", "/knowledge/eval/cases")
+}
+
+export async function saveKnowledgeEvalCase(
+  data: KnowledgeEvalCaseRequest,
+  caseId?: string | null,
+): Promise<KnowledgeEvalCase> {
+  const path = caseId ? `/knowledge/eval/cases/${encodeURIComponent(caseId)}` : "/knowledge/eval/cases"
+  return backendRequest<KnowledgeEvalCase>("POST", path, data)
+}
+
+export async function deleteKnowledgeEvalCase(caseId: string): Promise<KnowledgeEvalDeleteResponse> {
+  return backendRequest<KnowledgeEvalDeleteResponse>(
+    "POST",
+    `/knowledge/eval/cases/${encodeURIComponent(caseId)}/delete`,
+  )
+}
+
+export async function runKnowledgeEval(options: KnowledgeEvalRunRequest): Promise<KnowledgeEvalRunResponse> {
+  return backendRequest<KnowledgeEvalRunResponse>("POST", "/knowledge/eval/run", options)
+}
+
 export async function askKnowledge(
   question: string,
   sessionId?: string | null,
@@ -251,6 +412,20 @@ export async function askKnowledge(
     sessionId,
     limit,
   })
+}
+
+export async function inspectKnowledgeVector(options: {
+  query?: string
+  limit?: number
+} = {}): Promise<KnowledgeVectorInspectResponse> {
+  const params = new URLSearchParams()
+  params.set("limit", String(options.limit ?? 100))
+  if (options.query?.trim()) params.set("query", options.query.trim())
+  return backendRequest<KnowledgeVectorInspectResponse>("GET", `/knowledge/vector/inspect?${params.toString()}`)
+}
+
+export async function migrateKnowledgeVectorSchema(): Promise<KnowledgeVectorInspectResponse> {
+  return backendRequest<KnowledgeVectorInspectResponse>("POST", "/knowledge/vector/migrate")
 }
 
 export async function getKnowledgeGraph(options: {

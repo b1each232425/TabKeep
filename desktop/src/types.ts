@@ -94,6 +94,7 @@ export interface KnowledgeConfig {
 
 export interface KnowledgeStats {
   documents: number
+  paragraphs: number
   chunks: number
   sessions: number
   lastIndexedAt?: string | null
@@ -103,13 +104,17 @@ export interface KnowledgeStats {
 
 export interface KnowledgeCitation {
   documentId: string
+  paragraphId?: string | null
   chunkId: string
   title: string
+  paragraphTitle?: string | null
   sourceType: string
   url?: string | null
   path?: string | null
   content: string
+  matchedContent?: string | null
   score: number
+  rerankScore?: number | null
 }
 
 export interface KnowledgeReindexResponse {
@@ -140,11 +145,273 @@ export interface KnowledgeSiyuanPrecheckResponse {
   error?: string | null
 }
 
+export interface KnowledgeSyncSourceResult {
+  source: string
+  label: string
+  ok: boolean
+  status: "success" | "warning" | "error" | "skipped" | string
+  skipped: boolean
+  reason?: string | null
+  startedAt?: string | null
+  endedAt?: string | null
+  durationMs: number
+  documentsFound: number
+  documentsIndexed: number
+  documentsSkipped: number
+  chunksIndexed: number
+  notebooksScanned: number
+  errors: string[]
+}
+
+export interface KnowledgeSyncAllResponse {
+  ok: boolean
+  runId: string
+  status: "success" | "partial" | "failed" | "skipped" | string
+  startedAt?: string | null
+  endedAt?: string | null
+  durationMs: number
+  sources: KnowledgeSyncSourceResult[]
+  documentsFound: number
+  documentsIndexed: number
+  documentsSkipped: number
+  chunksIndexed: number
+  errors: string[]
+  stats: KnowledgeStats
+}
+
+export interface KnowledgeSyncLogResponse {
+  items: KnowledgeSyncAllResponse[]
+}
+
+export interface KnowledgeIndexHealthIssue {
+  key: string
+  label: string
+  severity: "warning" | "error" | string
+  count: number
+  message: string
+  repairable: boolean
+}
+
+export interface KnowledgeIndexHealthResponse {
+  ok: boolean
+  status: string
+  checkedAt: string
+  documents: number
+  paragraphs: number
+  chunks: number
+  ftsRows: number
+  vectorRows: number
+  orphanChunks: number
+  orphanParagraphs: number
+  orphanFtsRows: number
+  missingFtsRows: number
+  vectorMissingSqlRows: number
+  vectorMissingParagraphRows: number
+  staleMarkdownDocuments: number
+  embeddingStatusCounts: Record<string, number>
+  vectorAvailable: boolean
+  vectorMessage?: string | null
+  vectorSchemaReady: boolean
+  missingVectorColumns: string[]
+  issues: KnowledgeIndexHealthIssue[]
+  repairableIssues: string[]
+  stats: KnowledgeStats
+  error?: string | null
+}
+
+export interface KnowledgeIndexRepairResponse {
+  ok: boolean
+  repaired: boolean
+  orphanFtsRowsDeleted: number
+  missingFtsRowsInserted: number
+  health: KnowledgeIndexHealthResponse
+  errors: string[]
+}
+
 export interface KnowledgeSearchResponse {
   ok: boolean
   query: string
   sourceMode: string
   items: KnowledgeCitation[]
+  rerankUsed: boolean
+  rerankMessage?: string | null
+  error?: string | null
+}
+
+export type KnowledgeSearchMode = "fts" | "vector" | "hybrid"
+
+export interface KnowledgeHitTestItem extends KnowledgeCitation {
+  rank: number
+  matchedBy: string[]
+  ftsRank?: number | null
+  ftsScore?: number | null
+  ftsRawRank?: number | null
+  vectorRank?: number | null
+  vectorScore?: number | null
+  vectorDistance?: number | null
+  rrfScore: number
+  rrfRank?: number | null
+}
+
+export interface KnowledgeHitTestResponse {
+  ok: boolean
+  query: string
+  searchMode: KnowledgeSearchMode
+  sourceMode: string
+  items: KnowledgeHitTestItem[]
+  vectorAvailable: boolean
+  vectorMessage?: string | null
+  rerankUsed: boolean
+  rerankMessage?: string | null
+  error?: string | null
+}
+
+export interface KnowledgeEvalCaseRequest {
+  question: string
+  caseType: "keyword" | "natural" | "challenge" | "negative" | string
+  expectedText: string
+  expectedPath: string
+  expectedTitle: string
+  expectedDocumentId: string
+  expectedParagraphId: string
+  expectedAnswer: string
+  answerKeywords: string
+  shouldRefuse: boolean
+  note: string
+}
+
+export interface KnowledgeEvalCase extends KnowledgeEvalCaseRequest {
+  id: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface KnowledgeEvalDeleteResponse {
+  ok: boolean
+  deleted: boolean
+  error?: string | null
+}
+
+export interface KnowledgeEvalRunRequest {
+  caseIds?: string[]
+  limit?: number
+  searchMode?: KnowledgeSearchMode
+  minScore?: number
+  evaluateAnswer?: boolean
+  answerLimit?: number
+  answerTimeoutSeconds?: number
+}
+
+export interface KnowledgeEvalHit extends KnowledgeHitTestItem {
+  relevant: boolean
+  matchedExpectations: string[]
+}
+
+export interface KnowledgeEvalCaseResult {
+  case: KnowledgeEvalCase
+  ok: boolean
+  rank?: number | null
+  reciprocalRank: number
+  hits: KnowledgeEvalHit[]
+  issueType: "ok" | "late_hit" | "missed" | "no_results" | "error" | string
+  issueMessage: string
+  answerEvaluated: boolean
+  answerOk?: boolean | null
+  answer: string
+  answerScore: number
+  answerKeywordCoverage: number
+  answerFaithfulness: number
+  answerRelevance: number
+  refusalOk?: boolean | null
+  answerIssueType: string
+  answerIssueMessage: string
+  matchedAnswerKeywords: string[]
+  missingAnswerKeywords: string[]
+  error?: string | null
+}
+
+export interface KnowledgeEvalRankBucket {
+  rank: number
+  count: number
+}
+
+export interface KnowledgeEvalTypeSummary {
+  caseType: string
+  total: number
+  hitCount: number
+  recallAtK: number
+  mrr: number
+  top1Accuracy: number
+  rankDistribution: KnowledgeEvalRankBucket[]
+}
+
+export interface KnowledgeEvalRunResponse {
+  ok: boolean
+  total: number
+  evaluated: number
+  retrievalEvaluated: number
+  hitCount: number
+  recallAtK: number
+  mrr: number
+  top1Accuracy: number
+  answerEligible: number
+  answerLimit: number
+  answerEvaluated: number
+  answerPassCount: number
+  answerAccuracy: number
+  refusalEvaluated: number
+  refusalPassCount: number
+  refusalAccuracy: number
+  averageAnswerScore: number
+  averageFaithfulness: number
+  averageAnswerRelevance: number
+  rankDistribution: KnowledgeEvalRankBucket[]
+  typeSummaries: KnowledgeEvalTypeSummary[]
+  limit: number
+  searchMode: KnowledgeSearchMode
+  sourceModes: Record<string, number>
+  results: KnowledgeEvalCaseResult[]
+  error?: string | null
+}
+
+export interface KnowledgeVectorColumn {
+  name: string
+  type: string
+}
+
+export interface KnowledgeVectorRecord {
+  chunkId: string
+  documentId: string
+  paragraphId?: string | null
+  title: string
+  sourceType: string
+  path?: string | null
+  url?: string | null
+  content: string
+  contentPreview: string
+  vectorDims: number
+  vectorPreview: number[]
+  documentTitle?: string | null
+  paragraphTitle?: string | null
+  paragraphContentPreview?: string | null
+  paragraphCharLen?: number | null
+}
+
+export interface KnowledgeVectorInspectResponse {
+  ok: boolean
+  vectorAvailable: boolean
+  vectorMessage?: string | null
+  tableExists: boolean
+  tableName: string
+  path: string
+  rowCount: number
+  columns: KnowledgeVectorColumn[]
+  requiredColumns: string[]
+  missingColumns: string[]
+  schemaReady: boolean
+  query: string
+  limit: number
+  records: KnowledgeVectorRecord[]
   error?: string | null
 }
 
@@ -343,6 +610,7 @@ export interface TranslateProviderTestResponse {
 }
 
 export type OcrProvider = "windows_ocr" | "paddleocr_json"
+export type OcrTextLayoutMode = "auto" | "preserve" | "conservative" | "paragraph"
 
 export interface OcrConfig {
   provider: OcrProvider
@@ -358,6 +626,7 @@ export interface OcrConfig {
   preprocessThreshold: boolean
   textPostprocessEnabled: boolean
   textMergeLines: boolean
+  textLayoutMode: OcrTextLayoutMode
 }
 
 export interface OcrRequest {

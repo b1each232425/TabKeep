@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:eval": "vite --host 127.0.0.1 --port 5175 --open /eval.html",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri",

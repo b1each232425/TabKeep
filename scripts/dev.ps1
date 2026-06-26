@@ -1,5 +1,5 @@
 param(
-  [ValidateSet("all", "backend", "extension", "desktop")]
+  [ValidateSet("all", "backend", "extension", "desktop", "eval")]
   [string] $Only = "all",
   [switch] $NoBackend,
   [switch] $NoExtension,
@@ -31,6 +31,12 @@ $AllTargets = @(
     Name = "TabKeep Desktop :38472"
     WorkingDirectory = Join-Path $Root.Path "desktop"
     Command = "pnpm tauri:dev"
+  },
+  @{
+    Id = "eval"
+    Name = "TabKeep RAG Eval :5175"
+    WorkingDirectory = Join-Path $Root.Path "desktop"
+    Command = "pnpm dev:eval"
   }
 )
 
@@ -142,7 +148,7 @@ Write-Host "Temp directory: $TempDir"
 Write-Host "Command: $Command"
 Write-Host ""
 try {
-  if ("$($Target.Id)" -eq "extension" -or "$($Target.Id)" -eq "desktop") {
+  if ("$($Target.Id)" -eq "extension" -or "$($Target.Id)" -eq "desktop" -or "$($Target.Id)" -eq "eval") {
     Assert-PnpmReady
   }
 
