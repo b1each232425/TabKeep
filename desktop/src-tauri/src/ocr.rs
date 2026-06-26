@@ -30,6 +30,21 @@ impl Default for OcrProvider {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OcrTextLayoutMode {
+    Auto,
+    Preserve,
+    Conservative,
+    Paragraph,
+}
+
+impl Default for OcrTextLayoutMode {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OcrConfig {
     #[serde(default)]
@@ -58,6 +73,8 @@ pub struct OcrConfig {
     pub text_postprocess_enabled: bool,
     #[serde(rename = "textMergeLines", default)]
     pub text_merge_lines: bool,
+    #[serde(rename = "textLayoutMode", default)]
+    pub text_layout_mode: OcrTextLayoutMode,
 }
 
 impl Default for OcrConfig {
@@ -76,6 +93,7 @@ impl Default for OcrConfig {
             preprocess_threshold: false,
             text_postprocess_enabled: true,
             text_merge_lines: false,
+            text_layout_mode: OcrTextLayoutMode::Auto,
         }
     }
 }
@@ -600,10 +618,11 @@ fn postprocess_ocr_text(text: &str, lang: &str, config: &OcrConfig) -> String {
         lines.push(line);
     }
 
-    if config.text_merge_lines {
-        merge_ocr_lines(&lines)
-    } else {
-        lines.join("\n")
+    match resolve_text_layout_mode(&lines, config) {
+        OcrTextLayoutMode::Preserve => lines.join("\n"),
+        OcrTextLayoutMode::Conservative => merge_ocr_lines(&lines, MergeProfile::Conservative),
+        OcrTextLayoutMode::Paragraph => merge_ocr_lines(&lines, MergeProfile::Paragraph),
+        OcrTextLayoutMode::Auto => merge_ocr_lines(&lines, MergeProfile::Conservative),
     }
 }
 
@@ -638,24 +657,210 @@ fn looks_like_noise_line(line: &str) -> bool {
     meaningful == 0 || (meaningful == 1 && line.chars().count() <= 2)
 }
 
-fn merge_ocr_lines(lines: &[String]) -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MergeProfile {
+    Conservative,
+    Paragraph,
+}
+
+fn resolve_text_layout_mode(lines: &[String], config: &OcrConfig) -> OcrTextLayoutMode {
+    match config.text_layout_mode {
+        OcrTextLayoutMode::Auto => auto_text_layout_mode(lines),
+        OcrTextLayoutMode::Preserve => OcrTextLayoutMode::Preserve,
+        OcrTextLayoutMode::Conservative => OcrTextLayoutMode::Conservative,
+        OcrTextLayoutMode::Paragraph => OcrTextLayoutMode::Paragraph,
+    }
+}
+
+fn auto_text_layout_mode(lines: &[String]) -> OcrTextLayoutMode {
+    if lines.len() <= 1 {
+        return OcrTextLayoutMode::Preserve;
+    }
+
+    let mut structural = 0usize;
+    let mut short = 0usize;
+    let mut long = 0usize;
+    let mut wrapped_pairs = 0usize;
+    let mut total_chars = 0usize;
+
+    for line in lines {
+        let count = line.chars().count();
+        total_chars += count;
+        if is_structural_line(line) {
+            structural += 1;
+        }
+        if count <= 18 {
+            short += 1;
+        }
+        if count >= 42 {
+            long += 1;
+        }
+    }
+
+    for pair in lines.windows(2) {
+        if should_join_lines(&pair[0], &pair[1], MergeProfile::Conservative) {
+            wrapped_pairs += 1;
+        }
+    }
+
+    let line_count = lines.len();
+    let average_len = total_chars / line_count.max(1);
+    if structural >= 2 && structural * 3 >= line_count {
+        return OcrTextLayoutMode::Preserve;
+    }
+    if short * 2 > line_count && long == 0 {
+        return OcrTextLayoutMode::Preserve;
+    }
+    if long >= 2 && average_len >= 34 {
+        return OcrTextLayoutMode::Paragraph;
+    }
+    if line_count >= 4 && average_len >= 48 && wrapped_pairs >= 2 {
+        return OcrTextLayoutMode::Paragraph;
+    }
+    OcrTextLayoutMode::Conservative
+}
+
+fn merge_ocr_lines(lines: &[String], profile: MergeProfile) -> String {
     let mut merged = String::new();
+    let mut previous_line: Option<&str> = None;
     for line in lines {
         if merged.is_empty() {
             merged.push_str(line);
+            previous_line = Some(line);
             continue;
         }
-        let previous = merged.chars().rev().find(|ch| !ch.is_whitespace());
-        if previous.is_some_and(is_sentence_end) {
-            merged.push('\n');
-        } else if previous.is_some_and(is_cjk_like) && line.chars().next().is_some_and(is_cjk_like) {
-            // CJK subtitles usually do not need an inserted space between wrapped lines.
+        let previous = previous_line.unwrap_or_default();
+        if should_join_lines(previous, line, profile) {
+            let separator = join_separator(previous, line);
+            merged.push_str(separator);
         } else {
-            merged.push(' ');
+            merged.push('\n');
         }
         merged.push_str(line);
+        previous_line = Some(line);
     }
     merged
+}
+
+fn should_join_lines(previous: &str, current: &str, profile: MergeProfile) -> bool {
+    let previous = previous.trim();
+    let current = current.trim();
+    if previous.is_empty() || current.is_empty() {
+        return false;
+    }
+    if is_structural_line(previous) || is_structural_line(current) {
+        return false;
+    }
+
+    let previous_end = previous.chars().rev().find(|ch| !ch.is_whitespace());
+    let current_start = current.chars().find(|ch| !ch.is_whitespace());
+    if current_start.is_some_and(|ch| ch.is_lowercase()) {
+        return true;
+    }
+    if looks_like_standalone_label(previous) || looks_like_standalone_label(current) {
+        return false;
+    }
+    if previous_end.is_some_and(is_sentence_end) {
+        return profile == MergeProfile::Paragraph && !starts_like_new_block(current);
+    }
+    if previous_end == Some('-') {
+        return true;
+    }
+    if previous_end.is_some_and(is_cjk_like) && current_start.is_some_and(is_cjk_like) {
+        return true;
+    }
+    let previous_len = previous.chars().count();
+    let current_len = current.chars().count();
+    match profile {
+        MergeProfile::Conservative => {
+            previous_len >= 24 && current_len >= 24 && !looks_like_title_case(current)
+        }
+        MergeProfile::Paragraph => previous_len >= 12 && current_len >= 12,
+    }
+}
+
+fn join_separator(previous: &str, current: &str) -> &'static str {
+    let previous_end = previous.chars().rev().find(|ch| !ch.is_whitespace());
+    let current_start = current.chars().find(|ch| !ch.is_whitespace());
+    if previous_end == Some('-') {
+        return "";
+    }
+    if previous_end.is_some_and(is_cjk_like) && current_start.is_some_and(is_cjk_like) {
+        return "";
+    }
+    " "
+}
+
+fn is_structural_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    if trimmed.starts_with('#')
+        || trimmed.starts_with('>')
+        || trimmed.starts_with("|")
+        || trimmed.ends_with('|')
+    {
+        return true;
+    }
+    if ["- ", "* ", "+ ", "• ", "· "]
+        .iter()
+        .any(|prefix| trimmed.starts_with(prefix))
+    {
+        return true;
+    }
+    is_ordered_list_item(trimmed)
+}
+
+fn is_ordered_list_item(line: &str) -> bool {
+    let mut chars = line.chars().peekable();
+    let mut digits = 0usize;
+    while chars.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+        digits += 1;
+        chars.next();
+    }
+    if digits == 0 || digits > 3 {
+        return false;
+    }
+    let Some(marker) = chars.next() else {
+        return false;
+    };
+    if !matches!(marker, '.' | ')' | '、') {
+        return false;
+    }
+    chars.peek().is_none_or(|ch| ch.is_whitespace())
+}
+
+fn looks_like_standalone_label(line: &str) -> bool {
+    let trimmed = line.trim();
+    let count = trimmed.chars().count();
+    if count <= 2 {
+        return true;
+    }
+    if count <= 18 && !trimmed.chars().any(is_sentence_end) {
+        return true;
+    }
+    false
+}
+
+fn starts_like_new_block(line: &str) -> bool {
+    is_structural_line(line) || looks_like_title_case(line) || looks_like_standalone_label(line)
+}
+
+fn looks_like_title_case(line: &str) -> bool {
+    let words = line
+        .split_whitespace()
+        .filter(|word| word.chars().any(|ch| ch.is_alphabetic()))
+        .take(6)
+        .collect::<Vec<_>>();
+    if words.is_empty() || words.len() > 5 {
+        return false;
+    }
+    let uppercase_words = words
+        .iter()
+        .filter(|word| word.chars().next().is_some_and(|ch| ch.is_uppercase()))
+        .count();
+    uppercase_words >= words.len().saturating_sub(1)
 }
 
 fn is_sentence_end(ch: char) -> bool {
@@ -678,4 +883,74 @@ fn is_cjk_like(ch: char) -> bool {
 
 fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().replace("\\\\?\\", "")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lines(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn conservative_merges_obvious_visual_wraps() {
+        let merged = merge_ocr_lines(
+            &lines(&[
+                "You will",
+                "see references to RAG frequently in this documentation.",
+            ]),
+            MergeProfile::Conservative,
+        );
+        assert_eq!(
+            merged,
+            "You will see references to RAG frequently in this documentation."
+        );
+    }
+
+    #[test]
+    fn conservative_preserves_lists_and_short_labels() {
+        let merged = merge_ocr_lines(
+            &lines(&["Stages within RAG", "1. Indexing", "2. Retrieval"]),
+            MergeProfile::Conservative,
+        );
+        assert_eq!(merged, "Stages within RAG\n1. Indexing\n2. Retrieval");
+    }
+
+    #[test]
+    fn paragraph_mode_keeps_sentences_in_one_paragraph() {
+        let merged = merge_ocr_lines(
+            &lines(&[
+                "LLMs are trained on enormous bodies of data.",
+                "Retrieval-Augmented Generation solves this problem.",
+            ]),
+            MergeProfile::Paragraph,
+        );
+        assert_eq!(
+            merged,
+            "LLMs are trained on enormous bodies of data. Retrieval-Augmented Generation solves this problem."
+        );
+    }
+
+    #[test]
+    fn auto_uses_paragraph_for_document_like_text() {
+        let mode = auto_text_layout_mode(&lines(&[
+            "LLMs are trained on enormous bodies of data but they aren't trained on your data.",
+            "Retrieval-Augmented Generation solves this problem by adding your data to the data LLMs already have access to.",
+            "You will see references to RAG frequently in this documentation.",
+        ]));
+        assert_eq!(mode, OcrTextLayoutMode::Paragraph);
+    }
+
+    #[test]
+    fn auto_preserves_menu_like_text() {
+        let mode = auto_text_layout_mode(&lines(&[
+            "Getting Started",
+            "Learn",
+            "Indexing",
+            "Retrieval",
+            "Use Cases",
+        ]));
+        assert_eq!(mode, OcrTextLayoutMode::Preserve);
+    }
 }
