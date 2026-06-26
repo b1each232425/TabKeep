@@ -1,26 +1,38 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from schemas.knowledge import (
     KnowledgeAskRequest,
     KnowledgeAskResponse,
     KnowledgeConfig,
+    KnowledgeEvalCase,
+    KnowledgeEvalCaseRequest,
+    KnowledgeEvalDeleteResponse,
+    KnowledgeEvalRunRequest,
+    KnowledgeEvalRunResponse,
     KnowledgeGraphRebuildResponse,
     KnowledgeGraphResponse,
+    KnowledgeHitTestRequest,
+    KnowledgeHitTestResponse,
+    KnowledgeIndexHealthResponse,
+    KnowledgeIndexRepairResponse,
     KnowledgeMessage,
     KnowledgeReindexResponse,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
     KnowledgeSession,
     KnowledgeStats,
+    KnowledgeSyncLogResponse,
     KnowledgeSiyuanPrecheckResponse,
     KnowledgeSiyuanSyncRequest,
     KnowledgeSiyuanSyncResponse,
+    KnowledgeSyncAllResponse,
     KnowledgeTopicDetailResponse,
     KnowledgeTopicEnrichRequest,
     KnowledgeTopicEnrichResponse,
     KnowledgeTopicExportResponse,
     KnowledgeTopicListResponse,
     KnowledgeTopicRebuildResponse,
+    KnowledgeVectorInspectResponse,
 )
 from services import storage
 from services.auth import require_api_token
@@ -51,6 +63,26 @@ async def reindex() -> KnowledgeReindexResponse:
     return await service.reindex_all()
 
 
+@router.post("/sync/all", response_model=KnowledgeSyncAllResponse, summary="同步所有已配置知识来源")
+async def sync_all() -> KnowledgeSyncAllResponse:
+    return await service.sync_all_knowledge()
+
+
+@router.get("/sync/logs", response_model=KnowledgeSyncLogResponse, summary="读取最近知识库同步记录")
+def sync_logs() -> KnowledgeSyncLogResponse:
+    return service.list_sync_logs()
+
+
+@router.get("/index/health", response_model=KnowledgeIndexHealthResponse, summary="检查知识库索引健康")
+def index_health() -> KnowledgeIndexHealthResponse:
+    return service.inspect_index_health()
+
+
+@router.post("/index/repair", response_model=KnowledgeIndexRepairResponse, summary="修复知识库索引轻量问题")
+def repair_index() -> KnowledgeIndexRepairResponse:
+    return service.repair_index()
+
+
 @router.get("/sync/siyuan/precheck", response_model=KnowledgeSiyuanPrecheckResponse, summary="检查 SiYuan 同步条件")
 async def precheck_siyuan() -> KnowledgeSiyuanPrecheckResponse:
     return await service.precheck_siyuan_sync()
@@ -66,9 +98,53 @@ async def search(req: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
     return await service.search_knowledge(req.query, req.limit)
 
 
+@router.post("/hit-test", response_model=KnowledgeHitTestResponse, summary="调试知识库检索")
+async def hit_test(req: KnowledgeHitTestRequest) -> KnowledgeHitTestResponse:
+    return await service.hit_test_knowledge(req.query, req.limit, req.searchMode, req.minScore)
+
+
+@router.get("/eval/cases", response_model=list[KnowledgeEvalCase], summary="列出 RAG 评估用例")
+def eval_cases() -> list[KnowledgeEvalCase]:
+    return service.list_eval_cases()
+
+
+@router.post("/eval/cases", response_model=KnowledgeEvalCase, summary="新增 RAG 评估用例")
+def create_eval_case(req: KnowledgeEvalCaseRequest) -> KnowledgeEvalCase:
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="问题不能为空")
+    return service.save_eval_case(req)
+
+
+@router.post("/eval/cases/{case_id}", response_model=KnowledgeEvalCase, summary="更新 RAG 评估用例")
+def update_eval_case(case_id: str, req: KnowledgeEvalCaseRequest) -> KnowledgeEvalCase:
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="问题不能为空")
+    return service.save_eval_case(req, case_id)
+
+
+@router.post("/eval/cases/{case_id}/delete", response_model=KnowledgeEvalDeleteResponse, summary="删除 RAG 评估用例")
+def delete_eval_case(case_id: str) -> KnowledgeEvalDeleteResponse:
+    return service.delete_eval_case(case_id)
+
+
+@router.post("/eval/run", response_model=KnowledgeEvalRunResponse, summary="运行 RAG 检索评估")
+async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
+    return await service.run_eval(req)
+
+
 @router.post("/ask", response_model=KnowledgeAskResponse, summary="基于知识库问答")
 async def ask(req: KnowledgeAskRequest) -> KnowledgeAskResponse:
     return await service.ask_knowledge(req)
+
+
+@router.get("/vector/inspect", response_model=KnowledgeVectorInspectResponse, summary="查看 LanceDB 向量表")
+def inspect_vector(query: str | None = None, limit: int = 100) -> KnowledgeVectorInspectResponse:
+    return service.inspect_vector_store(query=query, limit=limit, migrate=False)
+
+
+@router.post("/vector/migrate", response_model=KnowledgeVectorInspectResponse, summary="迁移 LanceDB 向量表 schema")
+def migrate_vector_schema() -> KnowledgeVectorInspectResponse:
+    return service.inspect_vector_store(migrate=True)
 
 
 @router.get("/graph", response_model=KnowledgeGraphResponse, summary="读取知识图谱")

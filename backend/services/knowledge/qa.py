@@ -74,8 +74,8 @@ def build_rag_messages(question: str, citations: list[KnowledgeCitation]) -> lis
         {
             "role": "system",
             "content": (
-                "你是 TabKeep 本地知识库助手。只能基于用户提供的来源片段回答。"
-                "如果来源片段不足以回答,请明确说没有足够依据。"
+                "你是 TabKeep 本地知识库助手。只能基于用户提供的来源段落回答。"
+                "如果来源段落不足以回答,请明确说没有足够依据。"
                 "回答要用中文,条理清晰,并在关键结论后用 [来源 1] 这样的形式标注来源。"
             ),
         },
@@ -89,4 +89,3 @@ def build_rag_messages(question: str, citations: list[KnowledgeCitation]) -> lis
 def clean_llm_output(raw: str) -> str:
     cleaned = _THINK_RE.sub("", raw or "").strip()
     return cleaned or "没有生成有效回答。"
-

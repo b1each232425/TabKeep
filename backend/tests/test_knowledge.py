@@ -9,7 +9,8 @@ if str(ROOT) not in sys.path:
 from schemas.config import NoteAdapterConfig
 from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest
 from services import storage
-from services.knowledge import graph, indexing, retrieval, siyuan_sync, topics
+from services.knowledge import db, graph, index_health, indexing, retrieval, siyuan_sync, sync_all, topics, vector_store
+from services.knowledge.db import IndexedChunk
 from services.note.base import DocNode, NotebookInfo
 from services.note.siyuan import SiYuanAdapter
 from tests.helpers import IsolatedBackendState
@@ -67,6 +68,165 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(old_search.items), 0)
         self.assertEqual(len(new_search.items), 1)
+
+    async def test_index_health_repairs_missing_fts_rows(self) -> None:
+        config = KnowledgeConfig()
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="索引健康测试",
+            content="# 索引健康测试\n\nIndexHealthNeedle 应该能通过 FTS 被召回。",
+            path="index-health.md",
+        )
+
+        healthy = index_health.inspect_index_health()
+        self.assertEqual(healthy.missingFtsRows, 0)
+        self.assertEqual(healthy.orphanFtsRows, 0)
+
+        with db.connection() as conn:
+            conn.execute("DELETE FROM chunk_fts")
+
+        broken = index_health.inspect_index_health()
+        self.assertGreater(broken.missingFtsRows, 0)
+        self.assertIn("missing_fts_rows", broken.repairableIssues)
+
+        repaired = index_health.repair_index()
+        search = await retrieval.search_knowledge("IndexHealthNeedle", 5)
+
+        self.assertTrue(repaired.ok)
+        self.assertTrue(repaired.repaired)
+        self.assertGreater(repaired.missingFtsRowsInserted, 0)
+        self.assertEqual(repaired.health.missingFtsRows, 0)
+        self.assertEqual(len(search.items), 1)
+
+    async def test_sync_all_records_run_metadata_and_recent_logs(self) -> None:
+        notes_dir = self.tmp_dir / "sync-notes"
+        notes_dir.mkdir()
+        (notes_dir / "sync.md").write_text("# 同步日志\n\nSyncLogNeedle 会进入知识库。", encoding="utf-8")
+        storage.get_knowledge_config = lambda: KnowledgeConfig(markdownPaths=[str(notes_dir)])
+        storage.get_note_adapter = lambda: None
+
+        result = await sync_all.sync_all_knowledge()
+        logs = sync_all.list_sync_logs()
+        search = await retrieval.search_knowledge("SyncLogNeedle", 5)
+
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(result.runId)
+        self.assertEqual(result.status, "success")
+        self.assertIsNotNone(result.startedAt)
+        self.assertIsNotNone(result.endedAt)
+        self.assertGreaterEqual(result.durationMs, 0)
+        self.assertEqual(result.documentsIndexed, 1)
+        self.assertEqual(len(search.items), 1)
+        self.assertGreaterEqual(len(logs.items), 1)
+        self.assertEqual(logs.items[0].runId, result.runId)
+
+        local = next(source for source in result.sources if source.source == "local")
+        siyuan = next(source for source in result.sources if source.source == "siyuan")
+        self.assertEqual(local.status, "success")
+        self.assertIsNotNone(local.startedAt)
+        self.assertIsNotNone(local.endedAt)
+        self.assertGreaterEqual(local.durationMs, 0)
+        self.assertEqual(siyuan.status, "skipped")
+        self.assertTrue(siyuan.skipped)
+
+    async def test_search_hits_chunks_but_returns_paragraph(self) -> None:
+        config = KnowledgeConfig()
+        content = (
+            "# RAG 分段测试\n\n"
+            "## 长段落\n\n"
+            f"{'前置背景说明 ' * 220}"
+            "UniqueNeedleAlpha "
+            f"{'后续上下文延展 ' * 220}"
+        )
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="RAG 分段测试",
+            content=content,
+            path="paragraph.md",
+        )
+
+        search = await retrieval.search_knowledge("UniqueNeedleAlpha", 5)
+
+        self.assertEqual(len(search.items), 1)
+        item = search.items[0]
+        self.assertIsNotNone(item.paragraphId)
+        self.assertNotEqual(item.paragraphId, item.chunkId)
+        self.assertIn("UniqueNeedleAlpha", item.matchedContent or "")
+        self.assertIn("前置背景说明", item.content)
+        self.assertIn("后续上下文延展", item.content)
+        self.assertGreater(len(item.content), len(item.matchedContent or ""))
+
+    async def test_vector_store_migrates_old_table_schema_for_paragraph_ids(self) -> None:
+        old_lance_dir = vector_store.LANCE_DIR
+        vector_store.LANCE_DIR = self.tmp_dir / "data" / "knowledge.lance"
+        try:
+            import lancedb
+
+            vector_store.LANCE_DIR.mkdir(parents=True, exist_ok=True)
+            lance = lancedb.connect(str(vector_store.LANCE_DIR))
+            lance.create_table(
+                vector_store.TABLE_NAME,
+                data=[
+                    {
+                        "chunk_id": "old:c0",
+                        "document_id": "old",
+                        "title": "旧表",
+                        "source_type": "markdown",
+                        "path": "",
+                        "url": "",
+                        "content": "旧向量",
+                        "vector": [0.0, 0.0],
+                    }
+                ],
+            )
+
+            chunks = [
+                IndexedChunk(
+                    id="new:p0:c0",
+                    document_id="new",
+                    paragraph_id="new:p0",
+                    title="新段落",
+                    source_type="markdown",
+                    url=None,
+                    path="new.md",
+                    content="新向量",
+                )
+            ]
+            vector_store.replace_document(chunks, [[1.0, 0.0]])
+
+            table = lance.open_table(vector_store.TABLE_NAME)
+            self.assertIn("paragraph_id", table.schema.names)
+            records = {row["chunk_id"]: row for row in vector_store.list_records()}
+            self.assertEqual(records["old:c0"]["paragraph_id"], "")
+            self.assertEqual(records["new:p0:c0"]["paragraph_id"], "new:p0")
+        finally:
+            vector_store.LANCE_DIR = old_lance_dir
+
+    async def test_hit_test_reports_fts_scores_and_vector_unavailable(self) -> None:
+        config = KnowledgeConfig()
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="调试台测试",
+            content="Alpha 检索诊断会展示 FTS 排名和 RRF 分数。",
+            path="debug.md",
+        )
+
+        fts = await retrieval.hit_test_knowledge("Alpha 检索诊断", 5, "fts", 0)
+        vector = await retrieval.hit_test_knowledge("Alpha 检索诊断", 5, "vector", 0)
+
+        self.assertTrue(fts.ok)
+        self.assertEqual(fts.searchMode, "fts")
+        self.assertEqual(fts.sourceMode, "fts")
+        self.assertEqual(len(fts.items), 1)
+        self.assertEqual(fts.items[0].rank, 1)
+        self.assertEqual(fts.items[0].matchedBy, ["fts"])
+        self.assertEqual(fts.items[0].ftsRank, 1)
+        self.assertGreater(fts.items[0].rrfScore, 0)
+        self.assertFalse(vector.ok)
+        self.assertIn("Embedding", vector.error or "")
 
     async def test_graph_builds_tags_headings_and_wikilinks(self) -> None:
         config = KnowledgeConfig()
