@@ -3,11 +3,8 @@ import type { MouseEvent } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { LucideIcon } from "lucide-react"
 import {
-  BookOpen,
-  Brain,
   ChartNetwork,
   Database,
-  Folder,
   Languages,
   LayoutDashboard,
   PlugZap,
@@ -37,7 +34,6 @@ import { Button } from "./components/primitives"
 import { errorMessage } from "./lib/errors"
 import { KnowledgeGraphSection } from "./sections/KnowledgeGraphSection"
 import { KnowledgeSection } from "./sections/KnowledgeSection"
-import { NotesSection } from "./sections/NotesSection"
 import { OcrDebugSection } from "./sections/OcrDebugSection"
 import {
   CaptureOverlay,
@@ -47,7 +43,7 @@ import {
   SelectionPanelWindow,
 } from "./sections/OcrWindows"
 import { OverviewSection } from "./sections/OverviewSection"
-import { CategoriesSection, ModelApiSection } from "./sections/SettingsSections"
+import { SettingsSection } from "./sections/SettingsSections"
 import { TranslateSection } from "./sections/TranslateSection"
 import { VectorDebugSection } from "./sections/VectorDebugSection"
 
@@ -56,9 +52,7 @@ type Section =
   | "translate"
   | "knowledge"
   | "graph"
-  | "categories"
-  | "modelApi"
-  | "notes"
+  | "settings"
   | "vectorDebug"
   | "ocrDebug"
 const importMetaEnv = (import.meta as ImportMeta & {
@@ -133,10 +127,8 @@ function DesktopApp() {
     { id: "overview", label: "概览", icon: LayoutDashboard },
     { id: "translate", label: "翻译", icon: Languages },
     { id: "knowledge", label: "知识库", icon: Database },
-    { id: "graph", label: "知识工作台", icon: ChartNetwork },
-    { id: "categories", label: "分组", icon: Folder },
-    { id: "modelApi", label: "模型 API", icon: Brain },
-    { id: "notes", label: "笔记集成", icon: BookOpen },
+    { id: "graph", label: "知识图谱", icon: ChartNetwork },
+    { id: "settings", label: "设置", icon: Settings2 },
   ]
   const debugNavItems: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: "vectorDebug", label: "向量库", icon: Database },
@@ -235,18 +227,16 @@ function DesktopApp() {
         {section === "translate" && <TranslateSection />}
         {section === "knowledge" && <KnowledgeSection />}
         {section === "graph" && <KnowledgeGraphSection noteAdapter={noteAdapter} />}
-        {section === "categories" && (
-          <CategoriesSection
+        {section === "settings" && (
+          <SettingsSection
             tabs={tabs}
             categories={tabCategories}
             setCategories={setTabCategories}
+            modelConfig={modelConfig}
+            setModelConfig={setModelConfig}
+            noteAdapter={noteAdapter}
+            setNoteAdapter={setNoteAdapter}
           />
-        )}
-        {section === "modelApi" && (
-          <ModelApiSection config={modelConfig} setConfig={setModelConfig} />
-        )}
-        {section === "notes" && (
-          <NotesSection config={noteAdapter} setConfig={setNoteAdapter} />
         )}
         {section === "vectorDebug" && <VectorDebugSection />}
         {section === "ocrDebug" && SHOW_OCR_DEBUG && <OcrDebugSection />}

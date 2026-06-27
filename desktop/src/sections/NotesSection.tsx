@@ -13,6 +13,27 @@ export function NotesSection({
   config: NoteAdapterConfig
   setConfig: (config: NoteAdapterConfig) => void
 }) {
+  return (
+    <div className="space-y-5">
+      <header className="tk-topbar">
+        <div>
+          <h1 className="tk-page-title">笔记集成</h1>
+          <p className="tk-page-subtitle">收藏当前标签页到本地 Markdown、思源或 Obsidian</p>
+        </div>
+      </header>
+
+      <NotesConfigPanel config={config} setConfig={setConfig} />
+    </div>
+  )
+}
+
+export function NotesConfigPanel({
+  config,
+  setConfig,
+}: {
+  config: NoteAdapterConfig
+  setConfig: (config: NoteAdapterConfig) => void
+}) {
   const [draft, setDraft] = useState<NoteAdapterConfig>(config)
   const [status, setStatus] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
@@ -59,17 +80,15 @@ export function NotesSection({
 
   return (
     <div className="space-y-5">
-      <header className="tk-topbar">
-        <div>
-          <h1 className="tk-page-title">笔记集成</h1>
-          <p className="tk-page-subtitle">收藏当前标签页到本地 Markdown、思源或 Obsidian</p>
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">笔记集成</h2>
+            <p className="text-xs text-muted-foreground">收藏当前标签页到本地 Markdown、思源或 Obsidian</p>
+          </div>
         </div>
-      </header>
-
-      {status && <Notice tone={status.startsWith("连接成功") || status === "已保存" ? "success" : "warning"}>{status}</Notice>}
-
-      <section className="tk-panel max-w-3xl">
         <div className="tk-panel-body space-y-4">
+          {status && <Notice tone={status.startsWith("连接成功") || status === "已保存" ? "success" : "warning"}>{status}</Notice>}
           <label className="tk-field">
             <span className="tk-label">Provider</span>
             <select
@@ -185,7 +204,7 @@ export function NotesSection({
       </section>
 
       {notebooks.length > 0 && (
-        <section className="tk-panel max-w-3xl">
+        <section className="tk-panel">
           <div className="tk-panel-header">
             <h2 className="tk-panel-title">{provider === "obsidian" ? "Markdown 目录" : "笔记本列表"}</h2>
             <span className="tk-badge tk-badge-success">{notebooks.length} 项</span>
