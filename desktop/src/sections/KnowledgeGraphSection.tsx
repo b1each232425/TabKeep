@@ -19,7 +19,7 @@ export function KnowledgeGraphSection({ noteAdapter }: { noteAdapter: NoteAdapte
     <div className="space-y-5">
       <header className="tk-topbar">
         <div>
-          <h1 className="tk-page-title">知识工作台</h1>
+          <h1 className="tk-page-title">知识图谱</h1>
           <p className="tk-page-subtitle">查看笔记之间的关系，或生成主题目录页回写到笔记软件</p>
         </div>
         <div className="flex flex-wrap gap-2">
