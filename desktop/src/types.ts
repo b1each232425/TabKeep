@@ -1,3 +1,7 @@
+// -----------------------------------------------------------------------------
+// Core app configuration
+// -----------------------------------------------------------------------------
+
 export type CaptureMode = "link" | "full" | "summary"
 
 export interface ModelConfig {
@@ -5,6 +9,10 @@ export interface ModelConfig {
   baseURL: string
   apiKey: string
 }
+
+// -----------------------------------------------------------------------------
+// Tabs and grouping
+// -----------------------------------------------------------------------------
 
 export interface TabData {
   id: number
@@ -48,6 +56,10 @@ export interface TabCategory {
   description?: string
 }
 
+// -----------------------------------------------------------------------------
+// Note integrations
+// -----------------------------------------------------------------------------
+
 export interface NoteAdapterConfig {
   provider: "local" | "siyuan" | "obsidian"
   endpoint?: string
@@ -64,6 +76,10 @@ export interface NotebookInfo {
   name: string
 }
 
+// -----------------------------------------------------------------------------
+// Desktop/backend status
+// -----------------------------------------------------------------------------
+
 export interface DesktopStatus {
   ok: boolean
   app: string
@@ -77,6 +93,10 @@ export interface BackendConfigResponse {
   modelConfig?: ModelConfig | null
   tabCategories?: TabCategory[]
 }
+
+// -----------------------------------------------------------------------------
+// Knowledge base configuration and stats
+// -----------------------------------------------------------------------------
 
 export interface EmbeddingConfig {
   enabled: boolean
@@ -101,6 +121,10 @@ export interface KnowledgeStats {
   vectorAvailable: boolean
   vectorMessage?: string | null
 }
+
+// -----------------------------------------------------------------------------
+// Knowledge indexing, sync, and health
+// -----------------------------------------------------------------------------
 
 export interface KnowledgeDocumentIndexStatus {
   documentId: string
@@ -257,6 +281,10 @@ export interface KnowledgeIndexRepairResponse {
   errors: string[]
 }
 
+// -----------------------------------------------------------------------------
+// Knowledge retrieval and hit testing
+// -----------------------------------------------------------------------------
+
 export interface KnowledgeSearchResponse {
   ok: boolean
   query: string
@@ -294,6 +322,10 @@ export interface KnowledgeHitTestResponse {
   rerankMessage?: string | null
   error?: string | null
 }
+
+// -----------------------------------------------------------------------------
+// RAG evaluation
+// -----------------------------------------------------------------------------
 
 export interface KnowledgeEvalCaseRequest {
   question: string
@@ -403,6 +435,10 @@ export interface KnowledgeEvalRunResponse {
   error?: string | null
 }
 
+// -----------------------------------------------------------------------------
+// Vector inspection
+// -----------------------------------------------------------------------------
+
 export interface KnowledgeVectorColumn {
   name: string
   type: string
@@ -443,6 +479,10 @@ export interface KnowledgeVectorInspectResponse {
   records: KnowledgeVectorRecord[]
   error?: string | null
 }
+
+// -----------------------------------------------------------------------------
+// RAG answers and knowledge graph
+// -----------------------------------------------------------------------------
 
 export interface KnowledgeAskResponse {
   ok: boolean
@@ -497,6 +537,10 @@ export interface KnowledgeGraphRebuildResponse {
   edges: number
   error?: string | null
 }
+
+// -----------------------------------------------------------------------------
+// Topic map and topic export
+// -----------------------------------------------------------------------------
 
 export interface KnowledgeTopicStats {
   topics: number
@@ -589,6 +633,10 @@ export interface KnowledgeTopicExportResponse {
   error?: string | null
 }
 
+// -----------------------------------------------------------------------------
+// Classification and note test responses
+// -----------------------------------------------------------------------------
+
 export interface ClassifyResponse {
   result?: Record<string, string>
   raw?: string
@@ -600,6 +648,10 @@ export interface NotesTestResponse {
   provider?: string | null
   error?: string | null
 }
+
+// -----------------------------------------------------------------------------
+// Translation
+// -----------------------------------------------------------------------------
 
 export interface TranslateRequest {
   text: string
@@ -637,6 +689,10 @@ export interface TranslateProviderTestResponse {
   latencyMs: number
   error?: string | null
 }
+
+// -----------------------------------------------------------------------------
+// OCR, region box, and selection translation
+// -----------------------------------------------------------------------------
 
 export type OcrProvider = "windows_ocr" | "paddleocr_json"
 export type OcrTextLayoutMode = "auto" | "preserve" | "conservative" | "paragraph"
