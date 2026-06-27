@@ -13,7 +13,7 @@ import {
   type NodeProps,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
-import { Clipboard, Copy, Folder, RefreshCw, Search, X } from "lucide-react"
+import { Copy, Folder, RefreshCw, Search } from "lucide-react"
 
 import {
   getKnowledgeGraph,
@@ -25,7 +25,6 @@ import type {
   KnowledgeGraphLayer,
   KnowledgeGraphNode,
   KnowledgeGraphResponse,
-  KnowledgeTopicDocument,
   NoteAdapterConfig,
 } from "../types"
 import { Button } from "../components/primitives"
@@ -35,6 +34,7 @@ type GraphCanvasNode = KnowledgeGraphNode
 type GraphRelation = {
   childMap: Map<string, string[]>
   parentMap: Map<string, string[]>
+  neighborMap: Map<string, string[]>
   edgeKindMap: Map<string, string>
   roots: string[]
 }
@@ -52,31 +52,44 @@ type GraphSelectedRelation = {
 
 type GraphFlowNodeData = Record<string, unknown> & {
   graphNode: GraphCanvasNode
-  childCount: number
-  expanded: boolean
+  relationCount: number
+  distance: number
+  center: boolean
   selected: boolean
   relatedToSelected: boolean
-  isLeaf: boolean
   onSelect: (node: GraphCanvasNode) => void
-  onToggle: (node: GraphCanvasNode) => void
 }
 type GraphFlowNode = Node<GraphFlowNodeData, "knowledgeMap">
 type GraphFlowEdge = Edge<{ kind: string }, "smoothstep">
 
-const GRAPH_COLUMN_WIDTH = 360
-const GRAPH_ROW_HEIGHT = 184
-const GRAPH_NODE_X = 48
-const GRAPH_NODE_Y = 52
+type GraphDepth = 1 | 2
+
+const GRAPH_CENTER_X = 520
+const GRAPH_CENTER_Y = 330
+const GRAPH_RING_RADIUS: Record<GraphDepth, number> = {
+  1: 280,
+  2: 500,
+}
+const GRAPH_LOCAL_NODE_LIMIT: Record<GraphDepth, number> = {
+  1: 48,
+  2: 90,
+}
 const GRAPH_EDGE_LABEL_LIMIT = 80
 
-export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) => void }) {
-  const [graphLayer, setGraphLayer] = useState<KnowledgeGraphLayer>("all")
+export function KnowledgeGraphPanel({
+  onStatus,
+  noteAdapter,
+}: {
+  onStatus: (message: string) => void
+  noteAdapter?: NoteAdapterConfig
+}) {
+  const [graphLayer, setGraphLayer] = useState<KnowledgeGraphLayer>("documents")
   const [graphQuery, setGraphQuery] = useState("")
   const [graphSourceType, setGraphSourceType] = useState("")
   const [graphResult, setGraphResult] = useState<KnowledgeGraphResponse | null>(null)
   const [selectedGraphNode, setSelectedGraphNode] = useState<KnowledgeGraphNode | null>(null)
   const [selectedGraphRelation, setSelectedGraphRelation] = useState<GraphSelectedRelation | null>(null)
-  const [expandedGraphNodeIds, setExpandedGraphNodeIds] = useState<Set<string>>(() => new Set())
+  const [graphDepth, setGraphDepth] = useState<GraphDepth>(1)
   const [graphLoading, setGraphLoading] = useState(false)
   const [graphRebuilding, setGraphRebuilding] = useState(false)
 
@@ -102,51 +115,28 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
     [selectedGraphRelation],
   )
 
-  const toggleGraphNode = (node: KnowledgeGraphNode) => {
-    const children = graphRelation.childMap.get(node.id) ?? []
-    selectGraphNode(node)
-    if (children.length === 0) return
-    setExpandedGraphNodeIds((current) => {
-      const next = new Set(current)
-      if (next.has(node.id)) {
-        collapseGraphBranch(node.id, next, graphRelation.childMap)
-      } else {
-        next.add(node.id)
-      }
-      return next
-    })
-  }
-
   const graphData = useMemo(
     () =>
       buildVisibleGraphData({
         graphResult,
         relation: graphRelation,
-        expandedNodeIds: expandedGraphNodeIds,
         selectedNodeId: selectedGraphNode?.id ?? null,
         selectedRelationKey,
+        depth: graphDepth,
         onSelect: selectGraphNode,
-        onToggle: toggleGraphNode,
       }),
-    // toggleGraphNode intentionally closes over the current relation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [expandedGraphNodeIds, graphRelation, graphResult, selectedGraphNode?.id, selectedRelationKey],
+    [graphDepth, graphRelation, graphResult, selectedGraphNode?.id, selectedRelationKey],
   )
 
-  const rootNodes = useMemo(() => {
-    const nodeMap = new Map((graphResult?.nodes ?? []).map((node) => [node.id, node]))
-    return graphRelation.roots
-      .map((rootId) => nodeMap.get(rootId))
-      .filter((node): node is KnowledgeGraphNode => Boolean(node))
-  }, [graphRelation.roots, graphResult])
+  const focusNodes = useMemo(() => graphFocusCandidates(graphResult?.nodes ?? []), [graphResult])
 
-  const selectedChildren = useMemo(() => {
+  const selectedNeighbors = useMemo(() => {
     if (!selectedGraphNode || !graphResult) return []
     const nodeMap = new Map(graphResult.nodes.map((node) => [node.id, node]))
-    return (graphRelation.childMap.get(selectedGraphNode.id) ?? [])
+    return (graphRelation.neighborMap.get(selectedGraphNode.id) ?? [])
       .map((nodeId) => nodeMap.get(nodeId))
       .filter((node): node is KnowledgeGraphNode => Boolean(node))
-  }, [graphRelation.childMap, graphResult, selectedGraphNode])
+  }, [graphRelation.neighborMap, graphResult, selectedGraphNode])
 
   const selectedOutgoing = useMemo(
     () => graphNodeRelations(selectedGraphNode?.id ?? null, graphResult, graphRelation, "out"),
@@ -156,22 +146,9 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
     () => graphNodeRelations(selectedGraphNode?.id ?? null, graphResult, graphRelation, "in"),
     [graphRelation, graphResult, selectedGraphNode],
   )
-  const selectedGraphPath = useMemo(
-    () => graphNodePath(selectedGraphNode?.id ?? null, graphResult, graphRelation),
-    [graphRelation, graphResult, selectedGraphNode],
-  )
   const graphKindStats = useMemo(() => graphNodeKindStats(graphResult?.nodes ?? []), [graphResult])
   const graphEdgeStats = useMemo(() => graphEdgeKindStats(graphResult?.edges ?? []), [graphResult])
-  const visibleLevelCount = useMemo(
-    () =>
-      new Set(graphData.nodes.map((node) => Math.round((node.position.x - GRAPH_NODE_X) / GRAPH_COLUMN_WIDTH))).size,
-    [graphData.nodes],
-  )
   const selectedDirectRelationCount = selectedOutgoing.length + selectedIncoming.length
-  const hasCollapsedVisibleBranch = graphData.nodes.some(
-    (node) => graphRelation.childMap.has(node.id) && !expandedGraphNodeIds.has(node.id),
-  )
-  const expandableNodeCount = graphRelation.childMap.size
 
   const nodeTypes = useMemo(() => ({ knowledgeMap: KnowledgeMapNode }), [])
 
@@ -189,10 +166,8 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
         onStatus(result.error ?? "知识图谱加载失败")
         return
       }
-      const relation = buildGraphRelation(result.nodes, result.edges)
-      setExpandedGraphNodeIds(new Set())
       setSelectedGraphRelation(null)
-      setSelectedGraphNode(result.nodes.find((node) => node.id === relation.roots[0]) ?? null)
+      setSelectedGraphNode(graphFocusCandidates(result.nodes)[0] ?? null)
     } catch (err) {
       onStatus(`知识图谱加载失败: ${errorMessage(err)}`)
     } finally {
@@ -222,23 +197,6 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
     }
   }
 
-  const expandAllGraph = () => {
-    const allExpandable = new Set(graphRelation.childMap.keys())
-    setExpandedGraphNodeIds(allExpandable)
-    setSelectedGraphNode((current) => current ?? rootNodes[0] ?? null)
-  }
-
-  const expandNextGraphLevel = () => {
-    setExpandedGraphNodeIds((current) => {
-      const next = new Set(current)
-      for (const node of graphData.nodes) {
-        if (graphRelation.childMap.has(node.id)) next.add(node.id)
-      }
-      return next
-    })
-    setSelectedGraphNode((current) => current ?? rootNodes[0] ?? null)
-  }
-
   const selectGraphEdge = (edge: GraphFlowEdge) => {
     const source = graphNodeMap.get(edge.source)
     const target = graphNodeMap.get(edge.target)
@@ -258,33 +216,21 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
     }
   }
 
-  const copySelectedGraphPath = async () => {
-    if (selectedGraphPath.length === 0) return
-    const text = selectedGraphPath.map((node) => node.label).join(" > ")
-    try {
-      await navigator.clipboard.writeText(text)
-      onStatus("路径已复制")
-    } catch (err) {
-      onStatus(`复制路径失败: ${errorMessage(err)}`)
-    }
-  }
-
   return (
     <section className="tk-panel">
       <div className="tk-panel-header">
         <div>
-          <h2 className="tk-panel-title">知识地图</h2>
+          <h2 className="tk-panel-title">笔记关系图谱</h2>
           <p className="text-xs text-muted-foreground">
             {graphResult
               ? `当前显示 ${graphData.nodes.length}/${graphResult.stats.totalNodes} 个节点`
-              : "等待载入"}
+              : "按双链、标签、标题和概念生成笔记关系"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="tk-badge">{graphData.nodes.length} 个可见节点</span>
           <span className="tk-badge">{graphData.edges.length} 条可见关系</span>
-          <span className="tk-badge">{visibleLevelCount} 层</span>
-          <span className="tk-badge">{expandedGraphNodeIds.size}/{expandableNodeCount} 已展开</span>
+          <span className="tk-badge">{graphDepth} 跳关系</span>
           {selectedGraphNode && <span className="tk-badge">{selectedDirectRelationCount} 个直接关联</span>}
         </div>
       </div>
@@ -298,9 +244,9 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                   className="tk-select"
                   value={graphLayer}
                   onChange={(event) => setGraphLayer(event.target.value as KnowledgeGraphLayer)}>
-                  <option value="all">全部</option>
                   <option value="documents">文档关系</option>
-                  <option value="concepts">显式概念</option>
+                  <option value="concepts">概念关系</option>
+                  <option value="all">全部关系</option>
                 </select>
               </label>
               <label className="tk-field">
@@ -337,26 +283,14 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                   {graphRebuilding ? "重建中..." : "重建"}
                 </Button>
                 <Button
-                  variant="ghost"
-                  onClick={expandNextGraphLevel}
-                  disabled={!hasCollapsedVisibleBranch}>
-                  展开一层
+                  variant={graphDepth === 1 ? "secondary" : "ghost"}
+                  onClick={() => setGraphDepth(1)}>
+                  一跳
                 </Button>
                 <Button
-                  variant="ghost"
-                  onClick={expandAllGraph}
-                  disabled={expandableNodeCount === 0 || expandedGraphNodeIds.size === expandableNodeCount}>
-                  展开全部
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setExpandedGraphNodeIds(new Set())
-                    setSelectedGraphRelation(null)
-                    setSelectedGraphNode(rootNodes[0] ?? null)
-                  }}
-                  disabled={expandedGraphNodeIds.size === 0}>
-                  收起全部
+                  variant={graphDepth === 2 ? "secondary" : "ghost"}
+                  onClick={() => setGraphDepth(2)}>
+                  二跳
                 </Button>
               </div>
             </div>
@@ -382,7 +316,7 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
             <div className="rounded-md border border-slate-200 bg-white p-3">
               <h3 className="mb-2 text-sm font-semibold text-slate-900">关系类型</h3>
               <div className="grid gap-2 text-xs">
-                {["belongs_to_source", "links_to_document", "has_tag", "has_heading", "mentions_concept"].map((kind) => (
+                {["belongs_to_source", "links_to_document", "semantic_similar", "has_tag", "has_heading", "mentions_concept"].map((kind) => (
                   <div key={kind} className="flex items-center justify-between rounded-md bg-slate-50 px-2 py-1.5">
                     <span className="flex min-w-0 items-center gap-1.5 text-slate-600">
                       <span
@@ -399,14 +333,14 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
 
             <div>
               <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-900">根节点</h3>
-                <span className="tk-badge">{rootNodes.length}</span>
+                <h3 className="text-sm font-semibold text-slate-900">中心笔记</h3>
+                <span className="tk-badge">{focusNodes.length}</span>
               </div>
               <div className="grid max-h-[430px] gap-2 overflow-auto pr-1">
-                {rootNodes.length > 0 ? (
-                  rootNodes.map((node) => {
+                {focusNodes.length > 0 ? (
+                  focusNodes.map((node) => {
                     const active = selectedGraphNode?.id === node.id
-                    const childCount = graphRelation.childMap.get(node.id)?.length ?? 0
+                    const relationCount = graphRelation.neighborMap.get(node.id)?.length ?? 0
                     return (
                       <button
                         key={node.id}
@@ -424,13 +358,13 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                           </span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {formatGraphNodeKind(node.kind)} · {childCount} 个子节点
+                          {formatGraphNodeKind(node.kind)} · {relationCount} 个关联
                         </div>
                       </button>
                     )
                   })
                 ) : (
-                  <div className="tk-muted-box">暂无根节点</div>
+                  <div className="tk-muted-box">暂无可作为中心的笔记</div>
                 )}
               </div>
             </div>
@@ -439,7 +373,7 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
           <div className="h-[620px] overflow-hidden rounded-md border border-slate-200 bg-[#f8fafc]">
             {graphData.nodes.length > 0 ? (
               <ReactFlow<GraphFlowNode, GraphFlowEdge>
-                key={`${graphData.nodes.length}:${graphData.edges.length}:${expandedGraphNodeIds.size}:${selectedGraphNode?.id ?? ""}`}
+                key={`${graphData.nodes.length}:${graphData.edges.length}:${graphDepth}:${selectedGraphNode?.id ?? ""}`}
                 nodes={graphData.nodes}
                 edges={graphData.edges}
                 nodeTypes={nodeTypes}
@@ -447,7 +381,7 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                 fitViewOptions={{ padding: 0.22 }}
                 minZoom={0.35}
                 maxZoom={1.4}
-                nodesDraggable={false}
+                nodesDraggable
                 nodesConnectable={false}
                 elementsSelectable
                 onlyRenderVisibleElements
@@ -464,13 +398,9 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                 />
                 <Panel position="top-left">
                   <div className="rounded-md border border-slate-200 bg-white/90 px-3 py-2 text-xs text-slate-600 shadow-sm">
-                    {expandedGraphNodeIds.size === 0
-                      ? "根节点已收起"
-                      : selectedGraphNode
-                        ? `高亮：${selectedGraphNode.label.length > 18 ? `${selectedGraphNode.label.slice(0, 17)}...` : selectedGraphNode.label}`
-                        : expandedGraphNodeIds.size === expandableNodeCount
-                          ? "已全部展开"
-                          : `已展开 ${expandedGraphNodeIds.size} 个分支`}
+                    {selectedGraphNode
+                      ? `中心：${selectedGraphNode.label.length > 18 ? `${selectedGraphNode.label.slice(0, 17)}...` : selectedGraphNode.label} · ${graphDepth} 跳`
+                      : "选择一个笔记作为中心"}
                   </div>
                 </Panel>
               </ReactFlow>
@@ -490,7 +420,7 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                     {selectedGraphNode.label}
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    连接度 {selectedGraphNode.degree} · 子级 {(graphRelation.childMap.get(selectedGraphNode.id) ?? []).length}
+                    连接度 {selectedGraphNode.degree} · 直接关联 {(graphRelation.neighborMap.get(selectedGraphNode.id) ?? []).length}
                   </p>
                 </div>
                 {selectedGraphRelation && (
@@ -527,51 +457,21 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                     </div>
                   </div>
                 )}
-                {selectedGraphPath.length > 1 && (
-                  <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <h4 className="text-xs font-semibold text-slate-700">路径</h4>
-                      <button
-                        className="tk-icon-button h-7 w-7"
-                        onClick={copySelectedGraphPath}
-                        title="复制路径">
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                      {selectedGraphPath.map((node, index) => (
-                        <div key={node.id} className="flex items-center gap-1.5">
-                          {index > 0 && <span className="text-slate-400">&gt;</span>}
-                          <button
-                            className="rounded-md bg-white px-2 py-1 font-medium text-slate-700 ring-1 ring-slate-200 hover:ring-blue-200"
-                            onClick={() => selectGraphNode(node)}>
-                            {node.label.length > 16 ? `${node.label.slice(0, 15)}...` : node.label}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {selectedGraphNode.sourceType && (
                   <div className="tk-muted-box">
                     <div className="mb-1 text-xs font-medium text-slate-700">
                       {formatSourceType(selectedGraphNode.sourceType)}
                     </div>
-                    <div className="break-all text-xs">
-                      {graphNodeTarget(selectedGraphNode) || selectedGraphNode.documentId}
+                    <div className="text-xs">
+                      {graphNodeOpenTarget(selectedGraphNode, noteAdapter) ? "可以打开原笔记" : "暂无可打开来源"}
                     </div>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  {(graphRelation.childMap.get(selectedGraphNode.id) ?? []).length > 0 && (
-                    <Button variant="secondary" onClick={() => toggleGraphNode(selectedGraphNode)}>
-                      {expandedGraphNodeIds.has(selectedGraphNode.id) ? "收起节点" : "展开节点"}
-                    </Button>
-                  )}
                   <Button
                     variant="secondary"
-                    onClick={() => openGraphNodeSource(selectedGraphNode, onStatus)}
-                    disabled={!graphNodeTarget(selectedGraphNode)}>
+                    onClick={() => openGraphNodeSource(selectedGraphNode, onStatus, noteAdapter)}
+                    disabled={!graphNodeOpenTarget(selectedGraphNode, noteAdapter)}>
                     <Folder className="h-4 w-4" />
                     打开来源
                   </Button>
@@ -579,19 +479,18 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                     variant="secondary"
                     onClick={() => copyGraphNodeSource(selectedGraphNode, onStatus)}>
                     <Copy className="h-4 w-4" />
-                    复制
+                    复制名称
                   </Button>
                 </div>
-                {selectedChildren.length > 0 && (
+                {selectedNeighbors.length > 0 && (
                   <div>
-                    <h4 className="mb-2 text-xs font-semibold text-slate-700">下一层</h4>
+                    <h4 className="mb-2 text-xs font-semibold text-slate-700">直接关联</h4>
                     <div className="grid max-h-64 gap-2 overflow-auto pr-1">
-                      {selectedChildren.map((child) => (
+                      {selectedNeighbors.map((child) => (
                         <button
                           key={child.id}
                           className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
                           onClick={() => {
-                            setExpandedGraphNodeIds((current) => new Set(current).add(selectedGraphNode.id))
                             selectGraphNode(child)
                           }}>
                           <div className="flex items-center gap-2">
@@ -604,7 +503,7 @@ export function KnowledgeGraphPanel({ onStatus }: { onStatus: (message: string) 
                             </span>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {formatGraphEdgeKind(graphRelation.edgeKindMap.get(`${selectedGraphNode.id}->${child.id}`) ?? "related")} · {formatGraphNodeKind(child.kind)} · {(graphRelation.childMap.get(child.id) ?? []).length} 个子节点
+                            {formatGraphEdgeKind(graphRelation.edgeKindMap.get(`${selectedGraphNode.id}->${child.id}`) ?? graphRelation.edgeKindMap.get(`${child.id}->${selectedGraphNode.id}`) ?? "related")} · {formatGraphNodeKind(child.kind)}
                           </div>
                         </button>
                       ))}
@@ -648,7 +547,16 @@ function buildGraphRelation(
   const nodeIds = new Set(nodes.map((node) => node.id))
   const childMap = new Map<string, string[]>()
   const parentMap = new Map<string, string[]>()
+  const neighborMap = new Map<string, string[]>()
   const edgeKindMap = new Map<string, string>()
+
+  const addNeighbor = (leftId: string, rightId: string) => {
+    if (!nodeIds.has(leftId) || !nodeIds.has(rightId) || leftId === rightId) return
+    const left = neighborMap.get(leftId) ?? []
+    if (!left.includes(rightId)) neighborMap.set(leftId, [...left, rightId])
+    const right = neighborMap.get(rightId) ?? []
+    if (!right.includes(leftId)) neighborMap.set(rightId, [...right, leftId])
+  }
 
   const addChild = (parentId: string, childId: string, kind: string) => {
     if (!nodeIds.has(parentId) || !nodeIds.has(childId) || parentId === childId) return
@@ -660,6 +568,7 @@ function buildGraphRelation(
   }
 
   for (const edge of edges) {
+    addNeighbor(edge.source, edge.target)
     if (edge.kind === "belongs_to_source") {
       addChild(edge.target, edge.source, edge.kind)
     } else {
@@ -669,6 +578,9 @@ function buildGraphRelation(
 
   for (const [parentId, children] of childMap.entries()) {
     childMap.set(parentId, sortGraphNodeIds(children, nodes))
+  }
+  for (const [nodeId, neighbors] of neighborMap.entries()) {
+    neighborMap.set(nodeId, sortGraphNodeIds(neighbors, nodes))
   }
 
   const sourceRoots = sortGraphNodeIds(
@@ -694,7 +606,7 @@ function buildGraphRelation(
         ? fallbackDocuments
         : fallbackAny.slice(0, 12)
 
-  return { childMap, parentMap, edgeKindMap, roots }
+  return { childMap, parentMap, neighborMap, edgeKindMap, roots }
 }
 
 function sortGraphNodeIds(nodeIds: string[], nodes: KnowledgeGraphNode[]): string[] {
@@ -723,215 +635,163 @@ function graphKindSort(kind: string): number {
 function buildVisibleGraphData({
   graphResult,
   relation,
-  expandedNodeIds,
   selectedNodeId,
   selectedRelationKey,
+  depth,
   onSelect,
-  onToggle,
 }: {
   graphResult: KnowledgeGraphResponse | null
   relation: GraphRelation
-  expandedNodeIds: Set<string>
   selectedNodeId: string | null
   selectedRelationKey: string | null
+  depth: GraphDepth
   onSelect: (node: KnowledgeGraphNode) => void
-  onToggle: (node: KnowledgeGraphNode) => void
 }): { nodes: GraphFlowNode[]; edges: GraphFlowEdge[] } {
   if (!graphResult) return { nodes: [], edges: [] }
   const nodeMap = new Map(graphResult.nodes.map((node) => [node.id, node]))
-
-  const visibleIds = new Set<string>()
-  const levels = new Map<string, number>()
-  const visit = (nodeId: string, depth: number, visiting = new Set<string>()) => {
-    if (!nodeMap.has(nodeId)) return
-    if (visiting.has(nodeId)) return
-    const previousDepth = levels.get(nodeId)
-    if (visibleIds.has(nodeId)) {
-      if (previousDepth !== undefined && depth <= previousDepth) return
-    } else {
-      visibleIds.add(nodeId)
-    }
-    levels.set(nodeId, depth)
-    if (!expandedNodeIds.has(nodeId)) return
-    const nextVisiting = new Set(visiting)
-    nextVisiting.add(nodeId)
-    const children = relation.childMap.get(nodeId) ?? []
-    for (const childId of children) visit(childId, depth + 1, nextVisiting)
-  }
-
-  for (const rootId of relation.roots) visit(rootId, 0)
-
-  const byLevel = new Map<number, KnowledgeGraphNode[]>()
-  for (const nodeId of visibleIds) {
-    const node = nodeMap.get(nodeId)
-    if (!node) continue
-    const level = levels.get(nodeId) ?? 0
-    byLevel.set(level, [...(byLevel.get(level) ?? []), node])
-  }
-
-  const visibleChildren = new Map<string, string[]>()
-  for (const [parentId, children] of relation.childMap.entries()) {
-    if (!visibleIds.has(parentId)) continue
-    const parentLevel = levels.get(parentId) ?? 0
-    const forwardChildren = children.filter((childId) => {
-      if (!visibleIds.has(childId)) return false
-      return (levels.get(childId) ?? 0) > parentLevel
-    })
-    if (forwardChildren.length > 0) {
-      visibleChildren.set(parentId, sortGraphNodeIds(forwardChildren, graphResult.nodes))
-    }
-  }
-
-  const rawSlots = new Map<string, number>()
-  let slotCursor = 0
-  const assignSlot = (nodeId: string, visiting = new Set<string>()): number => {
-    const existing = rawSlots.get(nodeId)
-    if (existing !== undefined) return existing
-    if (visiting.has(nodeId)) {
-      const cycleSlot = slotCursor
-      slotCursor += 1
-      rawSlots.set(nodeId, cycleSlot)
-      return cycleSlot
-    }
-
-    const children = visibleChildren.get(nodeId) ?? []
-    if (!expandedNodeIds.has(nodeId) || children.length === 0) {
-      const leafSlot = slotCursor
-      slotCursor += 1
-      rawSlots.set(nodeId, leafSlot)
-      return leafSlot
-    }
-
-    const nextVisiting = new Set(visiting)
-    nextVisiting.add(nodeId)
-    const childSlots = children.map((childId) => assignSlot(childId, nextVisiting))
-    const branchSlot = childSlots.reduce((sum, slot) => sum + slot, 0) / childSlots.length
-    rawSlots.set(nodeId, branchSlot)
-    return branchSlot
-  }
-
-  const orderedRoots = sortGraphNodeIds(relation.roots.filter((rootId) => visibleIds.has(rootId)), graphResult.nodes)
-  for (const rootId of orderedRoots) assignSlot(rootId)
-  for (const nodeId of visibleIds) assignSlot(nodeId)
-
-  const selectedNeighborhood = new Set<string>()
-  if (selectedNodeId) {
-    selectedNeighborhood.add(selectedNodeId)
-    for (const childId of relation.childMap.get(selectedNodeId) ?? []) selectedNeighborhood.add(childId)
-    for (const parentId of relation.parentMap.get(selectedNodeId) ?? []) selectedNeighborhood.add(parentId)
-  }
-
-  const adjustedSlots = new Map<string, number>()
-  for (const [, levelNodes] of [...byLevel.entries()].sort(([left], [right]) => left - right)) {
-    const ordered = sortGraphNodeIds(levelNodes.map((node) => node.id), graphResult.nodes)
-      .map((nodeId) => nodeMap.get(nodeId))
-      .filter((node): node is KnowledgeGraphNode => Boolean(node))
-      .sort((left, right) => {
-        const slotDelta = (rawSlots.get(left.id) ?? 0) - (rawSlots.get(right.id) ?? 0)
-        if (slotDelta !== 0) return slotDelta
-        return graphKindSort(left.kind) - graphKindSort(right.kind) || left.label.localeCompare(right.label, "zh-Hans-CN")
-      })
-
-    let previousSlot = -1
-    for (const node of ordered) {
-      const slot = Math.max(rawSlots.get(node.id) ?? 0, previousSlot + 1)
-      adjustedSlots.set(node.id, slot)
-      previousSlot = slot
-    }
-  }
-  const minSlot = adjustedSlots.size > 0 ? Math.min(...adjustedSlots.values()) : 0
+  const centerNode = (selectedNodeId && nodeMap.get(selectedNodeId)) || graphFocusCandidates(graphResult.nodes)[0]
+  if (!centerNode) return { nodes: [], edges: [] }
+  const distances = localGraphDistances(centerNode.id, relation, nodeMap, depth)
+  const visibleIds = new Set(distances.keys())
+  const selectedNeighborhood = new Set([centerNode.id, ...(relation.neighborMap.get(centerNode.id) ?? [])])
 
   const nodes: GraphFlowNode[] = []
-  for (const [level, levelNodes] of [...byLevel.entries()].sort(([left], [right]) => left - right)) {
-    const ordered = sortGraphNodeIds(levelNodes.map((node) => node.id), graphResult.nodes)
-      .map((nodeId) => nodeMap.get(nodeId))
+  for (const distance of [0, 1, 2]) {
+    const ringNodes = [...distances.entries()]
+      .filter(([, nodeDistance]) => nodeDistance === distance)
+      .map(([nodeId]) => nodeMap.get(nodeId))
       .filter((node): node is KnowledgeGraphNode => Boolean(node))
-      .sort((left, right) => (adjustedSlots.get(left.id) ?? 0) - (adjustedSlots.get(right.id) ?? 0))
-    ordered.forEach((node, index) => {
-      const childCount = relation.childMap.get(node.id)?.length ?? 0
-      const ySlot = adjustedSlots.get(node.id) ?? index
+      .sort(compareLocalGraphNodes)
+
+    ringNodes.forEach((node, index) => {
+      const relationCount = relation.neighborMap.get(node.id)?.length ?? 0
+      const position = localGraphPosition(distance, index, ringNodes.length)
       nodes.push({
         id: node.id,
         type: "knowledgeMap",
-        position: {
-          x: GRAPH_NODE_X + level * GRAPH_COLUMN_WIDTH,
-          y: GRAPH_NODE_Y + (ySlot - minSlot) * GRAPH_ROW_HEIGHT,
-        },
+        position,
         data: {
           graphNode: node,
-          childCount,
-          expanded: expandedNodeIds.has(node.id),
-          selected: selectedNodeId === node.id,
+          relationCount,
+          distance,
+          center: distance === 0,
+          selected: centerNode.id === node.id,
           relatedToSelected: !selectedNodeId || selectedNeighborhood.has(node.id),
-          isLeaf: childCount === 0,
           onSelect,
-          onToggle,
         },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
-        draggable: false,
         selectable: true,
       })
     })
   }
 
-  let visibleEdgeCount = 0
-  for (const [parentId, children] of relation.childMap.entries()) {
-    if (!visibleIds.has(parentId)) continue
-    visibleEdgeCount += children.filter((childId) => visibleIds.has(childId)).length
-  }
+  const visibleEdgeCount = graphResult.edges.filter(
+    (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
+  ).length
   const showAllEdgeLabels = visibleEdgeCount <= GRAPH_EDGE_LABEL_LIMIT
 
   const edges: GraphFlowEdge[] = []
-  for (const [parentId, children] of relation.childMap.entries()) {
-    if (!visibleIds.has(parentId)) continue
-    for (const childId of children) {
-      if (!visibleIds.has(childId)) continue
-      const kind = relation.edgeKindMap.get(`${parentId}->${childId}`) ?? "related"
-      const color = graphEdgeColor(kind)
-      const connectsSelected = selectedNodeId === parentId || selectedNodeId === childId
-      const edgeKey = `${parentId}->${childId}:${kind}`
-      const selectedEdge = selectedRelationKey === edgeKey
-      const dimmed = Boolean(selectedNodeId && !connectsSelected)
-      const showLabel = showAllEdgeLabels || connectsSelected || selectedEdge
-      edges.push({
-        id: `flow:${parentId}->${childId}:${kind}`,
-        source: parentId,
-        target: childId,
-        type: "smoothstep",
-        data: { kind },
-        label: showLabel ? formatGraphEdgeKind(kind) : undefined,
-        labelStyle: { fill: dimmed ? "#94a3b8" : "#475569", fontSize: 11, fontWeight: 600 },
-        labelBgPadding: [6, 4],
-        labelBgBorderRadius: 4,
-        labelBgStyle: { fill: "#ffffff", fillOpacity: 0.88 },
-        animated: selectedEdge || connectsSelected || expandedNodeIds.has(parentId),
-        selected: selectedEdge,
-        style: {
-          stroke: color,
-          strokeWidth: selectedEdge ? 3.4 : connectsSelected ? 2.6 : 1.6,
-          opacity: selectedEdge ? 1 : dimmed ? 0.28 : 0.9,
-        },
-        markerEnd: { type: MarkerType.ArrowClosed, color },
-      })
-    }
+  for (const edge of graphResult.edges) {
+    if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue
+    const kind = edge.kind ?? "related"
+    const color = graphEdgeColor(kind)
+    const connectsCenter = centerNode.id === edge.source || centerNode.id === edge.target
+    const edgeKey = `${edge.source}->${edge.target}:${kind}`
+    const selectedEdge = selectedRelationKey === edgeKey
+    const dimmed = Boolean(selectedNodeId && !connectsCenter && !selectedEdge)
+    const showLabel = showAllEdgeLabels || connectsCenter || selectedEdge
+    edges.push({
+      id: `flow:${edge.source}->${edge.target}:${kind}`,
+      source: edge.source,
+      target: edge.target,
+      type: "smoothstep",
+      data: { kind },
+      label: showLabel ? formatGraphEdgeKind(kind) : undefined,
+      labelStyle: { fill: dimmed ? "#94a3b8" : "#475569", fontSize: 11, fontWeight: 600 },
+      labelBgPadding: [6, 4],
+      labelBgBorderRadius: 4,
+      labelBgStyle: { fill: "#ffffff", fillOpacity: 0.88 },
+      animated: selectedEdge || connectsCenter,
+      selected: selectedEdge,
+      style: {
+        stroke: color,
+        strokeWidth: selectedEdge ? 3.4 : connectsCenter ? 2.6 : 1.5,
+        opacity: selectedEdge ? 1 : dimmed ? 0.28 : 0.88,
+        strokeDasharray: kind === "semantic_similar" ? "7 5" : undefined,
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, color },
+    })
   }
 
   return { nodes, edges }
 }
 
-function collapseGraphBranch(
-  nodeId: string,
-  expandedNodeIds: Set<string>,
-  childMap: Map<string, string[]>,
-  visited = new Set<string>(),
-) {
-  if (visited.has(nodeId)) return
-  visited.add(nodeId)
-  expandedNodeIds.delete(nodeId)
-  for (const childId of childMap.get(nodeId) ?? []) {
-    collapseGraphBranch(childId, expandedNodeIds, childMap, visited)
+function graphFocusCandidates(nodes: KnowledgeGraphNode[], limit = 18): KnowledgeGraphNode[] {
+  const documents = nodes.filter((node) => node.kind === "document")
+  const candidates = documents.length > 0 ? documents : nodes
+  return [...candidates].sort(compareLocalGraphNodes).slice(0, limit)
+}
+
+function localGraphDistances(
+  centerId: string,
+  relation: GraphRelation,
+  nodeMap: Map<string, KnowledgeGraphNode>,
+  depth: GraphDepth,
+): Map<string, number> {
+  const maxNodes = GRAPH_LOCAL_NODE_LIMIT[depth]
+  const distances = new Map<string, number>([[centerId, 0]])
+  let frontier = [centerId]
+  for (let distance = 1; distance <= depth; distance += 1) {
+    const candidates = new Set<string>()
+    for (const nodeId of frontier) {
+      for (const neighborId of relation.neighborMap.get(nodeId) ?? []) {
+        if (!distances.has(neighborId) && nodeMap.has(neighborId)) candidates.add(neighborId)
+      }
+    }
+    const ordered = [...candidates]
+      .map((nodeId) => nodeMap.get(nodeId))
+      .filter((node): node is KnowledgeGraphNode => Boolean(node))
+      .sort(compareLocalGraphNodes)
+
+    const nextFrontier: string[] = []
+    for (const node of ordered) {
+      if (distances.size >= maxNodes) break
+      distances.set(node.id, distance)
+      nextFrontier.push(node.id)
+    }
+    frontier = nextFrontier
+    if (frontier.length === 0 || distances.size >= maxNodes) break
   }
+  return distances
+}
+
+function localGraphPosition(distance: number, index: number, count: number): { x: number; y: number } {
+  if (distance === 0) return { x: GRAPH_CENTER_X, y: GRAPH_CENTER_Y }
+  const radius = GRAPH_RING_RADIUS[distance as GraphDepth] + Math.max(0, count - 18) * 5
+  const angleOffset = distance === 1 ? -Math.PI / 2 : -Math.PI / 2 + Math.PI / Math.max(count, 1)
+  const angle = angleOffset + (index / Math.max(count, 1)) * Math.PI * 2
+  return {
+    x: GRAPH_CENTER_X + Math.cos(angle) * radius,
+    y: GRAPH_CENTER_Y + Math.sin(angle) * radius,
+  }
+}
+
+function compareLocalGraphNodes(left: KnowledgeGraphNode, right: KnowledgeGraphNode): number {
+  return (
+    localGraphKindSort(left.kind) - localGraphKindSort(right.kind) ||
+    right.degree - left.degree ||
+    left.label.localeCompare(right.label, "zh-Hans-CN")
+  )
+}
+
+function localGraphKindSort(kind: string): number {
+  if (kind === "document") return 0
+  if (kind === "source") return 1
+  if (kind === "tag") return 2
+  if (kind === "concept") return 3
+  if (kind === "heading") return 4
+  return 5
 }
 
 function KnowledgeMapNode({ data }: NodeProps<GraphFlowNode>) {
@@ -939,46 +799,41 @@ function KnowledgeMapNode({ data }: NodeProps<GraphFlowNode>) {
   const color = graphNodeColor(node.kind)
   const label = node.label.length > 42 ? `${node.label.slice(0, 41)}...` : node.label
 
-  if (data.isLeaf) {
+  if (node.kind !== "document") {
     return (
       <button
-        className={`relative flex h-24 w-24 items-center justify-center rounded-full border-2 bg-white px-3 text-center text-xs font-semibold leading-4 shadow-sm transition-colors ${
+        className={`relative flex min-h-12 min-w-28 max-w-36 items-center justify-center rounded-full border bg-white px-3 py-2 text-center text-xs font-semibold leading-4 shadow-sm transition-colors ${
           data.selected ? "ring-4 ring-blue-100" : "hover:bg-slate-50"
         } ${data.relatedToSelected ? "" : "opacity-40"}`}
         style={{ borderColor: color, color }}
         title={node.label}
         onClick={() => data.onSelect(node)}>
         <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-300" />
-        <span className="line-clamp-3">{label}</span>
+        <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-slate-300" />
+        <span className="line-clamp-2">{label}</span>
       </button>
     )
   }
 
   return (
     <div
-      className={`relative w-56 rounded-md border bg-white p-3 shadow-sm transition-colors ${
-        data.selected ? "ring-4 ring-blue-100" : "hover:bg-slate-50"
+      className={`relative w-60 rounded-md border bg-white p-3 shadow-sm transition-colors ${
+        data.center ? "shadow-md ring-4 ring-blue-100" : data.selected ? "ring-4 ring-blue-100" : "hover:bg-slate-50"
       } ${data.relatedToSelected ? "" : "opacity-40"}`}
-      style={{ borderColor: data.selected ? color : "#e2e8f0" }}>
+      style={{ borderColor: data.center || data.selected ? color : "#e2e8f0" }}>
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-300" />
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-slate-300" />
       <button className="block w-full text-left" title={node.label} onClick={() => data.onSelect(node)}>
         <div className="mb-2 flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
           <span className="tk-badge">{formatGraphNodeKind(node.kind)}</span>
+          {data.center && <span className="tk-badge">中心</span>}
+          {data.distance > 0 && <span className="tk-badge">{data.distance} 跳</span>}
         </div>
         <div className="line-clamp-2 text-sm font-semibold leading-5 text-slate-900">{label}</div>
         <div className="mt-2 text-xs text-muted-foreground">
-          {data.childCount} 个子节点 · 连接度 {node.degree}
+          {data.relationCount} 个关联 · 连接度 {node.degree}
         </div>
-      </button>
-      <button
-        className="nodrag nopan mt-3 inline-flex h-7 items-center rounded-md border border-slate-200 px-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
-        onClick={(event) => {
-          event.stopPropagation()
-          data.onToggle(node)
-        }}>
-        {data.expanded ? "收起" : "展开"}
       </button>
     </div>
   )
@@ -1101,6 +956,7 @@ function graphNodeColor(kind: string): string {
 function graphEdgeColor(kind: string): string {
   if (kind === "belongs_to_source") return "rgba(15, 118, 110, 0.42)"
   if (kind === "links_to_document") return "rgba(37, 99, 235, 0.5)"
+  if (kind === "semantic_similar") return "rgba(14, 165, 233, 0.52)"
   if (kind === "has_tag") return "rgba(124, 58, 237, 0.42)"
   if (kind === "has_heading") return "rgba(217, 119, 6, 0.36)"
   if (kind === "mentions_concept") return "rgba(220, 38, 38, 0.36)"
@@ -1110,6 +966,7 @@ function graphEdgeColor(kind: string): string {
 function formatGraphEdgeKind(kind: string): string {
   if (kind === "belongs_to_source") return "来源"
   if (kind === "links_to_document") return "双链"
+  if (kind === "semantic_similar") return "语义相似"
   if (kind === "has_tag") return "标签"
   if (kind === "has_heading") return "标题"
   if (kind === "mentions_concept") return "提及"
@@ -1137,16 +994,12 @@ function graphNodeTarget(item: KnowledgeGraphNode): string {
   return item.url || item.path || ""
 }
 
-function topicDocumentTarget(item: KnowledgeTopicDocument): string {
-  return item.url || item.path || ""
-}
-
-function topicDocumentOpenTarget(item: KnowledgeTopicDocument, noteAdapter?: NoteAdapterConfig): string {
+function graphNodeOpenTarget(item: KnowledgeGraphNode, noteAdapter?: NoteAdapterConfig): string {
   if (item.sourceType === "markdown" && item.path && noteAdapter?.provider === "obsidian" && noteAdapter.vault) {
-    const obsidianTarget = obsidianOpenUri(item.path, noteAdapter.vault, item.anchor)
+    const obsidianTarget = obsidianOpenUri(item.path, noteAdapter.vault)
     if (obsidianTarget) return obsidianTarget
   }
-  return topicDocumentTarget(item)
+  return graphNodeTarget(item)
 }
 
 function obsidianOpenUri(path: string, vault: string, anchor?: string | null): string {
@@ -1169,40 +1022,14 @@ function normalizeLocalPath(value: string): string {
   return value.trim().replace(/\\/g, "/")
 }
 
-function formatTopicOpenTitle(item: KnowledgeTopicDocument, noteAdapter?: NoteAdapterConfig): string {
-  if (item.sourceType === "siyuan") return "在 SiYuan 中打开"
-  if (item.sourceType === "markdown" && noteAdapter?.provider === "obsidian") {
-    return item.anchor ? `在 Obsidian 中打开到标题：${item.anchor}` : "在 Obsidian 中打开"
-  }
-  if (item.url) return "打开网页来源"
-  return "打开笔记来源"
-}
-
 async function openGraphNodeSource(
   item: KnowledgeGraphNode,
   onStatus?: (message: string) => void,
-): Promise<void> {
-  const target = graphNodeTarget(item)
-  if (!target) {
-    onStatus?.("这个节点没有可打开的来源")
-    return
-  }
-  try {
-    await openExternalTarget(target)
-    onStatus?.("已打开来源")
-  } catch (err) {
-    onStatus?.(`打开来源失败: ${errorMessage(err)}`)
-  }
-}
-
-async function openTopicDocumentSource(
-  item: KnowledgeTopicDocument,
-  onStatus?: (message: string) => void,
   noteAdapter?: NoteAdapterConfig,
 ): Promise<void> {
-  const target = topicDocumentOpenTarget(item, noteAdapter)
+  const target = graphNodeOpenTarget(item, noteAdapter)
   if (!target) {
-    onStatus?.("这篇笔记没有可打开的来源")
+    onStatus?.("这个节点没有可打开的来源")
     return
   }
   try {
@@ -1217,25 +1044,12 @@ async function copyGraphNodeSource(
   item: KnowledgeGraphNode,
   onStatus?: (message: string) => void,
 ): Promise<void> {
-  const target = graphNodeTarget(item) || item.label || item.id
+  const target = `${item.label}（${formatGraphNodeKind(item.kind)}）`
   try {
     await navigator.clipboard.writeText(target)
-    onStatus?.("节点信息已复制")
+    onStatus?.("节点名称已复制")
   } catch (err) {
     onStatus?.(`复制失败: ${errorMessage(err)}`)
-  }
-}
-
-async function copyTopicDocumentSource(
-  item: KnowledgeTopicDocument,
-  onStatus?: (message: string) => void,
-): Promise<void> {
-  const target = topicDocumentTarget(item) || item.title || item.documentId
-  try {
-    await navigator.clipboard.writeText(target)
-    onStatus?.("来源已复制")
-  } catch (err) {
-    onStatus?.(`复制来源失败: ${errorMessage(err)}`)
   }
 }
 
@@ -1245,26 +1059,4 @@ function formatSourceType(value: string): string {
   if (value === "markdown") return "Markdown"
   if (value === "tabkeep_note") return "TabKeep"
   return value || "来源"
-}
-
-function formatDebugScore(value?: number | null): string {
-  if (value === null || value === undefined || Number.isNaN(value)) return "-"
-  if (Math.abs(value) >= 100) return value.toFixed(1)
-  if (Math.abs(value) >= 1) return value.toFixed(3)
-  return value.toFixed(4)
-}
-
-function formatVectorPreview(values: number[]): string {
-  if (values.length === 0) return "-"
-  return values.map((value) => formatDebugScore(value)).join(", ")
-}
-
-function formatTopicEvidenceKind(value: string): string {
-  if (value === "tag") return "标签"
-  if (value === "wikilink") return "双链"
-  if (value === "heading") return "标题"
-  if (value === "path") return "路径"
-  if (value === "embedding") return "语义相似"
-  if (value === "fallback") return "兜底"
-  return value || "证据"
 }
