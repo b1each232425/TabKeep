@@ -11,7 +11,7 @@ from schemas.knowledge import (
     KnowledgeGraphResponse,
     KnowledgeGraphStats,
 )
-from services.knowledge import db
+from services.knowledge import db, vector_store
 
 VALID_LAYERS = {"all", "documents", "concepts"}
 DOCUMENT_NODE_PREFIX = "document:"
@@ -19,6 +19,11 @@ SOURCE_NODE_PREFIX = "source:"
 TAG_NODE_PREFIX = "tag:"
 HEADING_NODE_PREFIX = "heading:"
 CONCEPT_NODE_PREFIX = "concept:"
+SEMANTIC_EDGE_KIND = "semantic_similar"
+SEMANTIC_SIMILARITY_THRESHOLD = 0.72
+SEMANTIC_TOP_K_PER_DOCUMENT = 3
+SEMANTIC_EDGE_LIMIT = 800
+SEMANTIC_VECTOR_RECORD_LIMIT = 10000
 
 
 @dataclass
@@ -89,6 +94,8 @@ def rebuild_graph() -> KnowledgeGraphRebuildResponse:
             nodes, edges = _build_document_graph(document, lookup)
             node_count += _upsert_nodes(conn, nodes)
             edge_count += _upsert_edges(conn, edges)
+
+        edge_count += _upsert_edges(conn, _build_semantic_edges(documents))
 
         totals = _graph_totals(conn)
         return KnowledgeGraphRebuildResponse(
@@ -212,6 +219,105 @@ def _build_document_graph(
     return _dedupe_nodes(nodes), _dedupe_edges(edges)
 
 
+def _build_semantic_edges(documents: Iterable[GraphDocument]) -> list[GraphEdgeDraft]:
+    document_ids = {document.id for document in documents}
+    if len(document_ids) < 2:
+        return []
+
+    try:
+        records = vector_store.list_records(limit=SEMANTIC_VECTOR_RECORD_LIMIT)
+    except Exception:
+        return []
+
+    vectors = _aggregate_document_vectors(records, document_ids)
+    if len(vectors) < 2:
+        return []
+
+    candidates: list[tuple[float, str, str]] = []
+    ordered_ids = sorted(vectors)
+    for left_index, left_id in enumerate(ordered_ids):
+        left_vector = vectors[left_id]
+        for right_id in ordered_ids[left_index + 1 :]:
+            score = _cosine_similarity(left_vector, vectors[right_id])
+            if score >= SEMANTIC_SIMILARITY_THRESHOLD:
+                candidates.append((score, left_id, right_id))
+
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+    per_document_counts = {document_id: 0 for document_id in vectors}
+    edges: list[GraphEdgeDraft] = []
+    for score, left_id, right_id in candidates:
+        if len(edges) >= SEMANTIC_EDGE_LIMIT:
+            break
+        if per_document_counts[left_id] >= SEMANTIC_TOP_K_PER_DOCUMENT:
+            continue
+        if per_document_counts[right_id] >= SEMANTIC_TOP_K_PER_DOCUMENT:
+            continue
+        edges.append(
+            GraphEdgeDraft(
+                _document_node_id(left_id),
+                _document_node_id(right_id),
+                SEMANTIC_EDGE_KIND,
+                round(score, 6),
+            )
+        )
+        per_document_counts[left_id] += 1
+        per_document_counts[right_id] += 1
+    return edges
+
+
+def _aggregate_document_vectors(
+    records: Iterable[dict],
+    document_ids: set[str],
+) -> dict[str, list[float]]:
+    sums: dict[str, list[float]] = {}
+    counts: dict[str, int] = {}
+    for record in records:
+        document_id = str(record.get("document_id") or "")
+        if document_id not in document_ids:
+            continue
+        vector = _vector_values(record.get("vector"))
+        if not vector:
+            continue
+        current = sums.get(document_id)
+        if current is None:
+            sums[document_id] = list(vector)
+            counts[document_id] = 1
+            continue
+        if len(current) != len(vector):
+            continue
+        for index, value in enumerate(vector):
+            current[index] += value
+        counts[document_id] += 1
+
+    return {
+        document_id: [value / counts[document_id] for value in vector]
+        for document_id, vector in sums.items()
+        if counts.get(document_id, 0) > 0
+    }
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if len(left) != len(right) or not left:
+        return 0
+    dot = sum(left_value * right_value for left_value, right_value in zip(left, right, strict=True))
+    left_norm = sum(value * value for value in left) ** 0.5
+    right_norm = sum(value * value for value in right) ** 0.5
+    if left_norm == 0 or right_norm == 0:
+        return 0
+    return dot / (left_norm * right_norm)
+
+
+def _vector_values(value) -> list[float]:
+    if value is None:
+        return []
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    try:
+        return [float(item) for item in value]
+    except (TypeError, ValueError):
+        return []
+
+
 def _replace_document_edges(
     conn,
     document_id: str,
@@ -219,7 +325,14 @@ def _replace_document_edges(
     edges: list[GraphEdgeDraft],
 ) -> None:
     doc_node_id = _document_node_id(document_id)
-    conn.execute("DELETE FROM graph_edges WHERE source_id = ?", (doc_node_id,))
+    conn.execute(
+        """
+        DELETE FROM graph_edges
+        WHERE source_id = ?
+           OR (kind = ? AND target_id = ?)
+        """,
+        (doc_node_id, SEMANTIC_EDGE_KIND, doc_node_id),
+    )
     _upsert_nodes(conn, nodes)
     _upsert_edges(conn, edges)
 
@@ -386,10 +499,17 @@ def _node_ids_for_layer(
 
 def _edge_kinds_for_layer(layer: str) -> set[str]:
     if layer == "documents":
-        return {"belongs_to_source", "links_to_document"}
+        return {"belongs_to_source", "links_to_document", SEMANTIC_EDGE_KIND}
     if layer == "concepts":
         return {"has_tag", "has_heading", "mentions_concept", "links_to_document"}
-    return {"belongs_to_source", "has_tag", "has_heading", "mentions_concept", "links_to_document"}
+    return {
+        "belongs_to_source",
+        "has_tag",
+        "has_heading",
+        "mentions_concept",
+        "links_to_document",
+        SEMANTIC_EDGE_KIND,
+    }
 
 
 def _expand_neighbors(seed_ids: set[str], edges: Iterable[KnowledgeGraphEdge]) -> set[str]:

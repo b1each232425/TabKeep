@@ -46,10 +46,36 @@ class KnowledgeStats(BaseModel):
     vectorMessage: str | None = None
 
 
+class KnowledgeDocumentIndexStatus(BaseModel):
+    documentId: str
+    sourceType: str
+    title: str
+    url: str | None = None
+    path: str | None = None
+    noteId: str | None = None
+    contentHash: str
+    contentBytes: int = 0
+    paragraphCount: int = 0
+    chunkCount: int = 0
+    indexStatus: str = "ready"
+    embeddingStatus: str = "disabled"
+    lastError: str = ""
+    updatedAt: str
+    indexedAt: str
+    lastSeenAt: str | None = None
+
+
+class KnowledgeDocumentIndexListResponse(BaseModel):
+    ok: bool
+    total: int = 0
+    items: list[KnowledgeDocumentIndexStatus] = []
+
+
 class KnowledgeReindexResponse(BaseModel):
     ok: bool
     documentsIndexed: int = 0
     documentsSkipped: int = 0
+    documentsDeleted: int = 0
     chunksIndexed: int = 0
     errors: list[str] = []
     stats: KnowledgeStats
@@ -74,6 +100,7 @@ class KnowledgeSiyuanSyncResponse(BaseModel):
     documentsFound: int = 0
     documentsIndexed: int = 0
     documentsSkipped: int = 0
+    documentsDeleted: int = 0
     chunksIndexed: int = 0
     errors: list[str] = []
     stats: KnowledgeStats
@@ -92,6 +119,7 @@ class KnowledgeSyncSourceResult(BaseModel):
     documentsFound: int = 0
     documentsIndexed: int = 0
     documentsSkipped: int = 0
+    documentsDeleted: int = 0
     chunksIndexed: int = 0
     notebooksScanned: int = 0
     errors: list[str] = []
@@ -108,6 +136,7 @@ class KnowledgeSyncAllResponse(BaseModel):
     documentsFound: int = 0
     documentsIndexed: int = 0
     documentsSkipped: int = 0
+    documentsDeleted: int = 0
     chunksIndexed: int = 0
     errors: list[str] = []
     stats: KnowledgeStats

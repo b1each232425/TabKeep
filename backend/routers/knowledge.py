@@ -4,6 +4,7 @@ from schemas.knowledge import (
     KnowledgeAskRequest,
     KnowledgeAskResponse,
     KnowledgeConfig,
+    KnowledgeDocumentIndexListResponse,
     KnowledgeEvalCase,
     KnowledgeEvalCaseRequest,
     KnowledgeEvalDeleteResponse,
@@ -56,6 +57,11 @@ def set_config(config: KnowledgeConfig) -> KnowledgeConfig:
 def get_stats() -> KnowledgeStats:
     vector_ok, vector_message = vector_store.availability()
     return db.get_stats(vector_ok, vector_message)
+
+
+@router.get("/documents", response_model=KnowledgeDocumentIndexListResponse, summary="列出文档级索引状态")
+def list_document_indexes(sourceType: str | None = None, limit: int = 200) -> KnowledgeDocumentIndexListResponse:
+    return service.list_document_indexes(source_type=sourceType, limit=limit)
 
 
 @router.post("/reindex", response_model=KnowledgeReindexResponse, summary="重建知识库索引")

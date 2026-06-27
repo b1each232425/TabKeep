@@ -16,6 +16,7 @@ from schemas.knowledge import (
     KnowledgeMessage,
     KnowledgeSession,
     KnowledgeStats,
+    KnowledgeSyncAllResponse,
 )
 from services import storage
 from services.knowledge.chunking import split_paragraphs, chunk_text
@@ -23,6 +24,8 @@ from services.knowledge.cjk import build_fts_query, segment_for_fts
 
 DB_PATH = storage.DATA_DIR / "knowledge.db"
 EVAL_CASE_TYPES = {"keyword", "natural", "challenge", "negative"}
+SYNC_LOG_VISIBLE_LIMIT = 20
+SYNC_LOG_RETENTION_LIMIT = 100
 
 
 @dataclass
@@ -43,6 +46,28 @@ class IndexResult:
     indexed: bool
     chunk_count: int
     paragraph_count: int = 0
+    embedding_status: str = "disabled"
+
+
+@dataclass
+class DocumentIndexStatus:
+    id: str
+    source_type: str
+    title: str
+    url: str | None
+    path: str | None
+    note_id: str | None
+    source_key: str
+    content_hash: str
+    content_bytes: int
+    paragraph_count: int
+    chunk_count: int
+    index_status: str
+    embedding_status: str
+    last_error: str
+    updated_at: str
+    indexed_at: str
+    last_seen_at: str | None
 
 
 @dataclass
@@ -63,9 +88,17 @@ def init_db() -> None:
                 url TEXT,
                 path TEXT,
                 note_id TEXT,
+                source_key TEXT NOT NULL DEFAULT '',
                 content_hash TEXT NOT NULL,
+                content_bytes INTEGER NOT NULL DEFAULT 0,
+                paragraph_count INTEGER NOT NULL DEFAULT 0,
+                chunk_count INTEGER NOT NULL DEFAULT 0,
+                index_status TEXT NOT NULL DEFAULT 'ready',
+                embedding_status TEXT NOT NULL DEFAULT 'disabled',
+                last_error TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL,
-                indexed_at TEXT NOT NULL
+                indexed_at TEXT NOT NULL,
+                last_seen_at TEXT
             );
 
             CREATE TABLE IF NOT EXISTS chunks (
@@ -197,6 +230,23 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS knowledge_sync_runs (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                ok INTEGER NOT NULL DEFAULT 0,
+                started_at TEXT,
+                ended_at TEXT,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                documents_found INTEGER NOT NULL DEFAULT 0,
+                documents_indexed INTEGER NOT NULL DEFAULT 0,
+                documents_skipped INTEGER NOT NULL DEFAULT 0,
+                documents_deleted INTEGER NOT NULL DEFAULT 0,
+                chunks_indexed INTEGER NOT NULL DEFAULT 0,
+                error_count INTEGER NOT NULL DEFAULT 0,
+                payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS meta (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -205,8 +255,21 @@ def init_db() -> None:
         )
         _ensure_column(conn, "chunks", "paragraph_id", "TEXT")
         _ensure_column(conn, "chunks", "paragraph_chunk_index", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "documents", "source_key", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "documents", "content_bytes", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "documents", "paragraph_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "documents", "chunk_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "documents", "index_status", "TEXT NOT NULL DEFAULT 'ready'")
+        _ensure_column(conn, "documents", "embedding_status", "TEXT NOT NULL DEFAULT 'disabled'")
+        _ensure_column(conn, "documents", "last_error", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "documents", "last_seen_at", "TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_path ON documents(source_type, path)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_key ON documents(source_type, source_key)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_paragraphs_document ON paragraphs(document_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_paragraph ON chunks(paragraph_id)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_knowledge_sync_runs_time ON knowledge_sync_runs(ended_at DESC, created_at DESC)"
+        )
         _ensure_column(conn, "knowledge_topic_documents", "anchor", "TEXT")
         _ensure_column(conn, "rag_eval_cases", "case_type", "TEXT NOT NULL DEFAULT 'keyword'")
         _ensure_column(conn, "rag_eval_cases", "expected_answer", "TEXT NOT NULL DEFAULT ''")
@@ -252,13 +315,19 @@ def upsert_document(
 ) -> tuple[IndexResult, list[IndexedChunk]]:
     init_db()
     now = now_iso()
-    document_id = make_document_id(source_type, note_id or path or url or title)
+    source_key = note_id or path or url or title
+    document_id = make_document_id(source_type, source_key)
     content_hash = sha1_text(content)
+    content_bytes = len(content.encode("utf-8"))
     paragraphs = split_paragraphs(content, default_title=title)
 
     with connection() as conn:
         old = conn.execute(
-            "SELECT content_hash FROM documents WHERE id = ?",
+            """
+            SELECT content_hash, embedding_status
+            FROM documents
+            WHERE id = ?
+            """,
             (document_id,),
         ).fetchone()
         has_paragraphs = (
@@ -269,30 +338,116 @@ def upsert_document(
             is not None
         )
         if old and old["content_hash"] == content_hash and (has_paragraphs or not paragraphs):
-            existing = load_chunks(conn, [row["id"] for row in conn.execute(
-                "SELECT id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
-                (document_id,),
-            ).fetchall()])
-            return IndexResult(document_id, False, len(existing), count_paragraphs(conn, document_id)), existing
+            existing = load_chunks(
+                conn,
+                [
+                    row["id"]
+                    for row in conn.execute(
+                        "SELECT id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                        (document_id,),
+                    ).fetchall()
+                ],
+            )
+            paragraph_count = count_paragraphs(conn, document_id)
+            conn.execute(
+                """
+                UPDATE documents
+                SET
+                    source_type = ?,
+                    title = ?,
+                    url = ?,
+                    path = ?,
+                    note_id = ?,
+                    source_key = ?,
+                    content_bytes = ?,
+                    paragraph_count = ?,
+                    chunk_count = ?,
+                    index_status = 'ready',
+                    last_seen_at = ?
+                WHERE id = ?
+                """,
+                (
+                    source_type,
+                    title,
+                    url,
+                    path,
+                    note_id,
+                    source_key,
+                    content_bytes,
+                    paragraph_count,
+                    len(existing),
+                    now,
+                    document_id,
+                ),
+            )
+            return (
+                IndexResult(
+                    document_id,
+                    False,
+                    len(existing),
+                    paragraph_count,
+                    old["embedding_status"] or "disabled",
+                ),
+                existing,
+            )
 
         conn.execute("DELETE FROM chunk_fts WHERE document_id = ?", (document_id,))
         conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
         conn.execute("DELETE FROM paragraphs WHERE document_id = ?", (document_id,))
         conn.execute(
             """
-            INSERT INTO documents (id, source_type, title, url, path, note_id, content_hash, updated_at, indexed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO documents (
+                id,
+                source_type,
+                title,
+                url,
+                path,
+                note_id,
+                source_key,
+                content_hash,
+                content_bytes,
+                paragraph_count,
+                chunk_count,
+                index_status,
+                embedding_status,
+                last_error,
+                updated_at,
+                indexed_at,
+                last_seen_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'ready', 'disabled', '', ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 source_type = excluded.source_type,
                 title = excluded.title,
                 url = excluded.url,
                 path = excluded.path,
                 note_id = excluded.note_id,
+                source_key = excluded.source_key,
                 content_hash = excluded.content_hash,
+                content_bytes = excluded.content_bytes,
+                paragraph_count = excluded.paragraph_count,
+                chunk_count = excluded.chunk_count,
+                index_status = excluded.index_status,
+                embedding_status = excluded.embedding_status,
+                last_error = excluded.last_error,
                 updated_at = excluded.updated_at,
-                indexed_at = excluded.indexed_at
+                indexed_at = excluded.indexed_at,
+                last_seen_at = excluded.last_seen_at
             """,
-            (document_id, source_type, title, url, path, note_id, content_hash, now, now),
+            (
+                document_id,
+                source_type,
+                title,
+                url,
+                path,
+                note_id,
+                source_key,
+                content_hash,
+                content_bytes,
+                now,
+                now,
+                now,
+            ),
         )
 
         indexed_chunks: list[IndexedChunk] = []
@@ -362,10 +517,18 @@ def upsert_document(
 
         upsert_document_node(conn, document_id, title, now)
         conn.execute(
+            """
+            UPDATE documents
+            SET paragraph_count = ?, chunk_count = ?, index_status = 'ready', last_error = ''
+            WHERE id = ?
+            """,
+            (len(paragraphs), len(indexed_chunks), document_id),
+        )
+        conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_indexed_at', ?)",
             (now,),
         )
-        return IndexResult(document_id, True, len(indexed_chunks), len(paragraphs)), indexed_chunks
+        return IndexResult(document_id, True, len(indexed_chunks), len(paragraphs), "disabled"), indexed_chunks
 
 
 def mark_embedding_status(chunk_ids: Iterable[str], status: str) -> None:
@@ -377,6 +540,230 @@ def mark_embedding_status(chunk_ids: Iterable[str], status: str) -> None:
             "UPDATE chunks SET embedding_status = ? WHERE id = ?",
             [(status, chunk_id) for chunk_id in ids],
         )
+        placeholders = ",".join("?" for _ in ids)
+        document_ids = [
+            row["document_id"]
+            for row in conn.execute(
+                f"""
+                SELECT DISTINCT document_id
+                FROM chunks
+                WHERE id IN ({placeholders})
+                """,
+                ids,
+            ).fetchall()
+        ]
+        if document_ids:
+            update_document_embedding_status(conn, document_ids, status)
+
+
+def mark_document_error(document_id: str, message: str) -> None:
+    if not document_id:
+        return
+    with connection() as conn:
+        conn.execute(
+            """
+            UPDATE documents
+            SET index_status = 'warning', last_error = ?
+            WHERE id = ?
+            """,
+            (message[:1000], document_id),
+        )
+
+
+def clear_document_error(document_id: str) -> None:
+    if not document_id:
+        return
+    with connection() as conn:
+        conn.execute(
+            """
+            UPDATE documents
+            SET index_status = 'ready', last_error = ''
+            WHERE id = ?
+            """,
+            (document_id,),
+        )
+
+
+def update_document_embedding_status(
+    conn: sqlite3.Connection,
+    document_ids: list[str],
+    status: str,
+) -> None:
+    if not document_ids:
+        return
+    placeholders = ",".join("?" for _ in document_ids)
+    conn.execute(
+        f"""
+        UPDATE documents
+        SET embedding_status = ?
+        WHERE id IN ({placeholders})
+        """,
+        [status, *document_ids],
+    )
+
+
+def get_document_index_status(document_id: str) -> DocumentIndexStatus | None:
+    init_db()
+    with connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id, source_type, title, url, path, note_id, source_key, content_hash,
+                   content_bytes, paragraph_count, chunk_count, index_status,
+                   embedding_status, last_error, updated_at, indexed_at, last_seen_at
+            FROM documents
+            WHERE id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+    return row_to_document_index_status(row) if row else None
+
+
+def list_document_index_statuses(
+    *,
+    source_type: str | None = None,
+    limit: int = 200,
+) -> list[DocumentIndexStatus]:
+    init_db()
+    safe_limit = max(1, min(limit, 10000))
+    query = """
+        SELECT id, source_type, title, url, path, note_id, source_key, content_hash,
+               content_bytes, paragraph_count, chunk_count, index_status,
+               embedding_status, last_error, updated_at, indexed_at, last_seen_at
+        FROM documents
+    """
+    params: list[str | int] = []
+    if source_type:
+        query += " WHERE source_type = ?"
+        params.append(source_type)
+    query += " ORDER BY last_seen_at DESC, indexed_at DESC LIMIT ?"
+    params.append(safe_limit)
+    with connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [row_to_document_index_status(row) for row in rows]
+
+
+def delete_documents(document_ids: Iterable[str]) -> int:
+    ids = [document_id for document_id in dict.fromkeys(document_ids) if document_id]
+    if not ids:
+        return 0
+    placeholders = ",".join("?" for _ in ids)
+    with connection() as conn:
+        conn.execute(f"DELETE FROM chunk_fts WHERE document_id IN ({placeholders})", ids)
+        graph_node_ids = [f"document:{document_id}" for document_id in ids]
+        graph_placeholders = ",".join("?" for _ in graph_node_ids)
+        conn.execute(
+            f"""
+            DELETE FROM graph_edges
+            WHERE source_id IN ({graph_placeholders}) OR target_id IN ({graph_placeholders})
+            """,
+            [*graph_node_ids, *graph_node_ids],
+        )
+        conn.execute(f"DELETE FROM graph_nodes WHERE document_id IN ({placeholders})", ids)
+        conn.execute(f"DELETE FROM knowledge_topic_documents WHERE document_id IN ({placeholders})", ids)
+        conn.execute(f"DELETE FROM knowledge_topic_evidence WHERE document_id IN ({placeholders})", ids)
+        deleted = conn.execute(f"DELETE FROM documents WHERE id IN ({placeholders})", ids).rowcount
+    return max(0, deleted)
+
+
+def save_sync_run(
+    result: KnowledgeSyncAllResponse,
+    *,
+    retention_limit: int = SYNC_LOG_RETENTION_LIMIT,
+) -> None:
+    init_db()
+    run_id = result.runId or uuid.uuid4().hex
+    created_at = result.endedAt or result.startedAt or now_iso()
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO knowledge_sync_runs (
+                id,
+                status,
+                ok,
+                started_at,
+                ended_at,
+                duration_ms,
+                documents_found,
+                documents_indexed,
+                documents_skipped,
+                documents_deleted,
+                chunks_indexed,
+                error_count,
+                payload_json,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                ok = excluded.ok,
+                started_at = excluded.started_at,
+                ended_at = excluded.ended_at,
+                duration_ms = excluded.duration_ms,
+                documents_found = excluded.documents_found,
+                documents_indexed = excluded.documents_indexed,
+                documents_skipped = excluded.documents_skipped,
+                documents_deleted = excluded.documents_deleted,
+                chunks_indexed = excluded.chunks_indexed,
+                error_count = excluded.error_count,
+                payload_json = excluded.payload_json,
+                created_at = excluded.created_at
+            """,
+            (
+                run_id,
+                result.status,
+                1 if result.ok else 0,
+                result.startedAt,
+                result.endedAt,
+                result.durationMs,
+                result.documentsFound,
+                result.documentsIndexed,
+                result.documentsSkipped,
+                result.documentsDeleted,
+                result.chunksIndexed,
+                len(result.errors),
+                result.model_dump_json(),
+                created_at,
+            ),
+        )
+        prune_sync_runs(conn, retention_limit)
+
+
+def list_sync_runs(limit: int = SYNC_LOG_VISIBLE_LIMIT) -> list[KnowledgeSyncAllResponse]:
+    init_db()
+    safe_limit = max(1, min(limit, SYNC_LOG_RETENTION_LIMIT))
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT payload_json
+            FROM knowledge_sync_runs
+            ORDER BY COALESCE(ended_at, started_at, created_at) DESC, created_at DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    items: list[KnowledgeSyncAllResponse] = []
+    for row in rows:
+        try:
+            items.append(KnowledgeSyncAllResponse.model_validate_json(row["payload_json"]))
+        except ValueError:
+            continue
+    return items
+
+
+def prune_sync_runs(conn: sqlite3.Connection, retention_limit: int = SYNC_LOG_RETENTION_LIMIT) -> None:
+    safe_limit = max(1, min(retention_limit, 1000))
+    conn.execute(
+        """
+        DELETE FROM knowledge_sync_runs
+        WHERE id NOT IN (
+            SELECT id
+            FROM knowledge_sync_runs
+            ORDER BY COALESCE(ended_at, started_at, created_at) DESC, created_at DESC
+            LIMIT ?
+        )
+        """,
+        (safe_limit,),
+    )
 
 
 def search_fts(query: str, limit: int) -> list[KnowledgeCitation]:
@@ -881,6 +1268,28 @@ def row_to_eval_case(row: sqlite3.Row) -> KnowledgeEvalCase:
         note=row["note"],
         createdAt=row["created_at"],
         updatedAt=row["updated_at"],
+    )
+
+
+def row_to_document_index_status(row: sqlite3.Row) -> DocumentIndexStatus:
+    return DocumentIndexStatus(
+        id=row["id"],
+        source_type=row["source_type"],
+        title=row["title"],
+        url=row["url"],
+        path=row["path"],
+        note_id=row["note_id"],
+        source_key=row_value(row, "source_key", "") or "",
+        content_hash=row["content_hash"],
+        content_bytes=int(row_value(row, "content_bytes", 0) or 0),
+        paragraph_count=int(row_value(row, "paragraph_count", 0) or 0),
+        chunk_count=int(row_value(row, "chunk_count", 0) or 0),
+        index_status=row_value(row, "index_status", "ready") or "ready",
+        embedding_status=row_value(row, "embedding_status", "disabled") or "disabled",
+        last_error=row_value(row, "last_error", "") or "",
+        updated_at=row["updated_at"],
+        indexed_at=row["indexed_at"],
+        last_seen_at=row_value(row, "last_seen_at"),
     )
 
 

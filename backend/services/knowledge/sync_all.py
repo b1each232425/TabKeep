@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import deque
 from datetime import datetime, timezone
 from time import perf_counter
 from uuid import uuid4
@@ -17,9 +16,6 @@ from services import storage
 from services.knowledge import db, vector_store
 from services.knowledge.indexing import collect_roots, reindex_all
 from services.knowledge.siyuan_sync import sync_siyuan_notes
-
-
-_SYNC_HISTORY: deque[KnowledgeSyncAllResponse] = deque(maxlen=20)
 
 
 async def sync_all_knowledge() -> KnowledgeSyncAllResponse:
@@ -91,6 +87,7 @@ async def sync_all_knowledge() -> KnowledgeSyncAllResponse:
             documentsFound=sum(source.documentsFound for source in sources),
             documentsIndexed=sum(source.documentsIndexed for source in sources),
             documentsSkipped=sum(source.documentsSkipped for source in sources),
+            documentsDeleted=sum(source.documentsDeleted for source in sources),
             chunksIndexed=sum(source.chunksIndexed for source in sources),
             errors=errors[:20],
             stats=db.get_stats(vector_ok, vector_message),
@@ -101,8 +98,8 @@ async def sync_all_knowledge() -> KnowledgeSyncAllResponse:
     return result
 
 
-def list_sync_logs() -> KnowledgeSyncLogResponse:
-    return KnowledgeSyncLogResponse(items=list(_SYNC_HISTORY))
+def list_sync_logs(limit: int = db.SYNC_LOG_VISIBLE_LIMIT) -> KnowledgeSyncLogResponse:
+    return KnowledgeSyncLogResponse(items=db.list_sync_runs(limit=limit))
 
 
 def local_source_result(result: KnowledgeReindexResponse) -> KnowledgeSyncSourceResult:
@@ -113,6 +110,7 @@ def local_source_result(result: KnowledgeReindexResponse) -> KnowledgeSyncSource
         status="success" if result.ok else "error",
         documentsIndexed=result.documentsIndexed,
         documentsSkipped=result.documentsSkipped,
+        documentsDeleted=result.documentsDeleted,
         chunksIndexed=result.chunksIndexed,
         errors=result.errors,
     )
@@ -128,6 +126,7 @@ def siyuan_source_result(result: KnowledgeSiyuanSyncResponse) -> KnowledgeSyncSo
         documentsFound=result.documentsFound,
         documentsIndexed=result.documentsIndexed,
         documentsSkipped=result.documentsSkipped,
+        documentsDeleted=result.documentsDeleted,
         chunksIndexed=result.chunksIndexed,
         errors=result.errors,
     )
@@ -173,7 +172,7 @@ def sync_status(sources: list[KnowledgeSyncSourceResult], errors: list[str]) -> 
 
 
 def remember_sync_result(result: KnowledgeSyncAllResponse) -> None:
-    _SYNC_HISTORY.appendleft(result)
+    db.save_sync_run(result)
 
 
 def now_iso() -> str:

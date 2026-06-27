@@ -1,13 +1,15 @@
+import importlib
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from schemas.config import NoteAdapterConfig
-from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest
+from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest, KnowledgeSyncAllResponse
 from services import storage
 from services.knowledge import db, graph, index_health, indexing, retrieval, siyuan_sync, sync_all, topics, vector_store
 from services.knowledge.db import IndexedChunk
@@ -69,6 +71,92 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(old_search.items), 0)
         self.assertEqual(len(new_search.items), 1)
 
+    async def test_incremental_index_skips_ready_unchanged_embedding_and_retries_errors(self) -> None:
+        config = KnowledgeConfig(
+            embedding={
+                "enabled": True,
+                "baseURL": "http://example.test/v1",
+                "apiKey": "test-key",
+                "model": "test-embedding",
+            }
+        )
+        calls = 0
+
+        async def fake_embed_texts(_embedding_config, texts):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("temporary embedding outage")
+            return [[1.0, 0.0] for _ in texts]
+
+        with (
+            patch("services.knowledge.indexing.embed_texts", side_effect=fake_embed_texts),
+            patch("services.knowledge.indexing.vector_store.availability", return_value=(True, None)),
+            patch("services.knowledge.indexing.vector_store.replace_document") as replace_document,
+        ):
+            first, first_error = await indexing.index_document(
+                config=config,
+                source_type="markdown",
+                title="增量向量测试",
+                content="# 增量向量测试\n\nAlphaIncrementalEmbedding 会进入向量库。",
+                path="incremental-embedding.md",
+            )
+            retry, retry_error = await indexing.index_document(
+                config=config,
+                source_type="markdown",
+                title="增量向量测试",
+                content="# 增量向量测试\n\nAlphaIncrementalEmbedding 会进入向量库。",
+                path="incremental-embedding.md",
+            )
+            skipped, skipped_error = await indexing.index_document(
+                config=config,
+                source_type="markdown",
+                title="增量向量测试",
+                content="# 增量向量测试\n\nAlphaIncrementalEmbedding 会进入向量库。",
+                path="incremental-embedding.md",
+            )
+
+        status = db.get_document_index_status(first.document_id)
+
+        self.assertTrue(first.indexed)
+        self.assertIn("embedding 失败", first_error or "")
+        self.assertFalse(retry.indexed)
+        self.assertIsNone(retry_error)
+        self.assertFalse(skipped.indexed)
+        self.assertIsNone(skipped_error)
+        self.assertEqual(calls, 2)
+        self.assertEqual(replace_document.call_count, 1)
+        self.assertIsNotNone(status)
+        self.assertEqual(status.embedding_status, "ready")
+        self.assertEqual(status.chunk_count, retry.chunk_count)
+        self.assertEqual(status.paragraph_count, retry.paragraph_count)
+
+    async def test_reindex_deletes_stale_markdown_documents(self) -> None:
+        notes_dir = self.tmp_dir / "incremental-notes"
+        notes_dir.mkdir()
+        keep = notes_dir / "keep.md"
+        stale = notes_dir / "stale.md"
+        keep.write_text("# 保留文档\n\nKeepNeedle 应该保留。", encoding="utf-8")
+        stale.write_text("# 删除文档\n\nStaleNeedle 应该被清理。", encoding="utf-8")
+
+        config = KnowledgeConfig(markdownPaths=[str(notes_dir)])
+        first = await indexing.reindex_all(config)
+        stale.unlink()
+        second = await indexing.reindex_all(config)
+        keep_search = await retrieval.search_knowledge("KeepNeedle", 5)
+        stale_search = await retrieval.search_knowledge("StaleNeedle", 5)
+        markdown_docs = db.list_document_index_statuses(source_type="markdown", limit=20)
+
+        self.assertTrue(first.ok, first.errors)
+        self.assertEqual(first.documentsIndexed, 2)
+        self.assertTrue(second.ok, second.errors)
+        self.assertEqual(second.documentsIndexed, 0)
+        self.assertEqual(second.documentsSkipped, 1)
+        self.assertEqual(second.documentsDeleted, 1)
+        self.assertEqual(len(keep_search.items), 1)
+        self.assertEqual(len(stale_search.items), 0)
+        self.assertEqual([doc.title for doc in markdown_docs], ["保留文档"])
+
     async def test_index_health_repairs_missing_fts_rows(self) -> None:
         config = KnowledgeConfig()
         await indexing.index_document(
@@ -120,6 +208,10 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(search.items), 1)
         self.assertGreaterEqual(len(logs.items), 1)
         self.assertEqual(logs.items[0].runId, result.runId)
+        reloaded_sync_all = importlib.reload(sync_all)
+        persisted_logs = reloaded_sync_all.list_sync_logs()
+        self.assertGreaterEqual(len(persisted_logs.items), 1)
+        self.assertEqual(persisted_logs.items[0].runId, result.runId)
 
         local = next(source for source in result.sources if source.source == "local")
         siyuan = next(source for source in result.sources if source.source == "siyuan")
@@ -129,6 +221,31 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(local.durationMs, 0)
         self.assertEqual(siyuan.status, "skipped")
         self.assertTrue(siyuan.skipped)
+
+    async def test_sync_logs_are_capped_in_sqlite_and_response(self) -> None:
+        stats = db.get_stats()
+        for index in range(db.SYNC_LOG_RETENTION_LIMIT + 5):
+            timestamp = f"2026-06-27T00:{index // 60:02d}:{index % 60:02d}+00:00"
+            db.save_sync_run(
+                KnowledgeSyncAllResponse(
+                    ok=True,
+                    runId=f"run-{index:03d}",
+                    status="success",
+                    startedAt=timestamp,
+                    endedAt=timestamp,
+                    stats=stats,
+                )
+            )
+
+        stored = db.list_sync_runs(limit=200)
+        visible = sync_all.list_sync_logs()
+
+        self.assertEqual(len(stored), db.SYNC_LOG_RETENTION_LIMIT)
+        self.assertEqual(len(visible.items), db.SYNC_LOG_VISIBLE_LIMIT)
+        self.assertEqual(stored[0].runId, "run-104")
+        self.assertEqual(stored[-1].runId, "run-005")
+        self.assertEqual(visible.items[0].runId, "run-104")
+        self.assertEqual(visible.items[-1].runId, "run-085")
 
     async def test_search_hits_chunks_but_returns_paragraph(self) -> None:
         config = KnowledgeConfig()
@@ -269,6 +386,107 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("links_to_document", {edge.kind for edge in all_graph.edges})
         self.assertTrue(any(node.label == "Runtime Map" for node in concepts.nodes))
         self.assertTrue(any(node.label == "Beta Note" for node in documents.nodes))
+
+    async def test_graph_rebuild_adds_semantic_similarity_edges(self) -> None:
+        config = KnowledgeConfig()
+        alpha, _ = await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Alpha Semantic",
+            path="alpha-semantic.md",
+            content="# Alpha Semantic\n\n语义图谱测试 Alpha。",
+        )
+        beta, _ = await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Beta Semantic",
+            path="beta-semantic.md",
+            content="# Beta Semantic\n\n语义图谱测试 Beta。",
+        )
+        gamma, _ = await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Gamma Semantic",
+            path="gamma-semantic.md",
+            content="# Gamma Semantic\n\n不相似的语义图谱测试 Gamma。",
+        )
+
+        vector_store.replace_document(
+            [
+                IndexedChunk(
+                    id=f"{alpha.document_id}:semantic:c0",
+                    document_id=alpha.document_id,
+                    paragraph_id=f"{alpha.document_id}:semantic",
+                    title="Alpha Semantic",
+                    source_type="markdown",
+                    url=None,
+                    path="alpha-semantic.md",
+                    content="Alpha Semantic",
+                )
+            ],
+            [[1.0, 0.0]],
+        )
+        vector_store.replace_document(
+            [
+                IndexedChunk(
+                    id=f"{beta.document_id}:semantic:c0",
+                    document_id=beta.document_id,
+                    paragraph_id=f"{beta.document_id}:semantic",
+                    title="Beta Semantic",
+                    source_type="markdown",
+                    url=None,
+                    path="beta-semantic.md",
+                    content="Beta Semantic",
+                )
+            ],
+            [[0.98, 0.02]],
+        )
+        vector_store.replace_document(
+            [
+                IndexedChunk(
+                    id=f"{gamma.document_id}:semantic:c0",
+                    document_id=gamma.document_id,
+                    paragraph_id=f"{gamma.document_id}:semantic",
+                    title="Gamma Semantic",
+                    source_type="markdown",
+                    url=None,
+                    path="gamma-semantic.md",
+                    content="Gamma Semantic",
+                )
+            ],
+            [[0.0, 1.0]],
+        )
+
+        rebuilt = graph.rebuild_graph()
+        documents = graph.get_graph(layer="documents", limit=100)
+        semantic_edges = [edge for edge in documents.edges if edge.kind == "semantic_similar"]
+        node_labels = {node.id: node.label for node in documents.nodes}
+
+        self.assertTrue(rebuilt.ok)
+        self.assertEqual(len(semantic_edges), 1)
+        edge = semantic_edges[0]
+        self.assertEqual(
+            {node_labels[edge.source], node_labels[edge.target]},
+            {"Alpha Semantic", "Beta Semantic"},
+        )
+        self.assertGreater(edge.weight, 0.99)
+
+    async def test_graph_rebuild_skips_semantic_edges_when_vector_store_fails(self) -> None:
+        config = KnowledgeConfig()
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Vector Down Alpha",
+            path="vector-down-alpha.md",
+            content="# Vector Down Alpha\n\n图谱显式关系仍然可用。",
+        )
+
+        with patch("services.knowledge.graph.vector_store.list_records", side_effect=RuntimeError("vector down")):
+            rebuilt = graph.rebuild_graph()
+            documents = graph.get_graph(layer="documents", limit=100)
+
+        self.assertTrue(rebuilt.ok)
+        self.assertNotIn("semantic_similar", {edge.kind for edge in documents.edges})
 
     async def test_topics_build_workbench_from_explicit_signals(self) -> None:
         config = KnowledgeConfig()

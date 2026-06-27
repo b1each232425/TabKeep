@@ -56,10 +56,12 @@ async def reindex_all(config: KnowledgeConfig | None = None) -> KnowledgeReindex
 
     documents_indexed = 0
     documents_skipped = 0
+    documents_deleted = 0
     chunks_indexed = 0
     errors: list[str] = []
 
-    for md_path in discover_markdown_files(config):
+    markdown_files = discover_markdown_files(config)
+    for md_path in markdown_files:
         try:
             content = md_path.read_text(encoding="utf-8", errors="ignore")
             title = guess_title(md_path.stem, content)
@@ -81,6 +83,11 @@ async def reindex_all(config: KnowledgeConfig | None = None) -> KnowledgeReindex
             errors.append(f"{md_path}: {type(exc).__name__}: {exc}")
 
     try:
+        documents_deleted = cleanup_stale_markdown_indexes(config, markdown_files)
+    except Exception as exc:
+        errors.append(f"清理失效 Markdown 索引失败: {type(exc).__name__}: {exc}")
+
+    try:
         graph.rebuild_graph()
     except Exception as exc:
         errors.append(f"知识图谱重建失败: {type(exc).__name__}: {exc}")
@@ -94,6 +101,7 @@ async def reindex_all(config: KnowledgeConfig | None = None) -> KnowledgeReindex
         ok=len(errors) == 0,
         documentsIndexed=documents_indexed,
         documentsSkipped=documents_skipped,
+        documentsDeleted=documents_deleted,
         chunksIndexed=chunks_indexed,
         errors=errors[:20],
         stats=db.get_stats(vector_ok, vector_message),
@@ -119,36 +127,48 @@ async def index_document(
         path=path,
         note_id=note_id,
     )
+    if not result.indexed and result.embedding_status == "ready":
+        return result, None
+
     graph_error = None
-    try:
-        graph.index_document_graph(
-            document_id=result.document_id,
-            source_type=source_type,
-            title=title.strip() or "未命名文档",
-            content=normalized,
-            url=url,
-            path=path,
-            note_id=note_id,
-        )
-    except Exception as exc:
-        graph_error = f"知识图谱更新失败: {type(exc).__name__}: {exc}"
-        logger.warning(graph_error)
+    if result.indexed:
+        try:
+            graph.index_document_graph(
+                document_id=result.document_id,
+                source_type=source_type,
+                title=title.strip() or "未命名文档",
+                content=normalized,
+                url=url,
+                path=path,
+                note_id=note_id,
+            )
+        except Exception as exc:
+            graph_error = f"知识图谱更新失败: {type(exc).__name__}: {exc}"
+            db.mark_document_error(result.document_id, graph_error)
+            logger.warning(graph_error)
+
     if not chunks or not embedding_config_ready(config.embedding):
         return result, graph_error
 
     vector_ok, vector_message = vector_store.availability()
     if not vector_ok:
         db.mark_embedding_status([chunk.id for chunk in chunks], "vector_unavailable")
+        if vector_message:
+            db.mark_document_error(result.document_id, vector_message)
         return result, graph_error or vector_message
 
     try:
         vectors = await embed_texts(config.embedding, [chunk.content for chunk in chunks])
         vector_store.replace_document(chunks, vectors)
         db.mark_embedding_status([chunk.id for chunk in chunks], "ready")
+        if not graph_error:
+            db.clear_document_error(result.document_id)
         return result, graph_error
     except Exception as exc:
+        error = f"embedding 失败: {type(exc).__name__}: {exc}"
         db.mark_embedding_status([chunk.id for chunk in chunks], "error")
-        return result, graph_error or f"embedding 失败: {type(exc).__name__}: {exc}"
+        db.mark_document_error(result.document_id, error)
+        return result, graph_error or error
 
 
 def discover_markdown_files(config: KnowledgeConfig) -> list[Path]:
@@ -188,3 +208,43 @@ def should_skip(path: Path, max_file_bytes: int) -> bool:
         return path.stat().st_size > max_file_bytes
     except OSError:
         return True
+
+
+def cleanup_stale_markdown_indexes(config: KnowledgeConfig, discovered_files: list[Path]) -> int:
+    roots = [resolve_path(root) for root in collect_roots(config)]
+    discovered = {str(resolve_path(path)) for path in discovered_files}
+    stale_ids: list[str] = []
+    for status in db.list_document_index_statuses(source_type="markdown", limit=10000):
+        if not status.path:
+            continue
+        indexed_path = resolve_path(Path(status.path).expanduser())
+        indexed_key = str(indexed_path)
+        if indexed_key not in discovered or not path_belongs_to_roots(indexed_path, roots):
+            stale_ids.append(status.id)
+
+    if not stale_ids:
+        return 0
+
+    vector_ok, _ = vector_store.availability()
+    if vector_ok:
+        vector_store.delete_documents(stale_ids)
+    return db.delete_documents(stale_ids)
+
+
+def resolve_path(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path.absolute()
+
+
+def path_belongs_to_roots(path: Path, roots: list[Path]) -> bool:
+    if not roots:
+        return False
+    for root in roots:
+        try:
+            if path == root or path.is_relative_to(root):
+                return True
+        except ValueError:
+            continue
+    return False

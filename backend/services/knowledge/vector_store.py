@@ -58,6 +58,24 @@ def replace_document(chunks: list[IndexedChunk], vectors: list[list[float]]) -> 
     table.add(records)
 
 
+def delete_documents(document_ids: list[str]) -> None:
+    ids = [document_id for document_id in dict.fromkeys(document_ids) if document_id]
+    if not ids:
+        return
+
+    import lancedb
+
+    db = lancedb.connect(str(LANCE_DIR))
+    if TABLE_NAME not in set(_table_names(db)):
+        return
+    table = _ensure_table_schema(db, db.open_table(TABLE_NAME))
+    for document_id in ids:
+        try:
+            table.delete(f"document_id = '{_quote(document_id)}'")
+        except Exception:
+            pass
+
+
 def search(vector: list[float], limit: int) -> list[dict[str, Any]]:
     import lancedb
 

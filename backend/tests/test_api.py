@@ -213,6 +213,23 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(reindex.status_code, 200, reindex.text)
         self.assertEqual(reindex.json()["documentsIndexed"], 2)
 
+        documents = self.client.get(
+            "/knowledge/documents",
+            params={"sourceType": "markdown", "limit": 10},
+            headers=self.headers,
+        )
+        self.assertEqual(documents.status_code, 200, documents.text)
+        document_data = documents.json()
+        self.assertTrue(document_data["ok"])
+        self.assertEqual(document_data["total"], 2)
+        self.assertEqual(
+            {item["sourceType"] for item in document_data["items"]},
+            {"markdown"},
+        )
+        self.assertTrue(all(item["contentHash"] for item in document_data["items"]))
+        self.assertTrue(all(item["paragraphCount"] >= 1 for item in document_data["items"]))
+        self.assertTrue(all(item["chunkCount"] >= 1 for item in document_data["items"]))
+
         search = self.client.post(
             "/knowledge/search",
             json={"query": "接口重建索引", "limit": 5},
