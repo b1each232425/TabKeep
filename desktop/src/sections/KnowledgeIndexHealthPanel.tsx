@@ -169,9 +169,12 @@ function formatHealthExplanation(health: KnowledgeIndexHealthResponse): string {
 }
 
 function formatEmbeddingStatus(value: string): string {
+  if (value === "ready") return "已就绪"
   if (value === "indexed") return "已向量化"
   if (value === "pending") return "待处理"
   if (value === "disabled") return "未启用"
+  if (value === "error") return "失败"
+  if (value === "vector_unavailable") return "向量不可用"
   if (value === "failed") return "失败"
   return value || "未知"
 }

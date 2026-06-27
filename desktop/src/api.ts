@@ -4,6 +4,7 @@ import type {
   DesktopStatus,
   KnowledgeAskResponse,
   KnowledgeConfig,
+  KnowledgeDocumentIndexListResponse,
   KnowledgeEvalCase,
   KnowledgeEvalCaseRequest,
   KnowledgeEvalDeleteResponse,
@@ -322,6 +323,16 @@ function normalizeKnowledgeConfig(config: KnowledgeConfig): KnowledgeConfig {
 
 export async function getKnowledgeStats(): Promise<KnowledgeStats> {
   return backendRequest<KnowledgeStats>("GET", "/knowledge/stats")
+}
+
+export async function listKnowledgeDocuments(
+  sourceType?: string,
+  limit = 200,
+): Promise<KnowledgeDocumentIndexListResponse> {
+  const params = new URLSearchParams()
+  if (sourceType) params.set("sourceType", sourceType)
+  params.set("limit", String(limit))
+  return backendRequest<KnowledgeDocumentIndexListResponse>("GET", `/knowledge/documents?${params.toString()}`)
 }
 
 export async function getKnowledgeIndexHealth(): Promise<KnowledgeIndexHealthResponse> {

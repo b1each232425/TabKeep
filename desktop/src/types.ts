@@ -102,6 +102,31 @@ export interface KnowledgeStats {
   vectorMessage?: string | null
 }
 
+export interface KnowledgeDocumentIndexStatus {
+  documentId: string
+  sourceType: string
+  title: string
+  url?: string | null
+  path?: string | null
+  noteId?: string | null
+  contentHash: string
+  contentBytes: number
+  paragraphCount: number
+  chunkCount: number
+  indexStatus: string
+  embeddingStatus: string
+  lastError: string
+  updatedAt: string
+  indexedAt: string
+  lastSeenAt?: string | null
+}
+
+export interface KnowledgeDocumentIndexListResponse {
+  ok: boolean
+  total: number
+  items: KnowledgeDocumentIndexStatus[]
+}
+
 export interface KnowledgeCitation {
   documentId: string
   paragraphId?: string | null
@@ -121,6 +146,7 @@ export interface KnowledgeReindexResponse {
   ok: boolean
   documentsIndexed: number
   documentsSkipped: number
+  documentsDeleted: number
   chunksIndexed: number
   errors: string[]
   stats: KnowledgeStats
@@ -132,6 +158,7 @@ export interface KnowledgeSiyuanSyncResponse {
   documentsFound: number
   documentsIndexed: number
   documentsSkipped: number
+  documentsDeleted: number
   chunksIndexed: number
   errors: string[]
   stats: KnowledgeStats
@@ -158,6 +185,7 @@ export interface KnowledgeSyncSourceResult {
   documentsFound: number
   documentsIndexed: number
   documentsSkipped: number
+  documentsDeleted: number
   chunksIndexed: number
   notebooksScanned: number
   errors: string[]
@@ -174,6 +202,7 @@ export interface KnowledgeSyncAllResponse {
   documentsFound: number
   documentsIndexed: number
   documentsSkipped: number
+  documentsDeleted: number
   chunksIndexed: number
   errors: string[]
   stats: KnowledgeStats
