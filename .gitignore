@@ -3,6 +3,7 @@ extension/.plasmo/
 extension/build/
 extension/node_modules/
 extension/.env*
+!extension/.env.example
 extension/*.local
 extension/tsconfig*.tsbuildinfo
 
@@ -11,6 +12,7 @@ desktop/node_modules/
 desktop/dist/
 desktop/.vite/
 desktop/.env*
+!desktop/.env.example
 desktop/*.local
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
@@ -23,6 +25,8 @@ __pycache__/
 venv/
 env/
 .env
+backend/.env*
+!backend/.env.example
 
 # === 后端运行时数据（config.json 含明文 apiKey/token，不提交） ===
 backend/data/
