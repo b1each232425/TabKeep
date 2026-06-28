@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Instant,
@@ -11,6 +12,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use chrono::Local;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -35,6 +37,7 @@ const STICKY_NOTE_WINDOW_DEFAULT_HEIGHT: u32 = 460;
 const STICKY_NOTE_WINDOW_MIN_WIDTH: u32 = 280;
 const STICKY_NOTE_WINDOW_MIN_HEIGHT: u32 = 260;
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
+const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
 
 #[derive(Clone)]
 struct DesktopState {
@@ -46,6 +49,7 @@ struct DesktopState {
     selection_hotkey: Arc<Mutex<Option<selection::HotkeyController>>>,
     selection_hotkey_error: Arc<Mutex<Option<String>>>,
     selection_running: Arc<Mutex<bool>>,
+    usage_stats: Arc<Mutex<DailyUsageStats>>,
 }
 
 #[derive(Clone)]
@@ -75,6 +79,21 @@ struct DesktopStatus {
     backend_url: &'static str,
     desktop_url: String,
     token_cached: bool,
+    usage_date: String,
+    today_translation_count: u32,
+    today_ocr_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DailyUsageStats {
+    date: String,
+    translations: u32,
+    ocr: u32,
+}
+
+enum DesktopUsageKind {
+    Translation,
+    Ocr,
 }
 
 #[derive(Serialize)]
@@ -208,6 +227,7 @@ pub fn run() {
         selection_hotkey: Arc::new(Mutex::new(None)),
         selection_hotkey_error: Arc::new(Mutex::new(None)),
         selection_running: Arc::new(Mutex::new(false)),
+        usage_stats: Arc::new(Mutex::new(DailyUsageStats::today())),
     };
 
     tauri::Builder::default()
@@ -230,6 +250,10 @@ pub fn run() {
         )
         .manage(state.clone())
         .setup(move |app| {
+            match load_usage_stats(&app.handle()) {
+                Ok(stats) => set_usage_stats(&state, stats),
+                Err(err) => log::warn!("读取桌面用量统计失败: {err}"),
+            }
             setup_tray(app)?;
             setup_close_to_hide(app);
             setup_selection_hotkey(app, state.clone());
@@ -317,10 +341,7 @@ fn sticky_notes_list(app: tauri::AppHandle) -> Result<Vec<sticky_notes::StickyNo
 }
 
 #[tauri::command]
-fn sticky_notes_get(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<sticky_notes::StickyNote, String> {
+fn sticky_notes_get(app: tauri::AppHandle, id: String) -> Result<sticky_notes::StickyNote, String> {
     sticky_notes::get_note(&app, &id)
 }
 
@@ -344,9 +365,7 @@ fn open_sticky_note_window(app: tauri::AppHandle, id: String) -> Result<String, 
 }
 
 #[tauri::command]
-fn create_sticky_note_window(
-    app: tauri::AppHandle,
-) -> Result<sticky_notes::StickyNote, String> {
+fn create_sticky_note_window(app: tauri::AppHandle) -> Result<sticky_notes::StickyNote, String> {
     create_and_open_sticky_note(&app)
 }
 
@@ -384,7 +403,10 @@ fn open_sticky_note_window_for_note(
         &label,
         WebviewUrl::App(format!("index.html?view=sticky-note&noteId={}", note.id).into()),
     )
-    .title(format!("TabKeep 便签 - {}", sticky_note_window_title(&note)))
+    .title(format!(
+        "TabKeep 便签 - {}",
+        sticky_note_window_title(&note)
+    ))
     .inner_size(width as f64, height as f64)
     .min_inner_size(
         STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
@@ -402,8 +424,8 @@ fn open_sticky_note_window_for_note(
     }
 
     let window = builder
-    .build()
-    .map_err(|err| format!("打开便签窗口失败: {err}"))?;
+        .build()
+        .map_err(|err| format!("打开便签窗口失败: {err}"))?;
 
     attach_sticky_note_bounds_sync(app, note.id.clone(), &window);
     Ok(label)
@@ -482,7 +504,10 @@ fn open_target_with_system(target: &str) -> Result<(), String> {
         )
     };
     if (result.0 as isize) <= 32 {
-        return Err(format!("系统打开来源失败，ShellExecute code={}", result.0 as isize));
+        return Err(format!(
+            "系统打开来源失败，ShellExecute code={}",
+            result.0 as isize
+        ));
     }
     Ok(())
 }
@@ -499,7 +524,11 @@ fn wide_null(value: &str) -> Vec<u16> {
 
 #[cfg(not(windows))]
 fn open_target_with_system(target: &str) -> Result<(), String> {
-    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
     std::process::Command::new(opener)
         .arg(target)
         .spawn()
@@ -558,14 +587,8 @@ fn sticky_note_hotkey_thread(app: tauri::AppHandle) {
 
     let mut warmup = MSG::default();
     let _ = unsafe { PeekMessageW(&mut warmup, None, 0, 0, PM_REMOVE) };
-    let result = unsafe {
-        RegisterHotKey(
-            None,
-            STICKY_NOTE_HOTKEY_ID,
-            MOD_CONTROL | MOD_ALT,
-            0x4E,
-        )
-    };
+    let result =
+        unsafe { RegisterHotKey(None, STICKY_NOTE_HOTKEY_ID, MOD_CONTROL | MOD_ALT, 0x4E) };
     if let Err(err) = result {
         log::warn!("注册便签全局快捷键 Ctrl+Alt+N 失败: {err}");
         return;
@@ -822,6 +845,7 @@ async fn translate(
             }
         };
 
+        record_desktop_usage(&state.app, &state.desktop, DesktopUsageKind::Translation);
         return json_response(
             StatusCode::OK,
             json!(TranslateResponse {
@@ -855,6 +879,7 @@ async fn translate(
         Err((status, value)) => return json_response(status, value),
     };
 
+    record_desktop_usage(&state.app, &state.desktop, DesktopUsageKind::Translation);
     json_response(
         StatusCode::OK,
         json!(TranslateResponse {
@@ -908,25 +933,20 @@ async fn load_model_config(
     state: &DesktopState,
     token: Option<&str>,
 ) -> Result<ModelConfigPayload, (StatusCode, Value)> {
-    let mut req = state
-        .client
-        .get(format!("{BACKEND_URL}/config"));
+    let mut req = state.client.get(format!("{BACKEND_URL}/config"));
     if let Some(token) = token {
         req = req.header("X-TabKeep-Token", token);
     }
 
-    let result = req
-        .send()
-        .await
-        .map_err(|err| {
-            (
-                StatusCode::BAD_GATEWAY,
-                json!({
-                    "ok": false,
-                    "error": format!("读取模型配置失败: {err}")
-                }),
-            )
-        })?;
+    let result = req.send().await.map_err(|err| {
+        (
+            StatusCode::BAD_GATEWAY,
+            json!({
+                "ok": false,
+                "error": format!("读取模型配置失败: {err}")
+            }),
+        )
+    })?;
 
     let status = result.status();
     let data = result.json::<BackendConfigPayload>().await.map_err(|err| {
@@ -1209,10 +1229,7 @@ async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, Str
     .await
     .map_err(|err| format!("OCR 调试任务失败: {err}"))??;
 
-    let preprocessed_path = debug
-        .preprocessed_image_path
-        .as_deref()
-        .map(PathBuf::from);
+    let preprocessed_path = debug.preprocessed_image_path.as_deref().map(PathBuf::from);
     let preprocessed_dimensions = preprocessed_path
         .as_deref()
         .and_then(|path| image::image_dimensions(path).ok());
@@ -1226,9 +1243,7 @@ async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, Str
         original_width: original_dimensions.0,
         original_height: original_dimensions.1,
         preprocessed_image_path: debug.preprocessed_image_path,
-        preprocessed_image_data_url: preprocessed_path
-            .as_deref()
-            .and_then(ocr::image_data_url),
+        preprocessed_image_data_url: preprocessed_path.as_deref().and_then(ocr::image_data_url),
         preprocessed_width: preprocessed_dimensions.map(|value| value.0),
         preprocessed_height: preprocessed_dimensions.map(|value| value.1),
         raw_text: debug.raw_text,
@@ -1300,6 +1315,7 @@ async fn finish_screen_selection(
         }
     };
 
+    record_desktop_usage(&app, &desktop, DesktopUsageKind::Ocr);
     let result = match pending.mode {
         OcrFlowMode::Recognize => ocr::success_result(text, provider, &cut_path, None, None),
         OcrFlowMode::Translate => {
@@ -1659,6 +1675,7 @@ async fn run_region_flow(
         }
     };
 
+    record_desktop_usage(&app, &state, DesktopUsageKind::Ocr);
     let result = match mode {
         OcrFlowMode::Recognize => {
             ocr::success_result_without_image(text, provider, &image_path, None, None)
@@ -2007,6 +2024,7 @@ async fn translate_desktop_text(
         )
         .await
         .map_err(|err| translation::explain_translate_error(&err))?;
+        record_desktop_usage(app, state, DesktopUsageKind::Translation);
         return Ok((
             translated_text,
             provider_config.provider.display_name().to_string(),
@@ -2028,6 +2046,7 @@ async fn translate_desktop_text(
     )
     .await
     .map_err(error_from_json_response)?;
+    record_desktop_usage(app, state, DesktopUsageKind::Translation);
     Ok((translated_text, model))
 }
 
@@ -2058,6 +2077,7 @@ fn error_from_json_response((_status, value): (StatusCode, Value)) -> String {
 }
 
 fn status_payload(state: &DesktopState) -> DesktopStatus {
+    let usage = current_usage_stats(state);
     DesktopStatus {
         ok: true,
         app: "TabKeep Desktop Status",
@@ -2065,7 +2085,101 @@ fn status_payload(state: &DesktopState) -> DesktopStatus {
         backend_url: BACKEND_URL,
         desktop_url: format!("http://127.0.0.1:{DESKTOP_PORT}"),
         token_cached: get_cached_token(state).is_some(),
+        usage_date: usage.date,
+        today_translation_count: usage.translations,
+        today_ocr_count: usage.ocr,
     }
+}
+
+impl DailyUsageStats {
+    fn today() -> Self {
+        Self {
+            date: today_usage_date(),
+            translations: 0,
+            ocr: 0,
+        }
+    }
+
+    fn normalize_for_today(&mut self) {
+        let today = today_usage_date();
+        if self.date != today {
+            self.date = today;
+            self.translations = 0;
+            self.ocr = 0;
+        }
+    }
+}
+
+fn today_usage_date() -> String {
+    Local::now().format("%Y-%m-%d").to_string()
+}
+
+fn current_usage_stats(state: &DesktopState) -> DailyUsageStats {
+    let Ok(mut guard) = state.usage_stats.lock() else {
+        return DailyUsageStats::today();
+    };
+    guard.normalize_for_today();
+    guard.clone()
+}
+
+fn set_usage_stats(state: &DesktopState, stats: DailyUsageStats) {
+    if let Ok(mut guard) = state.usage_stats.lock() {
+        *guard = stats;
+        guard.normalize_for_today();
+    }
+}
+
+fn record_desktop_usage(app: &tauri::AppHandle, state: &DesktopState, kind: DesktopUsageKind) {
+    let snapshot = {
+        let Ok(mut guard) = state.usage_stats.lock() else {
+            log::warn!("桌面用量统计锁已损坏");
+            return;
+        };
+        guard.normalize_for_today();
+        match kind {
+            DesktopUsageKind::Translation => {
+                guard.translations = guard.translations.saturating_add(1)
+            }
+            DesktopUsageKind::Ocr => guard.ocr = guard.ocr.saturating_add(1),
+        }
+        guard.clone()
+    };
+    if let Err(err) = write_usage_stats(app, &snapshot) {
+        log::warn!("保存桌面用量统计失败: {err}");
+    }
+}
+
+fn load_usage_stats(app: &tauri::AppHandle) -> Result<DailyUsageStats, String> {
+    let path = usage_stats_path(app)?;
+    if !path.exists() {
+        return Ok(DailyUsageStats::today());
+    }
+    let raw = fs::read_to_string(&path).map_err(|err| format!("读取用量统计失败: {err}"))?;
+    if raw.trim().is_empty() {
+        return Ok(DailyUsageStats::today());
+    }
+    let mut stats: DailyUsageStats =
+        serde_json::from_str(&raw).map_err(|err| format!("解析用量统计失败: {err}"))?;
+    stats.normalize_for_today();
+    Ok(stats)
+}
+
+fn write_usage_stats(app: &tauri::AppHandle, stats: &DailyUsageStats) -> Result<(), String> {
+    let path = usage_stats_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("创建用量统计目录失败: {err}"))?;
+    }
+    let raw =
+        serde_json::to_string_pretty(stats).map_err(|err| format!("序列化用量统计失败: {err}"))?;
+    fs::write(path, raw).map_err(|err| format!("写入用量统计失败: {err}"))
+}
+
+fn usage_stats_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_local_data_dir()
+        .map_err(|err| format!("获取应用数据目录失败: {err}"))?
+        .join(DESKTOP_USAGE_FILE))
 }
 
 fn remember_token_from_headers(state: &DesktopState, headers: &HeaderMap) {

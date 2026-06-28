@@ -4,10 +4,14 @@ export function StatusCard({
   title,
   value,
   tone,
+  icon,
+  detail,
 }: {
   title: string
   value: string
   tone: "success" | "warning" | "error" | "neutral"
+  icon?: ReactNode
+  detail?: string
 }) {
   const dotClass =
     tone === "success"
@@ -28,10 +32,11 @@ export function StatusCard({
 
   return (
     <div className="tk-status-card">
-      <span className={dotClass} />
+      {icon ? <span className="tk-status-icon">{icon}</span> : <span className={dotClass} />}
       <div className="min-w-0">
         <p className="tk-status-title">{title}</p>
         <p className={`${valueClass} truncate`}>{value}</p>
+        {detail && <p className="tk-status-detail truncate">{detail}</p>}
       </div>
     </div>
   )

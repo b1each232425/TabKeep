@@ -1,5 +1,15 @@
 import { useMemo, useState } from "react"
-import { RefreshCw, RotateCcw } from "lucide-react"
+import type { ReactNode } from "react"
+import {
+  KeyRound,
+  Languages,
+  Monitor,
+  PanelsTopLeft,
+  RefreshCw,
+  RotateCcw,
+  ScanText,
+  Server,
+} from "lucide-react"
 
 import type { DesktopStatus, TabData, TabGroupColor, TabGroupStyleOptions } from "../types"
 import { groupTabsByDomain } from "../utils"
@@ -80,7 +90,7 @@ export function OverviewSection({
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">概览</h1>
-          <p className="tk-page-subtitle">标签状态、连接状态和 Tab Group 默认样式</p>
+          <p className="tk-page-subtitle">桌面伴侣运行概况、今日用量和 Tab Group 默认样式</p>
         </div>
         <Button variant="secondary" onClick={onRefresh} disabled={refreshing}>
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -90,21 +100,52 @@ export function OverviewSection({
 
       <section className="tk-status-grid">
         <StatusCard
-          title="桌面状态"
-          value={desktopStatus?.ok ? "运行中" : "未就绪"}
+          icon={<Monitor className="h-4 w-4" />}
+          title="桌面伴侣"
+          value={desktopStatus?.ok ? "在线" : "未就绪"}
           tone={desktopStatus?.ok ? "success" : "warning"}
+          detail={desktopStatus?.version ? `v${desktopStatus.version}` : "等待状态"}
         />
         <StatusCard
-          title="FastAPI 后端"
+          icon={<Server className="h-4 w-4" />}
+          title="后端连接"
           value={backendReady === null ? "检查中" : backendReady ? "已连接" : "未连接"}
           tone={backendReady ? "success" : backendReady === false ? "error" : "warning"}
+          detail={desktopStatus?.backend_url ?? "http://127.0.0.1:38471"}
         />
         <StatusCard
-          title="API Token"
+          icon={<KeyRound className="h-4 w-4" />}
+          title="模型凭据"
           value={desktopStatus?.token_cached ? "已缓存" : "未缓存"}
           tone={desktopStatus?.token_cached ? "success" : "warning"}
+          detail="翻译与知识问答"
         />
-        <StatusCard title="标签页" value={`${tabs.length} 个`} tone="neutral" />
+        <StatusCard
+          icon={<PanelsTopLeft className="h-4 w-4" />}
+          title="标签页"
+          value={`${tabs.length} 个`}
+          tone="neutral"
+          detail={groupableCount > 0 ? `${groupableCount} 个可分组` : "暂无可分组标签"}
+        />
+      </section>
+
+      <section className="tk-overview-usage-strip">
+        <OverviewUsageItem
+          icon={<Languages className="h-5 w-5" />}
+          label="今日翻译"
+          value={desktopStatus?.today_translation_count ?? 0}
+          suffix="次"
+        />
+        <OverviewUsageItem
+          icon={<ScanText className="h-5 w-5" />}
+          label="今日 OCR"
+          value={desktopStatus?.today_ocr_count ?? 0}
+          suffix="次"
+        />
+        <div className="tk-overview-usage-meta">
+          <span>统计日期</span>
+          <strong>{desktopStatus?.usage_date ?? "今天"}</strong>
+        </div>
       </section>
 
       {connectionError && <Notice tone="warning">{connectionError}</Notice>}
@@ -244,6 +285,31 @@ export function OverviewSection({
           )}
         </div>
       </section>
+    </div>
+  )
+}
+
+function OverviewUsageItem({
+  icon,
+  label,
+  value,
+  suffix,
+}: {
+  icon: ReactNode
+  label: string
+  value: number
+  suffix: string
+}) {
+  return (
+    <div className="tk-overview-usage-item">
+      <span className="tk-overview-usage-icon">{icon}</span>
+      <div>
+        <p>{label}</p>
+        <strong>
+          {value}
+          <span>{suffix}</span>
+        </strong>
+      </div>
     </div>
   )
 }

@@ -87,6 +87,9 @@ export interface DesktopStatus {
   backend_url: string
   desktop_url: string
   token_cached: boolean
+  usage_date: string
+  today_translation_count: number
+  today_ocr_count: number
 }
 
 export interface BackendConfigResponse {
