@@ -95,6 +95,37 @@ export interface BackendConfigResponse {
 }
 
 // -----------------------------------------------------------------------------
+// Local sticky notes
+// -----------------------------------------------------------------------------
+
+export interface StickyNote {
+  id: string
+  title: string
+  content: string
+  color: string
+  pinned: boolean
+  createdAt: string
+  updatedAt: string
+  windowBounds?: StickyWindowBounds | null
+}
+
+export interface StickyNoteDraft {
+  id?: string
+  title: string
+  content: string
+  color?: string
+  pinned?: boolean
+  windowBounds?: StickyWindowBounds | null
+}
+
+export interface StickyWindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+// -----------------------------------------------------------------------------
 // Knowledge base configuration and stats
 // -----------------------------------------------------------------------------
 

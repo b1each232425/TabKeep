@@ -14,7 +14,7 @@ use axum::{
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{window::Color, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::{
     sync::oneshot,
     time::{sleep, Duration},
@@ -24,11 +24,17 @@ use tower_http::cors::{Any, CorsLayer};
 mod ocr;
 mod region;
 mod selection;
+mod sticky_notes;
 mod translation;
 
 const BACKEND_URL: &str = "http://127.0.0.1:38471";
 const DESKTOP_PORT: u16 = 38472;
 const MAX_TRANSLATE_CHARS: usize = 12_000;
+const STICKY_NOTE_WINDOW_DEFAULT_WIDTH: u32 = 380;
+const STICKY_NOTE_WINDOW_DEFAULT_HEIGHT: u32 = 460;
+const STICKY_NOTE_WINDOW_MIN_WIDTH: u32 = 280;
+const STICKY_NOTE_WINDOW_MIN_HEIGHT: u32 = 260;
+const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
 
 #[derive(Clone)]
 struct DesktopState {
@@ -227,6 +233,7 @@ pub fn run() {
             setup_tray(app)?;
             setup_close_to_hide(app);
             setup_selection_hotkey(app, state.clone());
+            setup_sticky_note_hotkey(app);
 
             let server_state = HttpState {
                 desktop: state.clone(),
@@ -269,6 +276,12 @@ pub fn run() {
             trigger_selection_translate,
             get_latest_selection_translate_result,
             open_external_target,
+            sticky_notes_list,
+            sticky_notes_get,
+            sticky_notes_save,
+            sticky_notes_delete,
+            open_sticky_note_window,
+            create_sticky_note_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TabKeep desktop");
@@ -296,6 +309,158 @@ fn open_external_target(target: String) -> Result<(), String> {
         return Err("来源路径过长".to_string());
     }
     open_target_with_system(target)
+}
+
+#[tauri::command]
+fn sticky_notes_list(app: tauri::AppHandle) -> Result<Vec<sticky_notes::StickyNote>, String> {
+    sticky_notes::list_notes(&app)
+}
+
+#[tauri::command]
+fn sticky_notes_get(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<sticky_notes::StickyNote, String> {
+    sticky_notes::get_note(&app, &id)
+}
+
+#[tauri::command]
+fn sticky_notes_save(
+    app: tauri::AppHandle,
+    draft: sticky_notes::StickyNoteDraft,
+) -> Result<sticky_notes::StickyNote, String> {
+    sticky_notes::save_note(&app, draft)
+}
+
+#[tauri::command]
+fn sticky_notes_delete(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    sticky_notes::delete_note(&app, &id)
+}
+
+#[tauri::command]
+fn open_sticky_note_window(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    let note = sticky_notes::get_note(&app, &id)?;
+    open_sticky_note_window_for_note(&app, &note)
+}
+
+#[tauri::command]
+fn create_sticky_note_window(
+    app: tauri::AppHandle,
+) -> Result<sticky_notes::StickyNote, String> {
+    create_and_open_sticky_note(&app)
+}
+
+fn create_and_open_sticky_note(app: &tauri::AppHandle) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::create_blank_note(app)?;
+    let _ = open_sticky_note_window_for_note(app, &note)?;
+    Ok(note)
+}
+
+fn open_sticky_note_window_for_note(
+    app: &tauri::AppHandle,
+    note: &sticky_notes::StickyNote,
+) -> Result<String, String> {
+    let label = format!("sticky-note-{}", note.id);
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.set_always_on_top(true);
+        return Ok(label);
+    }
+
+    let width = note
+        .window_bounds
+        .as_ref()
+        .map(|bounds| bounds.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH))
+        .unwrap_or(STICKY_NOTE_WINDOW_DEFAULT_WIDTH);
+    let height = note
+        .window_bounds
+        .as_ref()
+        .map(|bounds| bounds.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT))
+        .unwrap_or(STICKY_NOTE_WINDOW_DEFAULT_HEIGHT);
+
+    let mut builder = WebviewWindowBuilder::new(
+        app,
+        &label,
+        WebviewUrl::App(format!("index.html?view=sticky-note&noteId={}", note.id).into()),
+    )
+    .title(format!("TabKeep 便签 - {}", sticky_note_window_title(&note)))
+    .inner_size(width as f64, height as f64)
+    .min_inner_size(
+        STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
+        STICKY_NOTE_WINDOW_MIN_HEIGHT as f64,
+    )
+    .decorations(false)
+    .transparent(true)
+    .background_color(Color(0, 0, 0, 0))
+    .always_on_top(true)
+    .resizable(true)
+    .visible(true);
+
+    if let Some(bounds) = &note.window_bounds {
+        builder = builder.position(bounds.x as f64, bounds.y as f64);
+    }
+
+    let window = builder
+    .build()
+    .map_err(|err| format!("打开便签窗口失败: {err}"))?;
+
+    attach_sticky_note_bounds_sync(app, note.id.clone(), &window);
+    Ok(label)
+}
+
+fn sticky_note_window_title(note: &sticky_notes::StickyNote) -> String {
+    let title = note.title.trim();
+    if !title.is_empty() {
+        title.chars().take(24).collect()
+    } else {
+        "未命名".to_string()
+    }
+}
+
+fn attach_sticky_note_bounds_sync(
+    app: &tauri::AppHandle,
+    note_id: String,
+    window: &tauri::WebviewWindow,
+) {
+    let app = app.clone();
+    let window_for_event = window.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Moved(_)
+                | tauri::WindowEvent::Resized(_)
+                | tauri::WindowEvent::CloseRequested { .. }
+        ) {
+            if let Err(err) = save_sticky_note_window_bounds(&app, &note_id, &window_for_event) {
+                log::warn!("保存便签窗口位置失败: {err}");
+            }
+        }
+    });
+}
+
+fn save_sticky_note_window_bounds(
+    app: &tauri::AppHandle,
+    note_id: &str,
+    window: &tauri::WebviewWindow,
+) -> Result<(), String> {
+    let position = window
+        .outer_position()
+        .map_err(|err| format!("读取便签窗口位置失败: {err}"))?;
+    let size = window
+        .inner_size()
+        .map_err(|err| format!("读取便签窗口尺寸失败: {err}"))?;
+    sticky_notes::save_window_bounds(
+        app,
+        note_id,
+        sticky_notes::StickyWindowBounds {
+            x: position.x,
+            y: position.y,
+            width: size.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH),
+            height: size.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT),
+        },
+    )?;
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -346,15 +511,21 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::TrayIconBuilder;
 
+    let new_sticky = MenuItem::with_id(app, "new-sticky-note", "新建便签", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "打开 TabKeep", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let menu = Menu::with_items(app, &[&new_sticky, &show, &quit])?;
 
     let mut builder = TrayIconBuilder::new()
         .tooltip("TabKeep Desktop")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
+            "new-sticky-note" => {
+                if let Err(err) = create_and_open_sticky_note(app) {
+                    log::warn!("托盘新建便签失败: {err}");
+                }
+            }
             "show" => {
                 if let Some(win) = app.get_webview_window("main") {
                     let _ = win.show();
@@ -371,6 +542,52 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     builder.build(app)?;
     Ok(())
+}
+
+fn setup_sticky_note_hotkey(app: &tauri::App) {
+    let app = app.handle().clone();
+    std::thread::spawn(move || sticky_note_hotkey_thread(app));
+}
+
+#[cfg(windows)]
+fn sticky_note_hotkey_thread(app: tauri::AppHandle) {
+    use windows::Win32::UI::{
+        Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_CONTROL},
+        WindowsAndMessaging::{PeekMessageW, MSG, PM_REMOVE, WM_HOTKEY},
+    };
+
+    let mut warmup = MSG::default();
+    let _ = unsafe { PeekMessageW(&mut warmup, None, 0, 0, PM_REMOVE) };
+    let result = unsafe {
+        RegisterHotKey(
+            None,
+            STICKY_NOTE_HOTKEY_ID,
+            MOD_CONTROL | MOD_ALT,
+            0x4E,
+        )
+    };
+    if let Err(err) = result {
+        log::warn!("注册便签全局快捷键 Ctrl+Alt+N 失败: {err}");
+        return;
+    }
+    log::info!("便签全局快捷键已注册: Ctrl+Alt+N");
+
+    loop {
+        let mut message = MSG::default();
+        while unsafe { PeekMessageW(&mut message, None, 0, 0, PM_REMOVE).as_bool() } {
+            if message.message == WM_HOTKEY && message.wParam.0 as i32 == STICKY_NOTE_HOTKEY_ID {
+                if let Err(err) = create_and_open_sticky_note(&app) {
+                    log::warn!("快捷键新建便签失败: {err}");
+                }
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+}
+
+#[cfg(not(windows))]
+fn sticky_note_hotkey_thread(_app: tauri::AppHandle) {
+    log::info!("便签全局快捷键首版仅支持 Windows");
 }
 
 fn setup_selection_hotkey(app: &tauri::App, state: DesktopState) {

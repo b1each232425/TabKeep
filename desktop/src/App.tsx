@@ -10,6 +10,7 @@ import {
   PlugZap,
   RefreshCw,
   Settings2,
+  StickyNote,
 } from "lucide-react"
 import {
   BackendRequestError,
@@ -44,11 +45,14 @@ import {
 } from "./sections/OcrWindows"
 import { OverviewSection } from "./sections/OverviewSection"
 import { SettingsSection } from "./sections/SettingsSections"
+import { StickyNotesSection } from "./sections/StickyNotesSection"
+import { StickyNoteWindow } from "./sections/stickyNotes/StickyNoteWindow"
 import { TranslateSection } from "./sections/TranslateSection"
 import { VectorDebugSection } from "./sections/VectorDebugSection"
 
 type Section =
   | "overview"
+  | "stickyNotes"
   | "translate"
   | "knowledge"
   | "graph"
@@ -68,6 +72,7 @@ function App() {
   if (view === "region-box") return <RegionBoxWindow />
   if (view === "region-panel") return <RegionPanelWindow />
   if (view === "selection-panel") return <SelectionPanelWindow />
+  if (view === "sticky-note") return <StickyNoteWindow />
   return <DesktopApp />
 }
 
@@ -125,6 +130,7 @@ function DesktopApp() {
 
   const navItems: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: "overview", label: "概览", icon: LayoutDashboard },
+    { id: "stickyNotes", label: "便签", icon: StickyNote },
     { id: "translate", label: "翻译", icon: Languages },
     { id: "knowledge", label: "知识库", icon: Database },
     { id: "graph", label: "知识图谱", icon: ChartNetwork },
@@ -224,6 +230,7 @@ function DesktopApp() {
             refreshing={refreshing}
           />
         )}
+        {section === "stickyNotes" && <StickyNotesSection />}
         {section === "translate" && <TranslateSection />}
         {section === "knowledge" && <KnowledgeSection />}
         {section === "graph" && <KnowledgeGraphSection noteAdapter={noteAdapter} />}
