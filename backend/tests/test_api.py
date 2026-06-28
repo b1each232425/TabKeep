@@ -185,6 +185,64 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(len(data["items"]), 1)
         self.assertEqual(data["items"][0]["sourceType"], "tabkeep_note")
 
+    def test_notes_summarize_returns_structured_review_markdown(self) -> None:
+        self.initialize_config()
+
+        async def fake_chat_completion(_config, _messages):
+            return """
+            {
+              "problem": "解释 TabKeep 摘要收藏如何沉淀知识。",
+              "summary": "文章强调收藏不能只保存链接,需要保留问题、摘录、可复用点和复习问题。",
+              "key_excerpts": ["收藏失效往往不是因为没有摘要,而是未来不知道当初为什么存。"],
+              "reusable_points": ["保存技术文章时同步生成复习问题。"],
+              "review_questions": ["为什么复习问题能提升后续 RAG 检索?"],
+              "images": []
+            }
+            """
+
+        with patch("services.summarizer.chat_completion", side_effect=fake_chat_completion):
+            response = self.client.post(
+                "/notes/summarize",
+                json={
+                    "title": "摘要收藏升级",
+                    "url": "https://example.test/clip",
+                    "content": "# 摘要收藏\n\n收藏失效往往不是因为没有摘要。",
+                },
+                headers=self.headers,
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        markdown = data["summary_markdown"]
+        self.assertIn("## 这篇解决什么", markdown)
+        self.assertIn("## 关键原文摘录", markdown)
+        self.assertIn("> 收藏失效往往不是因为没有摘要", markdown)
+        self.assertIn("## 复习问题", markdown)
+        self.assertIn("- 为什么复习问题能提升后续 RAG 检索?", markdown)
+
+    def test_notes_summarize_reports_invalid_structured_output(self) -> None:
+        self.initialize_config()
+
+        async def fake_chat_completion(_config, _messages):
+            return "这不是 JSON"
+
+        with patch("services.summarizer.chat_completion", side_effect=fake_chat_completion):
+            response = self.client.post(
+                "/notes/summarize",
+                json={
+                    "title": "坏输出",
+                    "url": "https://example.test/bad",
+                    "content": "正文",
+                },
+                headers=self.headers,
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("合法 JSON", data["error"])
+
     def test_knowledge_reindex_from_markdown_path(self) -> None:
         notes_dir = self.tmp_dir / "markdown-source"
         notes_dir.mkdir()
