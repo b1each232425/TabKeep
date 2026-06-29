@@ -1,14 +1,48 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 
 import { deleteStickyNote, getStickyNote } from "../../api/stickyNotes"
 import type { StickyNote } from "../../types"
 import { StickyNoteEditor } from "./StickyNoteEditor"
 
+type StickyNotesChangedPayload = {
+  action?: string
+  noteId?: string | null
+}
+
 export function StickyNoteWindow() {
   const noteId = getStickyNoteId()
   const [note, setNote] = useState<StickyNote | null>(null)
   const [error, setError] = useState("")
+
+  const loadNote = useCallback(async () => {
+    if (!noteId) {
+      setError("便签窗口缺少 noteId，请从主窗口重新打开。")
+      return
+    }
+    try {
+      const loaded = await getStickyNote(noteId)
+      setNote(loaded)
+      setError("")
+      void postStickyWindowDebugResult({
+        ok: true,
+        phase: "note-loaded",
+        noteId: loaded.id,
+        windowLabel: getCurrentWindow().label,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      void postStickyWindowDebugResult({
+        ok: false,
+        phase: "note-load-error",
+        noteId,
+        windowLabel: getCurrentWindow().label,
+        error: message,
+      })
+    }
+  }, [noteId])
 
   useEffect(() => {
     const root = document.getElementById("root")
@@ -35,42 +69,36 @@ export function StickyNoteWindow() {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    async function load() {
-      if (!noteId) {
-        setError("便签窗口缺少 noteId，请从主窗口重新打开。")
+    void loadNote()
+  }, [loadNote])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+
+    listen<StickyNotesChangedPayload>("sticky-notes-changed", (event) => {
+      const payload = event.payload ?? {}
+      if (payload.noteId !== noteId) return
+      if (payload.action === "delete") {
+        void getCurrentWindow().close()
         return
       }
-      try {
-        const loaded = await getStickyNote(noteId)
-        if (!cancelled) {
-          setNote(loaded)
-          void postStickyWindowDebugResult({
-            ok: true,
-            phase: "note-loaded",
-            noteId: loaded.id,
-            windowLabel: getCurrentWindow().label,
-          })
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : String(err)
-          setError(message)
-          void postStickyWindowDebugResult({
-            ok: false,
-            phase: "note-load-error",
-            noteId,
-            windowLabel: getCurrentWindow().label,
-            error: message,
-          })
-        }
+      void loadNote()
+    }).then((value) => {
+      if (disposed) {
+        value()
+      } else {
+        unlisten = value
       }
-    }
-    void load()
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
+
     return () => {
-      cancelled = true
+      disposed = true
+      unlisten?.()
     }
-  }, [noteId])
+  }, [loadNote, noteId])
 
   const deleteNote = async (target: StickyNote) => {
     try {
@@ -86,7 +114,10 @@ export function StickyNoteWindow() {
       className="tk-sticky-window-shell"
       style={{ ["--sticky-note-color" as string]: note?.color ?? "#fff7c2" }}>
       {note ? (
-        <StickyNoteEditor note={note} compact onSaved={setNote} onDelete={deleteNote} />
+        <>
+          <StickyNoteEditor note={note} compact onSaved={setNote} onDelete={deleteNote} />
+          {error && <p className="tk-sticky-error px-3 pb-2">{error}</p>}
+        </>
       ) : (
         <div className="tk-sticky-window-loading">{error || "正在加载便签..."}</div>
       )}

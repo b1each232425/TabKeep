@@ -38,6 +38,7 @@ const STICKY_NOTE_WINDOW_MIN_WIDTH: u32 = 280;
 const STICKY_NOTE_WINDOW_MIN_HEIGHT: u32 = 260;
 const STICKY_NOTE_WINDOW_HIDDEN_COORDINATE: i32 = -10_000;
 const STICKY_NOTE_WINDOW_LABEL_PREFIX: &str = "sticky-note-";
+const STICKY_NOTES_CHANGED_EVENT: &str = "sticky-notes-changed";
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
 const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
 
@@ -352,12 +353,17 @@ fn sticky_notes_save(
     app: tauri::AppHandle,
     draft: sticky_notes::StickyNoteDraft,
 ) -> Result<sticky_notes::StickyNote, String> {
-    sticky_notes::save_note(&app, draft)
+    let note = sticky_notes::save_note(&app, draft)?;
+    emit_sticky_notes_changed(&app, "save", Some(&note.id));
+    Ok(note)
 }
 
 #[tauri::command]
 fn sticky_notes_delete(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    sticky_notes::delete_note(&app, &id)
+    sticky_notes::delete_note(&app, &id)?;
+    close_sticky_note_windows_for_note(&app, &id);
+    emit_sticky_notes_changed(&app, "delete", Some(&id));
+    Ok(())
 }
 
 #[tauri::command]
@@ -376,7 +382,20 @@ async fn create_sticky_note_window(
 fn create_and_open_sticky_note(app: &tauri::AppHandle) -> Result<sticky_notes::StickyNote, String> {
     let note = sticky_notes::create_blank_note(app)?;
     let _ = open_sticky_note_window_for_note(app, &note)?;
+    emit_sticky_notes_changed(app, "create", Some(&note.id));
     Ok(note)
+}
+
+fn emit_sticky_notes_changed(app: &tauri::AppHandle, action: &str, note_id: Option<&str>) {
+    if let Err(err) = app.emit(
+        STICKY_NOTES_CHANGED_EVENT,
+        json!({
+            "action": action,
+            "noteId": note_id,
+        }),
+    ) {
+        log::warn!("发送便签变更事件失败: {err}");
+    }
 }
 
 fn open_sticky_note_window_for_note(
@@ -473,6 +492,20 @@ fn close_legacy_sticky_note_windows(app: &tauri::AppHandle, note_id: &str) {
     }
     if closed_any {
         std::thread::sleep(std::time::Duration::from_millis(80));
+    }
+}
+
+fn close_sticky_note_windows_for_note(app: &tauri::AppHandle, note_id: &str) {
+    let label = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}");
+    let instance_prefix = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}--");
+    let broken_instance_prefix = format!("sticky-note__{note_id}__");
+    for (window_label, window) in app.webview_windows() {
+        if window_label == label
+            || window_label.starts_with(&instance_prefix)
+            || window_label.starts_with(&broken_instance_prefix)
+        {
+            let _ = window.destroy();
+        }
     }
 }
 

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { listen } from "@tauri-apps/api/event"
 import { Maximize2, Plus, Search, StickyNote as StickyNoteIcon, Trash2 } from "lucide-react"
 
 import {
@@ -24,22 +25,46 @@ export function StickyNotesSection() {
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState("")
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const loaded = await listStickyNotes()
       setNotes(loaded)
-      setSelectedId((current) => current || loaded[0]?.id || "")
+      setSelectedId((current) =>
+        loaded.some((note) => note.id === current) ? current : loaded[0]?.id || "",
+      )
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void refresh()
-  }, [])
+  }, [refresh])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+
+    listen("sticky-notes-changed", () => {
+      void refresh()
+    }).then((value) => {
+      if (disposed) {
+        value()
+      } else {
+        unlisten = value
+      }
+    }).catch((err) => {
+      setStatus(err instanceof Error ? err.message : String(err))
+    })
+
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [refresh])
 
   const filteredNotes = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -52,7 +77,7 @@ export function StickyNotesSection() {
   const createNote = async () => {
     try {
       const note = await createStickyNoteWindow()
-      setNotes((current) => [note, ...current])
+      setNotes((current) => sortNotes([note, ...current.filter((item) => item.id !== note.id)]))
       setSelectedId(note.id)
       setStatus("已创建并打开便签")
     } catch (err) {
@@ -65,14 +90,12 @@ export function StickyNotesSection() {
   }
 
   const deleteNote = async (note: StickyNote) => {
-    const confirmed = window.confirm(`删除「${stickyNoteTitle(note)}」？`)
-    if (!confirmed) return
     try {
       await deleteStickyNote(note.id)
-      setNotes((current) => current.filter((item) => item.id !== note.id))
-      setSelectedId((current) => {
-        if (current !== note.id) return current
-        return notes.find((item) => item.id !== note.id)?.id ?? ""
+      setNotes((current) => {
+        const next = current.filter((item) => item.id !== note.id)
+        setSelectedId((selected) => (selected === note.id ? next[0]?.id ?? "" : selected))
+        return next
       })
       setStatus("便签已删除")
     } catch (err) {
@@ -135,9 +158,6 @@ export function StickyNotesSection() {
                 <span className="tk-sticky-list-time">{formatStickyNoteTime(note.updatedAt)}</span>
               </button>
             ))}
-            {!loading && filteredNotes.length === 0 && (
-              <div className="tk-empty-state">暂无匹配便签</div>
-            )}
           </div>
         </aside>
 
