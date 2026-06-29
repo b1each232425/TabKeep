@@ -571,7 +571,7 @@ export function RegionPanelWindow() {
         onMouseDown={startPanelDrag}
         title="按住拖动译文窗口">
         <div className="tk-region-result-title-inline">
-          <Languages className="h-4 w-4 text-blue-600" />
+          <Languages className="h-4 w-4 text-emerald-700" />
           <span>固定区域翻译{result?.model ? ` · ${result.model}` : ""}</span>
         </div>
         <button
@@ -741,7 +741,7 @@ export function SelectionPanelWindow() {
         onMouseDown={startPanelDrag}
         title="按住拖动划词译文窗口">
         <div className="tk-region-result-title-inline">
-          <Keyboard className="h-4 w-4 text-blue-600" />
+          <Keyboard className="h-4 w-4 text-emerald-700" />
           <span>划词译文{result?.model ? ` · ${result.model}` : ""}</span>
         </div>
         <button

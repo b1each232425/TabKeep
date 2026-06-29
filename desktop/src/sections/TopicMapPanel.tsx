@@ -188,13 +188,13 @@ export function TopicMapPanel({
                     key={topic.id}
                     className={`group relative overflow-hidden rounded-md border bg-[rgb(250_252_250)] px-3 py-3 text-left transition-colors ${
                       selectedTopicId === topic.id
-                        ? "border-blue-300 bg-blue-50/45 ring-2 ring-blue-100"
-                        : "border-white/70 ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-slate-50"
+                        ? "border-emerald-300 bg-emerald-50/45 ring-2 ring-emerald-100"
+                        : "border-white/70 ring-1 ring-slate-900/5 hover:border-emerald-200/80 hover:bg-emerald-50/25"
                     }`}
                     onClick={() => selectTopic(topic)}>
                     <span
                       className={`absolute inset-y-0 left-0 w-1 ${
-                        selectedTopicId === topic.id ? "bg-blue-500" : "bg-transparent group-hover:bg-blue-200"
+                        selectedTopicId === topic.id ? "bg-emerald-500" : "bg-transparent group-hover:bg-emerald-200"
                       }`}
                     />
                     <div className="flex items-start justify-between gap-2">
@@ -302,7 +302,7 @@ export function TopicMapPanel({
                       {formatTopicSnippet(selectedTopicDocument)}
                     </div>
                     {selectedTopicDocument.anchor && (
-                      <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
+                      <div className="mt-3 rounded-md border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
                         打开时会尽量定位到标题：{selectedTopicDocument.anchor}
                       </div>
                     )}
@@ -338,8 +338,8 @@ function TopicDocumentCard({
     <div
       className={`group relative rounded-md border p-3 pl-12 text-left transition-colors ${
         active
-          ? "border-blue-300 bg-blue-50/50 ring-2 ring-blue-100"
-          : "border-white/70 bg-[rgb(250_252_250)] ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-blue-50/25"
+          ? "border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100"
+          : "border-white/70 bg-[rgb(250_252_250)] ring-1 ring-slate-900/5 hover:border-emerald-200/80 hover:bg-emerald-50/25"
       }`}
       onDoubleClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}>
       <div className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-md bg-[rgb(238_245_242)] text-xs font-semibold text-slate-700 ring-1 ring-slate-200/80">
@@ -347,7 +347,7 @@ function TopicDocumentCard({
       </div>
       <div className="mb-1 flex items-center gap-2">
         <button
-          className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900 hover:text-blue-700"
+          className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900 hover:text-emerald-700"
           title="查看这篇笔记的关键片段"
           onClick={onSelect}>
           {document.title}
@@ -355,7 +355,7 @@ function TopicDocumentCard({
         <span className="tk-badge">{formatSourceType(document.sourceType)}</span>
         {document.anchor && <span className="tk-badge">可定位</span>}
         <button
-          className="tk-icon-button h-7 w-7 bg-white/80 ring-1 ring-slate-200/70 group-hover:text-blue-700"
+          className="tk-icon-button h-7 w-7 bg-white/80 ring-1 ring-slate-200/70 group-hover:text-emerald-700"
           title={formatTopicOpenTitle(document, noteAdapter)}
           onClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}
           disabled={!topicDocumentOpenTarget(document, noteAdapter)}>

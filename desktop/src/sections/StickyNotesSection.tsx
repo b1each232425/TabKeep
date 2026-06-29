@@ -91,14 +91,14 @@ export function StickyNotesSection() {
 
   return (
     <div className="space-y-5">
-      <section className="tk-page-hero">
+      <section className="tk-page-hero tk-sticky-hero">
         <div>
           <h1 className="tk-page-title">便签</h1>
           <p className="tk-page-subtitle">本地快速记录、自动保存、可打开独立置顶小窗</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="tk-badge">{notes.length} 条</span>
-          <Button onClick={createNote}>
+        <div className="tk-sticky-hero-actions">
+          <span className="tk-sticky-count-badge">{notes.length} 条</span>
+          <Button className="tk-sticky-create-button" onClick={createNote}>
             <Plus className="h-4 w-4" />
             新建便签
           </Button>

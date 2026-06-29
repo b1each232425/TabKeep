@@ -36,6 +36,8 @@ const STICKY_NOTE_WINDOW_DEFAULT_WIDTH: u32 = 380;
 const STICKY_NOTE_WINDOW_DEFAULT_HEIGHT: u32 = 460;
 const STICKY_NOTE_WINDOW_MIN_WIDTH: u32 = 280;
 const STICKY_NOTE_WINDOW_MIN_HEIGHT: u32 = 260;
+const STICKY_NOTE_WINDOW_HIDDEN_COORDINATE: i32 = -10_000;
+const STICKY_NOTE_WINDOW_LABEL_PREFIX: &str = "sticky-note-";
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
 const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
 
@@ -359,13 +361,15 @@ fn sticky_notes_delete(app: tauri::AppHandle, id: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn open_sticky_note_window(app: tauri::AppHandle, id: String) -> Result<String, String> {
+async fn open_sticky_note_window(app: tauri::AppHandle, id: String) -> Result<String, String> {
     let note = sticky_notes::get_note(&app, &id)?;
     open_sticky_note_window_for_note(&app, &note)
 }
 
 #[tauri::command]
-fn create_sticky_note_window(app: tauri::AppHandle) -> Result<sticky_notes::StickyNote, String> {
+async fn create_sticky_note_window(
+    app: tauri::AppHandle,
+) -> Result<sticky_notes::StickyNote, String> {
     create_and_open_sticky_note(&app)
 }
 
@@ -379,11 +383,12 @@ fn open_sticky_note_window_for_note(
     app: &tauri::AppHandle,
     note: &sticky_notes::StickyNote,
 ) -> Result<String, String> {
-    let label = format!("sticky-note-{}", note.id);
+    close_legacy_sticky_note_windows(app, &note.id);
+    let label = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{}", note.id);
     if let Some(window) = app.get_webview_window(&label) {
         let _ = window.show();
-        let _ = window.set_focus();
         let _ = window.set_always_on_top(true);
+        let _ = window.set_focus();
         return Ok(label);
     }
 
@@ -397,6 +402,10 @@ fn open_sticky_note_window_for_note(
         .as_ref()
         .map(|bounds| bounds.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT))
         .unwrap_or(STICKY_NOTE_WINDOW_DEFAULT_HEIGHT);
+    let restored_bounds = note
+        .window_bounds
+        .as_ref()
+        .and_then(|bounds| valid_sticky_window_bounds(app, bounds));
 
     let mut builder = WebviewWindowBuilder::new(
         app,
@@ -412,23 +421,59 @@ fn open_sticky_note_window_for_note(
         STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
         STICKY_NOTE_WINDOW_MIN_HEIGHT as f64,
     )
-    .decorations(false)
-    .transparent(true)
-    .background_color(Color(0, 0, 0, 0))
+    .decorations(true)
+    .transparent(false)
+    .background_color(Color(255, 247, 194, 255))
     .always_on_top(true)
+    .focused(true)
     .resizable(true)
     .visible(true);
 
-    if let Some(bounds) = &note.window_bounds {
+    if let Some(bounds) = &restored_bounds {
         builder = builder.position(bounds.x as f64, bounds.y as f64);
+    } else {
+        builder = builder.center();
     }
+
+    log::info!(
+        "Opening sticky note window label={label}, note_id={}, width={width}, height={height}, restored_bounds={:?}",
+        note.id,
+        restored_bounds
+    );
 
     let window = builder
         .build()
         .map_err(|err| format!("打开便签窗口失败: {err}"))?;
 
+    log::info!(
+        "Sticky note window opened label={label}, note_id={}",
+        note.id
+    );
+    let _ = window.show();
+    let _ = window.set_focus();
+
     attach_sticky_note_bounds_sync(app, note.id.clone(), &window);
     Ok(label)
+}
+
+fn close_legacy_sticky_note_windows(app: &tauri::AppHandle, note_id: &str) {
+    let legacy_label = "sticky-note";
+    let instance_prefix = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}--");
+    let broken_instance_prefix = format!("sticky-note__{note_id}__");
+    let mut closed_any = false;
+    for (label, window) in app.webview_windows() {
+        if label == legacy_label
+            || label.starts_with(&instance_prefix)
+            || label.starts_with(&broken_instance_prefix)
+            || label.starts_with("sticky-note__")
+        {
+            let _ = window.destroy();
+            closed_any = true;
+        }
+    }
+    if closed_any {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+    }
 }
 
 fn sticky_note_window_title(note: &sticky_notes::StickyNote) -> String {
@@ -466,23 +511,66 @@ fn save_sticky_note_window_bounds(
     note_id: &str,
     window: &tauri::WebviewWindow,
 ) -> Result<(), String> {
+    if window.is_minimized().unwrap_or(false) {
+        return Ok(());
+    }
     let position = window
         .outer_position()
         .map_err(|err| format!("读取便签窗口位置失败: {err}"))?;
     let size = window
         .inner_size()
         .map_err(|err| format!("读取便签窗口尺寸失败: {err}"))?;
-    sticky_notes::save_window_bounds(
+    let Some(bounds) = valid_sticky_window_bounds(
         app,
-        note_id,
-        sticky_notes::StickyWindowBounds {
+        &sticky_notes::StickyWindowBounds {
             x: position.x,
             y: position.y,
             width: size.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH),
             height: size.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT),
         },
-    )?;
+    ) else {
+        return Ok(());
+    };
+    sticky_notes::save_window_bounds(app, note_id, bounds)?;
     Ok(())
+}
+
+fn valid_sticky_window_bounds(
+    app: &tauri::AppHandle,
+    bounds: &sticky_notes::StickyWindowBounds,
+) -> Option<sticky_notes::StickyWindowBounds> {
+    if bounds.x <= STICKY_NOTE_WINDOW_HIDDEN_COORDINATE
+        || bounds.y <= STICKY_NOTE_WINDOW_HIDDEN_COORDINATE
+    {
+        return None;
+    }
+
+    let normalized = sticky_notes::StickyWindowBounds {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH),
+        height: bounds.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT),
+    };
+
+    let Ok(monitors) = app.available_monitors() else {
+        return Some(normalized);
+    };
+    if monitors.is_empty() {
+        return Some(normalized);
+    }
+
+    let center_x = normalized.x.saturating_add((normalized.width / 2) as i32);
+    let center_y = normalized.y.saturating_add((normalized.height / 2) as i32);
+    let is_visible = monitors.iter().any(|monitor| {
+        let area = monitor.work_area();
+        let left = area.position.x;
+        let top = area.position.y;
+        let right = left.saturating_add(i32::try_from(area.size.width).unwrap_or(i32::MAX));
+        let bottom = top.saturating_add(i32::try_from(area.size.height).unwrap_or(i32::MAX));
+        center_x >= left && center_x <= right && center_y >= top && center_y <= bottom
+    });
+
+    is_visible.then_some(normalized)
 }
 
 #[cfg(windows)]
@@ -640,7 +728,7 @@ async fn run_http_server(state: HttpState) -> anyhow::Result<()> {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/health", get(health))
         .route("/capture", post(capture))
         .route("/translate", post(translate))
@@ -650,9 +738,27 @@ async fn run_http_server(state: HttpState) -> anyhow::Result<()> {
         .route("/ocr_translate", post(ocr_translate))
         .route("/region/open", post(region_open))
         .route("/region/close", post(region_close))
-        .route("/region/config", get(region_config))
-        .with_state(state)
-        .layer(cors);
+        .route("/region/config", get(region_config));
+
+    #[cfg(debug_assertions)]
+    {
+        app = app
+            .route("/debug/sticky/open", post(debug_sticky_open))
+            .route(
+                "/debug/sticky/frontend-open",
+                post(debug_sticky_frontend_open),
+            )
+            .route(
+                "/debug/sticky/frontend-open-existing",
+                post(debug_sticky_frontend_open_existing),
+            )
+            .route(
+                "/debug/sticky/frontend-result",
+                post(debug_sticky_frontend_result),
+            );
+    }
+
+    let app = app.with_state(state).layer(cors);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", DESKTOP_PORT)).await?;
     log::info!("TabKeep desktop HTTP server listening on 127.0.0.1:{DESKTOP_PORT}");
@@ -700,6 +806,82 @@ async fn region_close(AxumState(state): AxumState<HttpState>) -> Response {
             }),
         ),
     }
+}
+
+#[cfg(debug_assertions)]
+async fn debug_sticky_open(AxumState(state): AxumState<HttpState>) -> Response {
+    match create_and_open_sticky_note(&state.app) {
+        Ok(note) => {
+            let windows: Vec<String> = state.app.webview_windows().keys().cloned().collect();
+            json_response(
+                StatusCode::OK,
+                json!({
+                    "ok": true,
+                    "noteId": note.id,
+                    "windowLabels": windows,
+                }),
+            )
+        }
+        Err(err) => json_response(
+            StatusCode::BAD_REQUEST,
+            json!({
+                "ok": false,
+                "error": err,
+            }),
+        ),
+    }
+}
+
+#[cfg(debug_assertions)]
+async fn debug_sticky_frontend_open(AxumState(state): AxumState<HttpState>) -> Response {
+    match state
+        .app
+        .emit_to("main", "debug-sticky-create-window", json!({}))
+    {
+        Ok(_) => json_response(
+            StatusCode::OK,
+            json!({
+                "ok": true,
+                "message": "debug-sticky-create-window emitted",
+            }),
+        ),
+        Err(err) => json_response(
+            StatusCode::BAD_REQUEST,
+            json!({
+                "ok": false,
+                "error": err.to_string(),
+            }),
+        ),
+    }
+}
+
+#[cfg(debug_assertions)]
+async fn debug_sticky_frontend_open_existing(AxumState(state): AxumState<HttpState>) -> Response {
+    match state
+        .app
+        .emit_to("main", "debug-sticky-open-existing-window", json!({}))
+    {
+        Ok(_) => json_response(
+            StatusCode::OK,
+            json!({
+                "ok": true,
+                "message": "debug-sticky-open-existing-window emitted",
+            }),
+        ),
+        Err(err) => json_response(
+            StatusCode::BAD_REQUEST,
+            json!({
+                "ok": false,
+                "error": err.to_string(),
+            }),
+        ),
+    }
+}
+
+#[cfg(debug_assertions)]
+async fn debug_sticky_frontend_result(Json(payload): Json<Value>) -> Response {
+    log::info!("Sticky frontend debug result: {payload}");
+    json_response(StatusCode::OK, json!({ "ok": true }))
 }
 
 async fn region_config(AxumState(state): AxumState<HttpState>) -> impl IntoResponse {

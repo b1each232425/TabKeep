@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ExternalLink, Loader2, Pin, Trash2 } from "lucide-react"
 
-import { saveStickyNote } from "../../api"
+import { saveStickyNote } from "../../api/stickyNotes"
 import type { StickyNote, StickyNoteDraft } from "../../types"
 import {
   STICKY_NOTE_COLORS,

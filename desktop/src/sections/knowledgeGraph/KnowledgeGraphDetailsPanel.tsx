@@ -54,9 +54,9 @@ export function KnowledgeGraphDetailsPanel({
             </p>
           </div>
           {selectedGraphRelation && (
-            <div className="rounded-md border border-blue-100 bg-blue-50/50 p-3">
+            <div className="rounded-md border border-emerald-100 bg-emerald-50/50 p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h4 className="text-xs font-semibold text-blue-900">关系详情</h4>
+                <h4 className="text-xs font-semibold text-emerald-900">关系详情</h4>
                 <div className="flex items-center gap-2">
                   <span
                     className="rounded-full px-2 py-0.5 text-xs font-medium text-slate-700"
@@ -73,13 +73,13 @@ export function KnowledgeGraphDetailsPanel({
               </div>
               <div className="grid gap-2 text-xs">
                 <button
-                  className="rounded-md border border-blue-100 bg-white px-2 py-1.5 text-left hover:border-blue-200"
+                  className="rounded-md border border-emerald-100 bg-white px-2 py-1.5 text-left hover:border-emerald-200"
                   onClick={() => onSelectNode(selectedGraphRelation.source)}>
                   <span className="text-muted-foreground">从：</span>
                   <span className="font-medium text-slate-900">{selectedGraphRelation.source.label}</span>
                 </button>
                 <button
-                  className="rounded-md border border-blue-100 bg-white px-2 py-1.5 text-left hover:border-blue-200"
+                  className="rounded-md border border-emerald-100 bg-white px-2 py-1.5 text-left hover:border-emerald-200"
                   onClick={() => onSelectNode(selectedGraphRelation.target)}>
                   <span className="text-muted-foreground">到：</span>
                   <span className="font-medium text-slate-900">{selectedGraphRelation.target.label}</span>
@@ -164,7 +164,7 @@ function DirectNeighborList({
         {selectedNeighbors.map((child) => (
           <button
             key={child.id}
-            className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
+            className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
             onClick={() => onSelectNode(child)}>
             <div className="flex items-center gap-2">
               <span

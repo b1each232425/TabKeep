@@ -14,6 +14,7 @@ desktop/.vite/
 desktop/.env*
 !desktop/.env.example
 desktop/*.local
+desktop/vite.config.js
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/tsconfig*.tsbuildinfo

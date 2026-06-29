@@ -9,6 +9,7 @@ const STICKY_NOTES_FILE: &str = "sticky-notes.json";
 const DEFAULT_COLOR: &str = "#fff7c2";
 const MAX_TITLE_CHARS: usize = 120;
 const MAX_CONTENT_CHARS: usize = 50_000;
+const HIDDEN_WINDOW_COORDINATE: i32 = -10_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -176,8 +177,8 @@ fn write_store(app: &AppHandle, store: &StickyNoteStore) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("创建便签数据目录失败: {err}"))?;
     }
-    let raw = serde_json::to_string_pretty(store)
-        .map_err(|err| format!("序列化便签数据失败: {err}"))?;
+    let raw =
+        serde_json::to_string_pretty(store).map_err(|err| format!("序列化便签数据失败: {err}"))?;
     fs::write(path, raw).map_err(|err| format!("写入便签数据失败: {err}"))
 }
 
@@ -216,11 +217,16 @@ fn normalize_color(value: Option<&str>) -> String {
 }
 
 fn normalize_bounds(bounds: Option<StickyWindowBounds>) -> Option<StickyWindowBounds> {
-    bounds.map(|value| StickyWindowBounds {
-        x: value.x,
-        y: value.y,
-        width: value.width.max(280),
-        height: value.height.max(260),
+    bounds.and_then(|value| {
+        if value.x <= HIDDEN_WINDOW_COORDINATE || value.y <= HIDDEN_WINDOW_COORDINATE {
+            return None;
+        }
+        Some(StickyWindowBounds {
+            x: value.x,
+            y: value.y,
+            width: value.width.max(280),
+            height: value.height.max(260),
+        })
     })
 }
 

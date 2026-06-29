@@ -54,7 +54,7 @@ export function Notice({
       ? "border-green-100 bg-green-50 text-green-700 before:bg-green-500"
       : tone === "warning"
         ? "border-amber-100 bg-amber-50 text-amber-800 before:bg-amber-500"
-        : "border-blue-100 bg-blue-50 text-blue-800 before:bg-blue-500"
+        : "border-teal-100 bg-teal-50 text-teal-800 before:bg-teal-500"
   return (
     <div className={`relative overflow-hidden rounded-md border px-3 py-2 pl-4 text-sm leading-6 before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-[''] ${className}`}>
       {children}
@@ -88,9 +88,9 @@ export function Checkbox({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label className="flex items-center gap-3 rounded-md border border-white/70 bg-[rgb(247_250_248)] px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-900/5 transition-colors hover:bg-[rgb(250_252_250)]">
+    <label className="flex items-center gap-3 rounded-md border border-white/70 bg-[rgb(250_252_250)] px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-900/5 transition-colors hover:border-emerald-100 hover:bg-emerald-50/35">
       <input
-        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-100"
+        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-100"
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}

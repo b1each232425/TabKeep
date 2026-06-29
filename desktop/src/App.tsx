@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react"
 import type { MouseEvent } from "react"
+import { listen } from "@tauri-apps/api/event"
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { LucideIcon } from "lucide-react"
 import {
@@ -19,9 +21,12 @@ import {
   backendRequest,
   checkBackendHealth,
   clearCachedApiToken,
+  createStickyNoteWindow,
   getCachedApiToken,
   getDesktopStatus,
+  listStickyNotes,
   loadBackendConfig,
+  openStickyNoteWindow,
   setCachedApiToken,
 } from "./api"
 import type {
@@ -126,6 +131,67 @@ function DesktopApp() {
 
   useEffect(() => {
     refreshAll()
+  }, [])
+
+  useEffect(() => {
+    if (importMetaEnv?.DEV !== true) return
+    let unlisten: (() => void) | undefined
+    let unlistenExisting: (() => void) | undefined
+    let disposed = false
+    listen("debug-sticky-create-window", async () => {
+      try {
+        const note = await createStickyNoteWindow()
+        const windows = await WebviewWindow.getAll()
+        await postStickyFrontendDebugResult({
+          ok: true,
+          noteId: note.id,
+          windowLabels: windows.map((window) => window.label),
+        })
+      } catch (err) {
+        await postStickyFrontendDebugResult({
+          ok: false,
+          error: errorMessage(err),
+        })
+      }
+    }).then((value) => {
+      if (disposed) {
+        value()
+      } else {
+        unlisten = value
+      }
+    })
+    listen("debug-sticky-open-existing-window", async () => {
+      try {
+        const notes = await listStickyNotes()
+        const note = notes[0] ?? (await createStickyNoteWindow())
+        const label = await openStickyNoteWindow(note.id)
+        const windows = await WebviewWindow.getAll()
+        await postStickyFrontendDebugResult({
+          ok: true,
+          phase: "open-existing",
+          noteId: note.id,
+          openedLabel: label,
+          windowLabels: windows.map((window) => window.label),
+        })
+      } catch (err) {
+        await postStickyFrontendDebugResult({
+          ok: false,
+          phase: "open-existing",
+          error: errorMessage(err),
+        })
+      }
+    }).then((value) => {
+      if (disposed) {
+        value()
+      } else {
+        unlistenExisting = value
+      }
+    })
+    return () => {
+      disposed = true
+      unlisten?.()
+      unlistenExisting?.()
+    }
   }, [])
 
   const navItems: { id: Section; label: string; icon: LucideIcon }[] = [
@@ -251,6 +317,18 @@ function DesktopApp() {
       </div>
     </div>
   )
+}
+
+async function postStickyFrontendDebugResult(payload: unknown) {
+  try {
+    await fetch("http://127.0.0.1:38472/debug/sticky/frontend-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  } catch {
+    // Debug-only reporting must not affect the desktop app.
+  }
 }
 
 function DesktopTitlebar() {

@@ -25,7 +25,7 @@ export function KnowledgeMapNode({ data }: NodeProps<GraphFlowNode>) {
     return (
       <button
         className={`relative flex min-h-12 min-w-28 max-w-36 items-center justify-center rounded-full border bg-white px-3 py-2 text-center text-xs font-semibold leading-4 shadow-sm transition-colors ${
-          data.selected ? "ring-4 ring-blue-100" : "hover:bg-slate-50"
+          data.selected ? "ring-4 ring-emerald-100" : "hover:bg-emerald-50/25"
         } ${data.relatedToSelected ? "" : "opacity-40"}`}
         style={{ borderColor: color, color }}
         title={node.label}
@@ -40,7 +40,7 @@ export function KnowledgeMapNode({ data }: NodeProps<GraphFlowNode>) {
   return (
     <div
       className={`relative w-60 rounded-md border bg-white p-3 shadow-sm transition-colors ${
-        data.center ? "shadow-md ring-4 ring-blue-100" : data.selected ? "ring-4 ring-blue-100" : "hover:bg-slate-50"
+        data.center ? "shadow-md ring-4 ring-emerald-100" : data.selected ? "ring-4 ring-emerald-100" : "hover:bg-emerald-50/25"
       } ${data.relatedToSelected ? "" : "opacity-40"}`}
       style={{ borderColor: data.center || data.selected ? color : "#e2e8f0" }}>
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-slate-300" />
@@ -77,7 +77,7 @@ export function GraphRelationList({
         {items.map((item) => (
           <button
             key={`${item.kind}:${item.node.id}`}
-            className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition-colors hover:border-blue-200 hover:bg-blue-50/40"
+            className="rounded-md border border-slate-200 px-3 py-2 text-left text-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50/40"
             onClick={() => onSelect(item.node)}>
             <div className="flex items-center gap-2">
               <span

@@ -39,7 +39,7 @@ export function KnowledgeSyncPanel({
       </div>
       <div className="tk-panel-body space-y-4">
         {syncing && (
-          <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          <div className="rounded-md border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-800">
             正在保存配置并同步可用来源，完成后这里会显示每个来源的耗时和错误。
           </div>
         )}

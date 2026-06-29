@@ -137,7 +137,7 @@ export function KnowledgeGraphSidebar({
                 <button
                   key={node.id}
                   className={`rounded-md border bg-white px-3 py-2 text-left transition-colors ${
-                    active ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-200"
+                    active ? "border-emerald-300 ring-2 ring-emerald-100" : "border-slate-200 hover:border-emerald-200"
                   }`}
                   onClick={() => onSelectNode(node)}>
                   <div className="mb-1 flex items-center gap-2">

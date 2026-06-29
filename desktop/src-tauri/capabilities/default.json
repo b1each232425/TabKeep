@@ -9,14 +9,17 @@
     "region-box",
     "region-panel",
     "selection-panel",
+    "sticky-note",
     "sticky-note-*"
   ],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top",
     "core:window:allow-close",
     "core:window:allow-is-maximized",
     "core:window:allow-maximize",
