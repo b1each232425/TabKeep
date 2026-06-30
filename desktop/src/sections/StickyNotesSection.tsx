@@ -1,12 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog"
 import { listen } from "@tauri-apps/api/event"
-import { Maximize2, Plus, Search, StickyNote as StickyNoteIcon, Trash2 } from "lucide-react"
+import {
+  Check,
+  FileDown,
+  FileUp,
+  FolderPlus,
+  Maximize2,
+  PanelTop,
+  Pencil,
+  Plus,
+  Search,
+  StickyNote as StickyNoteIcon,
+  Trash2,
+  X,
+} from "lucide-react"
 
 import {
+  createStickyNoteCategory,
   createStickyNoteWindow,
+  deleteStickyNoteCategory,
   deleteStickyNote,
+  exportStickyNoteMarkdown,
+  importStickyNoteMarkdown,
+  listStickyNoteCategories,
   listStickyNotes,
+  moveStickyNoteCategory,
   openStickyNoteWindow,
+  openStickyNoteTileWindow,
+  renameStickyNoteCategory,
 } from "../api"
 import { Button, Notice } from "../components/primitives"
 import type { StickyNote } from "../types"
@@ -22,14 +44,23 @@ export function StickyNotesSection() {
   const [notes, setNotes] = useState<StickyNote[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [query, setQuery] = useState("")
+  const [categories, setCategories] = useState<string[]>([])
+  const [activeCategory, setActiveCategory] = useState("all")
+  const [newCategory, setNewCategory] = useState("")
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState("")
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState("")
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const loaded = await listStickyNotes()
+      const [loaded, loadedCategories] = await Promise.all([
+        listStickyNotes(),
+        listStickyNoteCategories(),
+      ])
       setNotes(loaded)
+      setCategories(loadedCategories)
       setSelectedId((current) =>
         loaded.some((note) => note.id === current) ? current : loaded[0]?.id || "",
       )
@@ -68,11 +99,16 @@ export function StickyNotesSection() {
 
   const filteredNotes = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    if (!needle) return notes
-    return notes.filter((note) => searchableStickyText(note).includes(needle))
-  }, [notes, query])
+    return notes.filter((note) => {
+      const categoryMatched =
+        activeCategory === "all" ||
+        (activeCategory === "" ? !note.category : note.category === activeCategory)
+      if (!categoryMatched) return false
+      return !needle || searchableStickyText(note).includes(needle)
+    })
+  }, [activeCategory, notes, query])
 
-  const selectedNote = notes.find((note) => note.id === selectedId) ?? filteredNotes[0] ?? null
+  const selectedNote = filteredNotes.find((note) => note.id === selectedId) ?? filteredNotes[0] ?? null
 
   const createNote = async () => {
     try {
@@ -87,6 +123,63 @@ export function StickyNotesSection() {
 
   const updateNote = (updated: StickyNote) => {
     setNotes((current) => sortNotes(current.map((note) => (note.id === updated.id ? updated : note))))
+  }
+
+  const addCategory = async () => {
+    const name = newCategory.trim()
+    if (!name) return
+    try {
+      await createStickyNoteCategory(name)
+      setNewCategory("")
+      setActiveCategory(name)
+      setStatus("分类已创建")
+      await refresh()
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const startRenameCategory = (category: string) => {
+    setEditingCategory(category)
+    setEditingCategoryName(category)
+  }
+
+  const commitRenameCategory = async () => {
+    if (!editingCategory) return
+    const name = editingCategoryName.trim()
+    if (!name) return
+    try {
+      await renameStickyNoteCategory(editingCategory, name)
+      setActiveCategory((current) => (current === editingCategory ? name : current))
+      setEditingCategory(null)
+      setEditingCategoryName("")
+      setStatus("分类已重命名")
+      await refresh()
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const removeCategory = async (category: string) => {
+    try {
+      await deleteStickyNoteCategory(category)
+      setActiveCategory((current) => (current === category ? "all" : current))
+      setStatus("分类已删除，便签已移动到未分类")
+      await refresh()
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const moveSelectedCategory = async (note: StickyNote, category: string) => {
+    try {
+      const updated = await moveStickyNoteCategory(note.id, category)
+      updateNote(updated)
+      setStatus(category ? `已移动到「${category}」` : "已移动到未分类")
+      await refresh()
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
   }
 
   const deleteNote = async (note: StickyNote) => {
@@ -107,6 +200,52 @@ export function StickyNotesSection() {
     try {
       await openStickyNoteWindow(note.id)
       setStatus("已打开便签小窗")
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const openNoteTileWindow = async (note: StickyNote) => {
+    try {
+      await openStickyNoteTileWindow(note.id)
+      setStatus("已固定到桌面")
+      await refresh()
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const importMarkdown = async () => {
+    try {
+      const selected = await openDialog({
+        multiple: false,
+        filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+      })
+      const path = Array.isArray(selected) ? selected[0] : selected
+      if (!path) return
+
+      const category = activeCategory === "all" ? "" : activeCategory
+      const note = await importStickyNoteMarkdown(path, category)
+      setNotes((current) => sortNotes([note, ...current.filter((item) => item.id !== note.id)]))
+      setSelectedId(note.id)
+      setStatus("Markdown 已导入为便签")
+      await refresh()
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const exportMarkdown = async () => {
+    if (!selectedNote) return
+    try {
+      const path = await saveDialog({
+        defaultPath: `${suggestMarkdownFileName(selectedNote)}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      })
+      if (!path) return
+
+      await exportStickyNoteMarkdown(selectedNote.id, path)
+      setStatus("便签已导出为 Markdown")
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err))
     }
@@ -140,6 +279,69 @@ export function StickyNotesSection() {
               placeholder="搜索标题或正文"
             />
           </div>
+          <div className="tk-sticky-category-panel">
+            <div className="tk-sticky-category-actions">
+              <input
+                value={newCategory}
+                onChange={(event) => setNewCategory(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && addCategory()}
+                placeholder="新分类"
+              />
+              <button className="tk-icon-button" type="button" title="新建分类" onClick={addCategory}>
+                <FolderPlus className="h-4 w-4" />
+              </button>
+            </div>
+            <button
+              type="button"
+              className={`tk-sticky-category-item ${activeCategory === "all" ? "tk-sticky-category-item-active" : ""}`}
+              onClick={() => setActiveCategory("all")}>
+              全部
+              <span>{notes.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`tk-sticky-category-item ${activeCategory === "" ? "tk-sticky-category-item-active" : ""}`}
+              onClick={() => setActiveCategory("")}>
+              未分类
+              <span>{notes.filter((note) => !note.category).length}</span>
+            </button>
+            {categories.map((category) => (
+              <div key={category} className="tk-sticky-category-row">
+                {editingCategory === category ? (
+                  <>
+                    <input
+                      value={editingCategoryName}
+                      onChange={(event) => setEditingCategoryName(event.target.value)}
+                      onKeyDown={(event) => event.key === "Enter" && commitRenameCategory()}
+                      autoFocus
+                    />
+                    <button className="tk-icon-button" type="button" title="保存" onClick={commitRenameCategory}>
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button className="tk-icon-button" type="button" title="取消" onClick={() => setEditingCategory(null)}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={`tk-sticky-category-item ${activeCategory === category ? "tk-sticky-category-item-active" : ""}`}
+                      onClick={() => setActiveCategory(category)}>
+                      {category}
+                      <span>{notes.filter((note) => note.category === category).length}</span>
+                    </button>
+                    <button className="tk-icon-button" type="button" title="重命名" onClick={() => startRenameCategory(category)}>
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button className="tk-icon-button tk-icon-button-danger" type="button" title="删除分类" onClick={() => removeCategory(category)}>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
           <div className="tk-sticky-list">
             {filteredNotes.map((note) => (
               <button
@@ -155,9 +357,24 @@ export function StickyNotesSection() {
                   </span>
                   <span className="tk-sticky-list-preview">{stickyNotePreview(note.content)}</span>
                 </span>
+                {note.category && <span className="tk-sticky-list-category">{note.category}</span>}
                 <span className="tk-sticky-list-time">{formatStickyNoteTime(note.updatedAt)}</span>
               </button>
             ))}
+          </div>
+          <div className="tk-sticky-import-export">
+            <div>
+              <span>Markdown 文件</span>
+              <p>从本地文件导入便签，或把当前便签保存为 Markdown。</p>
+            </div>
+            <Button variant="secondary" onClick={importMarkdown}>
+              <FileUp className="h-4 w-4" />
+              选择并导入
+            </Button>
+            <Button variant="secondary" onClick={exportMarkdown} disabled={!selectedNote}>
+              <FileDown className="h-4 w-4" />
+              另存为
+            </Button>
           </div>
         </aside>
 
@@ -168,11 +385,26 @@ export function StickyNotesSection() {
                 <div>
                   <h2 className="tk-panel-title">{stickyNoteTitle(selectedNote)}</h2>
                   <p className="text-xs text-muted-foreground">本地保存，不依赖后端或知识库配置</p>
+                  <select
+                    className="tk-sticky-main-category-select"
+                    value={selectedNote.category}
+                    onChange={(event) => moveSelectedCategory(selectedNote, event.target.value)}>
+                    <option value="">未分类</option>
+                    {categories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="tk-sticky-main-actions">
                   <Button variant="secondary" onClick={() => openNoteWindow(selectedNote)}>
                     <Maximize2 className="h-4 w-4" />
                     小窗
+                  </Button>
+                  <Button variant="secondary" onClick={() => openNoteTileWindow(selectedNote)}>
+                    <PanelTop className="h-4 w-4" />
+                    固定
                   </Button>
                   <Button variant="ghost" onClick={() => deleteNote(selectedNote)}>
                     <Trash2 className="h-4 w-4" />
@@ -182,9 +414,11 @@ export function StickyNotesSection() {
               </div>
               <StickyNoteEditor
                 note={selectedNote}
+                categories={categories}
                 onSaved={updateNote}
                 onDelete={deleteNote}
                 onOpenWindow={openNoteWindow}
+                onOpenTile={openNoteTileWindow}
               />
             </>
           ) : (
@@ -208,4 +442,12 @@ function sortNotes(notes: StickyNote[]): StickyNote[] {
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1
     return right.updatedAt.localeCompare(left.updatedAt)
   })
+}
+
+function suggestMarkdownFileName(note: StickyNote): string {
+  const name = stickyNoteTitle(note)
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  return name || "sticky-note"
 }

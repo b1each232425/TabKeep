@@ -107,9 +107,15 @@ export interface StickyNote {
   content: string
   color: string
   pinned: boolean
+  category: string
+  preview: string
+  wordCount: number
+  viewMode: StickyNoteViewMode
+  tilePinned: boolean
   createdAt: string
   updatedAt: string
   windowBounds?: StickyWindowBounds | null
+  tileBounds?: StickyWindowBounds | null
 }
 
 export interface StickyNoteDraft {
@@ -118,7 +124,11 @@ export interface StickyNoteDraft {
   content: string
   color?: string
   pinned?: boolean
+  category?: string
+  viewMode?: StickyNoteViewMode
+  tilePinned?: boolean
   windowBounds?: StickyWindowBounds | null
+  tileBounds?: StickyWindowBounds | null
 }
 
 export interface StickyWindowBounds {
@@ -126,6 +136,13 @@ export interface StickyWindowBounds {
   y: number
   width: number
   height: number
+}
+
+export type StickyNoteViewMode = "edit" | "split" | "preview"
+
+export interface StickyShortcutConfig {
+  newNoteHotkey: string
+  toggleWindowHotkey: string
 }
 
 // -----------------------------------------------------------------------------

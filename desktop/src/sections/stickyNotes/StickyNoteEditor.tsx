@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ExternalLink, Loader2, Pin, Trash2 } from "lucide-react"
+import { Columns2, ExternalLink, Eye, Loader2, PanelTop, Pencil, Pin, PinOff, Trash2 } from "lucide-react"
 
 import { saveStickyNote } from "../../api/stickyNotes"
 import type { StickyNote, StickyNoteDraft } from "../../types"
@@ -8,23 +8,32 @@ import {
   formatStickyNoteTime,
   stickyNoteSignature,
 } from "./stickyNoteModel"
+import { StickyMarkdownPreview } from "./StickyMarkdownPreview"
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error"
 
 interface StickyNoteEditorProps {
   note: StickyNote
   compact?: boolean
+  tile?: boolean
+  categories?: string[]
   onSaved?: (note: StickyNote) => void
   onDelete?: (note: StickyNote) => void
   onOpenWindow?: (note: StickyNote) => void
+  onOpenTile?: (note: StickyNote) => void
+  onCloseTile?: () => void
 }
 
 export function StickyNoteEditor({
   note,
   compact = false,
+  tile = false,
+  categories = [],
   onSaved,
   onDelete,
   onOpenWindow,
+  onOpenTile,
+  onCloseTile,
 }: StickyNoteEditorProps) {
   const [draft, setDraft] = useState<StickyNoteDraft>(() => noteToDraft(note))
   const [saveState, setSaveState] = useState<SaveState>("idle")
@@ -39,7 +48,7 @@ export function StickyNoteEditor({
     lastSavedSignature.current = stickyNoteSignature(next)
     setSaveState("idle")
     setError("")
-  }, [note.id])
+  }, [note.id, note.updatedAt])
 
   const persist = useCallback(async (next: StickyNoteDraft) => {
     setSaveState("saving")
@@ -70,6 +79,16 @@ export function StickyNoteEditor({
     setDraft((current) => ({ ...current, ...partial }))
   }
 
+  const updateAndPersist = async (partial: Partial<StickyNoteDraft>) => {
+    const next = { ...latestDraft.current, ...partial }
+    setDraft(next)
+    await persist(next)
+  }
+
+  const rawViewMode = draft.viewMode ?? "edit"
+  const viewMode = tile && rawViewMode === "split" ? "edit" : rawViewMode
+  const categoryOptions = Array.from(new Set(categories.filter(Boolean)))
+
   const saveLabel =
     saveState === "saving"
       ? "保存中"
@@ -83,10 +102,10 @@ export function StickyNoteEditor({
 
   return (
     <article
-      className={`tk-sticky-editor ${compact ? "tk-sticky-editor-compact" : ""}`}
+      className={`tk-sticky-editor ${compact ? "tk-sticky-editor-compact" : ""} ${tile ? "tk-sticky-editor-tile" : ""}`}
       style={{ ["--sticky-note-color" as string]: draft.color }}>
       <div className="tk-sticky-editor-toolbar">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="tk-sticky-toolbar-meta">
           <span className={`tk-badge ${draft.pinned ? "tk-badge-success" : ""}`}>
             {draft.pinned ? "已置顶" : "便签"}
           </span>
@@ -94,8 +113,21 @@ export function StickyNoteEditor({
             {saveState === "saving" && <Loader2 className="h-3 w-3 animate-spin" />}
             {saveLabel}
           </span>
+          {!tile && (
+            <select
+              className="tk-sticky-category-select"
+              value={draft.category ?? ""}
+              onChange={(event) => updateDraft({ category: event.target.value })}>
+              <option value="">未分类</option>
+              {categoryOptions.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="tk-sticky-toolbar-actions">
           {STICKY_NOTE_COLORS.map((color) => (
             <button
               key={color}
@@ -106,6 +138,29 @@ export function StickyNoteEditor({
               onClick={() => updateDraft({ color })}
             />
           ))}
+          <button
+            className={`tk-icon-button ${viewMode === "edit" ? "tk-icon-button-active" : ""}`}
+            type="button"
+            title="编辑"
+            onClick={() => updateDraft({ viewMode: "edit" })}>
+            <Pencil className="h-4 w-4" />
+          </button>
+          {!tile && (
+            <button
+              className={`tk-icon-button ${viewMode === "split" ? "tk-icon-button-active" : ""}`}
+              type="button"
+              title="分屏"
+              onClick={() => updateDraft({ viewMode: "split" })}>
+              <Columns2 className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            className={`tk-icon-button ${viewMode === "preview" ? "tk-icon-button-active" : ""}`}
+            type="button"
+            title="预览"
+            onClick={() => updateDraft({ viewMode: "preview" })}>
+            <Eye className="h-4 w-4" />
+          </button>
           <button
             className="tk-icon-button"
             type="button"
@@ -120,6 +175,26 @@ export function StickyNoteEditor({
               title="打开小窗"
               onClick={() => onOpenWindow(note)}>
               <ExternalLink className="h-4 w-4" />
+            </button>
+          )}
+          {onOpenTile && !tile && (
+            <button
+              className="tk-icon-button"
+              type="button"
+              title="固定到桌面"
+              onClick={() => onOpenTile(note)}>
+              <PanelTop className="h-4 w-4" />
+            </button>
+          )}
+          {tile && onCloseTile && (
+            <button
+              className="tk-icon-button"
+              type="button"
+              title="取消固定"
+              onClick={() => {
+                void updateAndPersist({ tilePinned: false }).then(onCloseTile)
+              }}>
+              <PinOff className="h-4 w-4" />
             </button>
           )}
           {onDelete && (
@@ -140,12 +215,19 @@ export function StickyNoteEditor({
         onChange={(event) => updateDraft({ title: event.target.value })}
         placeholder="便签标题"
       />
-      <textarea
-        className="tk-sticky-content-input"
-        value={draft.content}
-        onChange={(event) => updateDraft({ content: event.target.value })}
-        placeholder="写点临时想法、待办、代码片段或备忘..."
-      />
+      <div className={`tk-sticky-editor-content tk-sticky-view-${viewMode}`}>
+        {(viewMode === "edit" || viewMode === "split") && (
+          <textarea
+            className="tk-sticky-content-input"
+            value={draft.content}
+            onChange={(event) => updateDraft({ content: event.target.value })}
+            placeholder="写点临时想法、待办、代码片段或备忘..."
+          />
+        )}
+        {(viewMode === "preview" || viewMode === "split") && (
+          <StickyMarkdownPreview content={draft.content} />
+        )}
+      </div>
       <div className="tk-sticky-editor-footer">
         <span>{draft.content.trim().length} 字符</span>
         <span>更新于 {formatStickyNoteTime(note.updatedAt)}</span>
@@ -162,5 +244,8 @@ function noteToDraft(note: StickyNote): StickyNoteDraft {
     content: note.content,
     color: note.color,
     pinned: note.pinned,
+    category: note.category,
+    viewMode: note.viewMode,
+    tilePinned: note.tilePinned,
   }
 }

@@ -19,7 +19,16 @@ export function stickyNotePreview(content: string): string {
 }
 
 export function stickyNoteSignature(draft: StickyNoteDraft): string {
-  return [draft.id ?? "", draft.title, draft.content, draft.color ?? "", draft.pinned ? "1" : "0"].join("\u0000")
+  return [
+    draft.id ?? "",
+    draft.title,
+    draft.content,
+    draft.color ?? "",
+    draft.pinned ? "1" : "0",
+    draft.category ?? "",
+    draft.viewMode ?? "edit",
+    draft.tilePinned ? "1" : "0",
+  ].join("\u0000")
 }
 
 export function formatStickyNoteTime(value: string): string {
@@ -29,5 +38,5 @@ export function formatStickyNoteTime(value: string): string {
 }
 
 export function searchableStickyText(note: StickyNote): string {
-  return [note.title, note.content, note.updatedAt].join(" ").toLowerCase()
+  return [note.title, note.content, note.category, note.preview, note.updatedAt].join(" ").toLowerCase()
 }

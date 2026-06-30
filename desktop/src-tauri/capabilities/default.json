@@ -31,6 +31,8 @@
     "core:window:allow-outer-position",
     "core:window:allow-outer-size",
     "core:window:allow-set-ignore-cursor-events",
-    "core:event:default"
+    "core:event:default",
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

@@ -1,8 +1,21 @@
 import { useEffect, useState } from "react"
-import { Pencil, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react"
+import { Keyboard, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react"
 
-import { DEFAULT_MODEL_CONFIG, backendRequest, syncConfigToBackend } from "../api"
-import type { ClassifyResponse, ModelConfig, NoteAdapterConfig, TabCategory, TabData } from "../types"
+import {
+  DEFAULT_MODEL_CONFIG,
+  backendRequest,
+  getStickyNoteShortcutConfig,
+  setStickyNoteShortcutConfig,
+  syncConfigToBackend,
+} from "../api"
+import type {
+  ClassifyResponse,
+  ModelConfig,
+  NoteAdapterConfig,
+  StickyShortcutConfig,
+  TabCategory,
+  TabData,
+} from "../types"
 import { Button, Notice } from "../components/primitives"
 import { errorMessage } from "../lib/errors"
 import { NotesConfigPanel } from "./NotesSection"
@@ -46,7 +59,93 @@ export function SettingsSection({
       </div>
 
       <NotesConfigPanel config={noteAdapter} setConfig={setNoteAdapter} />
+      <StickyShortcutConfigPanel />
     </div>
+  )
+}
+
+function StickyShortcutConfigPanel() {
+  const [draft, setDraft] = useState<StickyShortcutConfig>({
+    newNoteHotkey: "Ctrl+Alt+N",
+    toggleWindowHotkey: "Ctrl+Alt+M",
+  })
+  const [status, setStatus] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const config = await getStickyNoteShortcutConfig()
+        if (!cancelled) setDraft(config)
+      } catch (err) {
+        if (!cancelled) setStatus(errorMessage(err))
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    setStatus(null)
+    try {
+      const saved = await setStickyNoteShortcutConfig(draft)
+      setDraft(saved)
+      setStatus("便签快捷键已保存，重启桌面端后生效")
+    } catch (err) {
+      setStatus(errorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="tk-panel">
+      <div className="tk-panel-header">
+        <div>
+          <h2 className="tk-panel-title">便签快捷键</h2>
+          <p className="text-xs text-muted-foreground">新建便签与切换最近便签小窗，Windows 下重启后生效</p>
+        </div>
+        <Keyboard className="h-5 w-5 text-slate-400" />
+      </div>
+      <div className="tk-panel-body space-y-4">
+        {status && <Notice>{status}</Notice>}
+        <div className="tk-form-grid">
+          <label className="tk-field">
+            <span className="tk-label">新建便签</span>
+            <input
+              className="tk-input"
+              value={draft.newNoteHotkey}
+              onChange={(event) => setDraft({ ...draft, newNoteHotkey: event.target.value })}
+              placeholder="Ctrl+Alt+N"
+            />
+          </label>
+          <label className="tk-field">
+            <span className="tk-label">显示 / 隐藏最近小窗</span>
+            <input
+              className="tk-input"
+              value={draft.toggleWindowHotkey}
+              onChange={(event) => setDraft({ ...draft, toggleWindowHotkey: event.target.value })}
+              placeholder="Ctrl+Alt+M"
+            />
+          </label>
+        </div>
+      </div>
+      <div className="tk-command-bar">
+        <Button onClick={save} disabled={saving}>
+          {saving ? "保存中..." : "保存便签快捷键"}
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() => setDraft({ newNoteHotkey: "Ctrl+Alt+N", toggleWindowHotkey: "Ctrl+Alt+M" })}>
+          <RotateCcw className="h-4 w-4" />
+          重置
+        </Button>
+      </div>
+    </section>
   )
 }
 

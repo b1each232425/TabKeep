@@ -34,12 +34,16 @@ const DESKTOP_PORT: u16 = 38472;
 const MAX_TRANSLATE_CHARS: usize = 12_000;
 const STICKY_NOTE_WINDOW_DEFAULT_WIDTH: u32 = 380;
 const STICKY_NOTE_WINDOW_DEFAULT_HEIGHT: u32 = 460;
+const STICKY_NOTE_TILE_DEFAULT_WIDTH: u32 = 320;
+const STICKY_NOTE_TILE_DEFAULT_HEIGHT: u32 = 360;
 const STICKY_NOTE_WINDOW_MIN_WIDTH: u32 = 280;
 const STICKY_NOTE_WINDOW_MIN_HEIGHT: u32 = 260;
 const STICKY_NOTE_WINDOW_HIDDEN_COORDINATE: i32 = -10_000;
 const STICKY_NOTE_WINDOW_LABEL_PREFIX: &str = "sticky-note-";
+const STICKY_NOTE_TILE_LABEL_PREFIX: &str = "sticky-note-tile-";
 const STICKY_NOTES_CHANGED_EVENT: &str = "sticky-notes-changed";
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
+const STICKY_NOTE_TOGGLE_HOTKEY_ID: i32 = 0x544f;
 const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
 
 #[derive(Clone)]
@@ -240,6 +244,7 @@ pub fn run() {
                 let _ = win.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
@@ -309,6 +314,16 @@ pub fn run() {
             sticky_notes_delete,
             open_sticky_note_window,
             create_sticky_note_window,
+            sticky_notes_import_markdown,
+            sticky_notes_export_markdown,
+            sticky_notes_list_categories,
+            sticky_notes_create_category,
+            sticky_notes_rename_category,
+            sticky_notes_delete_category,
+            sticky_notes_move_category,
+            open_sticky_note_tile_window,
+            get_sticky_note_shortcut_config,
+            set_sticky_note_shortcut_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TabKeep desktop");
@@ -377,6 +392,89 @@ async fn create_sticky_note_window(
     app: tauri::AppHandle,
 ) -> Result<sticky_notes::StickyNote, String> {
     create_and_open_sticky_note(&app)
+}
+
+#[tauri::command]
+fn sticky_notes_import_markdown(
+    app: tauri::AppHandle,
+    path: Option<String>,
+    category: Option<String>,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::import_markdown_file(&app, path, category)?;
+    emit_sticky_notes_changed(&app, "create", Some(&note.id));
+    Ok(note)
+}
+
+#[tauri::command]
+fn sticky_notes_export_markdown(
+    app: tauri::AppHandle,
+    id: String,
+    path: Option<String>,
+) -> Result<(), String> {
+    sticky_notes::export_markdown_file(&app, &id, path)
+}
+
+#[tauri::command]
+fn sticky_notes_list_categories(app: tauri::AppHandle) -> Result<Vec<String>, String> {
+    sticky_notes::list_categories(&app)
+}
+
+#[tauri::command]
+fn sticky_notes_create_category(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    sticky_notes::create_category(&app, &name)?;
+    emit_sticky_notes_changed(&app, "category", None);
+    Ok(())
+}
+
+#[tauri::command]
+fn sticky_notes_rename_category(
+    app: tauri::AppHandle,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    sticky_notes::rename_category(&app, &old_name, &new_name)?;
+    emit_sticky_notes_changed(&app, "category", None);
+    Ok(())
+}
+
+#[tauri::command]
+fn sticky_notes_delete_category(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    sticky_notes::delete_category(&app, &name)?;
+    emit_sticky_notes_changed(&app, "category", None);
+    Ok(())
+}
+
+#[tauri::command]
+fn sticky_notes_move_category(
+    app: tauri::AppHandle,
+    id: String,
+    category: String,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::move_note_to_category(&app, &id, &category)?;
+    emit_sticky_notes_changed(&app, "save", Some(&note.id));
+    Ok(note)
+}
+
+#[tauri::command]
+async fn open_sticky_note_tile_window(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    let note = sticky_notes::set_tile_pinned(&app, &id, true)?;
+    emit_sticky_notes_changed(&app, "save", Some(&note.id));
+    open_sticky_note_tile_window_for_note(&app, &note)
+}
+
+#[tauri::command]
+fn get_sticky_note_shortcut_config(
+    app: tauri::AppHandle,
+) -> Result<sticky_notes::StickyShortcutConfig, String> {
+    sticky_notes::get_shortcut_config(&app)
+}
+
+#[tauri::command]
+fn set_sticky_note_shortcut_config(
+    app: tauri::AppHandle,
+    config: sticky_notes::StickyShortcutConfig,
+) -> Result<sticky_notes::StickyShortcutConfig, String> {
+    sticky_notes::save_shortcut_config(&app, config)
 }
 
 fn create_and_open_sticky_note(app: &tauri::AppHandle) -> Result<sticky_notes::StickyNote, String> {
@@ -475,6 +573,68 @@ fn open_sticky_note_window_for_note(
     Ok(label)
 }
 
+fn open_sticky_note_tile_window_for_note(
+    app: &tauri::AppHandle,
+    note: &sticky_notes::StickyNote,
+) -> Result<String, String> {
+    let label = format!("{STICKY_NOTE_TILE_LABEL_PREFIX}{}", note.id);
+    if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_focus();
+        return Ok(label);
+    }
+
+    let width = note
+        .tile_bounds
+        .as_ref()
+        .map(|bounds| bounds.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH))
+        .unwrap_or(STICKY_NOTE_TILE_DEFAULT_WIDTH);
+    let height = note
+        .tile_bounds
+        .as_ref()
+        .map(|bounds| bounds.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT))
+        .unwrap_or(STICKY_NOTE_TILE_DEFAULT_HEIGHT);
+    let restored_bounds = note
+        .tile_bounds
+        .as_ref()
+        .and_then(|bounds| valid_sticky_window_bounds(app, bounds));
+
+    let mut builder = WebviewWindowBuilder::new(
+        app,
+        &label,
+        WebviewUrl::App(format!("index.html?view=sticky-note&noteId={}&mode=tile", note.id).into()),
+    )
+    .title(format!("TabKeep 磁贴 - {}", sticky_note_window_title(note)))
+    .inner_size(width as f64, height as f64)
+    .min_inner_size(
+        STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
+        STICKY_NOTE_WINDOW_MIN_HEIGHT as f64,
+    )
+    .decorations(true)
+    .transparent(false)
+    .background_color(Color(255, 247, 194, 255))
+    .always_on_top(true)
+    .focused(true)
+    .resizable(true)
+    .visible(true);
+
+    if let Some(bounds) = &restored_bounds {
+        builder = builder.position(bounds.x as f64, bounds.y as f64);
+    } else {
+        builder = builder.center();
+    }
+
+    let window = builder
+        .build()
+        .map_err(|err| format!("打开便签磁贴失败: {err}"))?;
+    let _ = window.show();
+    let _ = window.set_focus();
+
+    attach_sticky_note_tile_bounds_sync(app, note.id.clone(), &window);
+    Ok(label)
+}
+
 fn close_legacy_sticky_note_windows(app: &tauri::AppHandle, note_id: &str) {
     let legacy_label = "sticky-note";
     let instance_prefix = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}--");
@@ -497,10 +657,12 @@ fn close_legacy_sticky_note_windows(app: &tauri::AppHandle, note_id: &str) {
 
 fn close_sticky_note_windows_for_note(app: &tauri::AppHandle, note_id: &str) {
     let label = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}");
+    let tile_label = format!("{STICKY_NOTE_TILE_LABEL_PREFIX}{note_id}");
     let instance_prefix = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}--");
     let broken_instance_prefix = format!("sticky-note__{note_id}__");
     for (window_label, window) in app.webview_windows() {
         if window_label == label
+            || window_label == tile_label
             || window_label.starts_with(&instance_prefix)
             || window_label.starts_with(&broken_instance_prefix)
         {
@@ -539,6 +701,28 @@ fn attach_sticky_note_bounds_sync(
     });
 }
 
+fn attach_sticky_note_tile_bounds_sync(
+    app: &tauri::AppHandle,
+    note_id: String,
+    window: &tauri::WebviewWindow,
+) {
+    let app = app.clone();
+    let window_for_event = window.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Moved(_)
+                | tauri::WindowEvent::Resized(_)
+                | tauri::WindowEvent::CloseRequested { .. }
+        ) {
+            if let Err(err) = save_sticky_note_tile_window_bounds(&app, &note_id, &window_for_event)
+            {
+                log::warn!("保存便签磁贴位置失败: {err}");
+            }
+        }
+    });
+}
+
 fn save_sticky_note_window_bounds(
     app: &tauri::AppHandle,
     note_id: &str,
@@ -565,6 +749,35 @@ fn save_sticky_note_window_bounds(
         return Ok(());
     };
     sticky_notes::save_window_bounds(app, note_id, bounds)?;
+    Ok(())
+}
+
+fn save_sticky_note_tile_window_bounds(
+    app: &tauri::AppHandle,
+    note_id: &str,
+    window: &tauri::WebviewWindow,
+) -> Result<(), String> {
+    if window.is_minimized().unwrap_or(false) {
+        return Ok(());
+    }
+    let position = window
+        .outer_position()
+        .map_err(|err| format!("读取便签磁贴位置失败: {err}"))?;
+    let size = window
+        .inner_size()
+        .map_err(|err| format!("读取便签磁贴尺寸失败: {err}"))?;
+    let Some(bounds) = valid_sticky_window_bounds(
+        app,
+        &sticky_notes::StickyWindowBounds {
+            x: position.x,
+            y: position.y,
+            width: size.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH),
+            height: size.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT),
+        },
+    ) else {
+        return Ok(());
+    };
+    sticky_notes::save_tile_bounds(app, note_id, bounds)?;
     Ok(())
 }
 
@@ -702,19 +915,40 @@ fn setup_sticky_note_hotkey(app: &tauri::App) {
 #[cfg(windows)]
 fn sticky_note_hotkey_thread(app: tauri::AppHandle) {
     use windows::Win32::UI::{
-        Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_CONTROL},
+        Input::KeyboardAndMouse::RegisterHotKey,
         WindowsAndMessaging::{PeekMessageW, MSG, PM_REMOVE, WM_HOTKEY},
     };
 
+    let config = sticky_notes::get_shortcut_config(&app).unwrap_or_default();
+    let new_note_hotkey = parse_windows_hotkey(&config.new_note_hotkey);
+    let toggle_hotkey = parse_windows_hotkey(&config.toggle_window_hotkey);
     let mut warmup = MSG::default();
     let _ = unsafe { PeekMessageW(&mut warmup, None, 0, 0, PM_REMOVE) };
-    let result =
-        unsafe { RegisterHotKey(None, STICKY_NOTE_HOTKEY_ID, MOD_CONTROL | MOD_ALT, 0x4E) };
-    if let Err(err) = result {
-        log::warn!("注册便签全局快捷键 Ctrl+Alt+N 失败: {err}");
-        return;
+
+    if let Some((modifiers, key)) = new_note_hotkey {
+        if let Err(err) = unsafe { RegisterHotKey(None, STICKY_NOTE_HOTKEY_ID, modifiers, key) } {
+            log::warn!("注册便签全局快捷键 {} 失败: {err}", config.new_note_hotkey);
+        } else {
+            log::info!("便签全局快捷键已注册: {}", config.new_note_hotkey);
+        }
+    } else {
+        log::warn!("便签新建快捷键配置无效: {}", config.new_note_hotkey);
     }
-    log::info!("便签全局快捷键已注册: Ctrl+Alt+N");
+
+    if let Some((modifiers, key)) = toggle_hotkey {
+        if let Err(err) =
+            unsafe { RegisterHotKey(None, STICKY_NOTE_TOGGLE_HOTKEY_ID, modifiers, key) }
+        {
+            log::warn!(
+                "注册便签小窗切换快捷键 {} 失败: {err}",
+                config.toggle_window_hotkey
+            );
+        } else {
+            log::info!("便签小窗切换快捷键已注册: {}", config.toggle_window_hotkey);
+        }
+    } else {
+        log::warn!("便签小窗切换快捷键配置无效: {}", config.toggle_window_hotkey);
+    }
 
     loop {
         let mut message = MSG::default();
@@ -724,9 +958,92 @@ fn sticky_note_hotkey_thread(app: tauri::AppHandle) {
                     log::warn!("快捷键新建便签失败: {err}");
                 }
             }
+            if message.message == WM_HOTKEY
+                && message.wParam.0 as i32 == STICKY_NOTE_TOGGLE_HOTKEY_ID
+            {
+                if let Err(err) = toggle_recent_sticky_note_window(&app) {
+                    log::warn!("快捷键切换便签小窗失败: {err}");
+                }
+            }
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
+}
+
+#[cfg(windows)]
+fn parse_windows_hotkey(
+    value: &str,
+) -> Option<(
+    windows::Win32::UI::Input::KeyboardAndMouse::HOT_KEY_MODIFIERS,
+    u32,
+)> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
+    };
+
+    let mut modifiers = HOT_KEY_MODIFIERS(0);
+    let mut key: Option<u32> = None;
+    for part in value.split('+').map(|part| part.trim()).filter(|part| !part.is_empty()) {
+        match part.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => modifiers |= MOD_CONTROL,
+            "alt" | "option" => modifiers |= MOD_ALT,
+            "shift" => modifiers |= MOD_SHIFT,
+            "win" | "meta" | "command" | "cmd" => modifiers |= MOD_WIN,
+            other => {
+                if key.is_some() {
+                    return None;
+                }
+                key = hotkey_key_code(other);
+            }
+        }
+    }
+    key.map(|key| (modifiers, key))
+}
+
+#[cfg(windows)]
+fn hotkey_key_code(value: &str) -> Option<u32> {
+    if value.len() == 1 {
+        let ch = value.chars().next()?.to_ascii_uppercase();
+        if ch.is_ascii_alphanumeric() {
+            return Some(ch as u32);
+        }
+    }
+    if let Some(rest) = value.strip_prefix('f') {
+        let number: u32 = rest.parse().ok()?;
+        if (1..=24).contains(&number) {
+            return Some(0x70 + number - 1);
+        }
+    }
+    match value {
+        "space" => Some(0x20),
+        "tab" => Some(0x09),
+        "enter" => Some(0x0D),
+        "escape" | "esc" => Some(0x1B),
+        _ => None,
+    }
+}
+
+fn toggle_recent_sticky_note_window(app: &tauri::AppHandle) -> Result<(), String> {
+    let mut hid_visible = false;
+    for (label, window) in app.webview_windows() {
+        if label.starts_with(STICKY_NOTE_WINDOW_LABEL_PREFIX)
+            && window.is_visible().unwrap_or(false)
+        {
+            let _ = window.hide();
+            hid_visible = true;
+        }
+    }
+    if hid_visible {
+        return Ok(());
+    }
+
+    let notes = sticky_notes::list_notes(app)?;
+    if let Some(note) = notes.first() {
+        open_sticky_note_window_for_note(app, note)?;
+    } else {
+        create_and_open_sticky_note(app)?;
+    }
+    Ok(())
 }
 
 #[cfg(not(windows))]
