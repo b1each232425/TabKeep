@@ -297,7 +297,12 @@
   }
 
   .tk-sticky-create-button {
-    @apply h-9 px-4 shadow-[0_10px_22px_rgb(20_184_166/0.18)];
+    @apply h-9 px-4 text-white shadow-[0_10px_22px_rgb(20_184_166/0.2)];
+    background: linear-gradient(135deg, hsl(var(--tk-mint)), hsl(var(--tk-green)));
+  }
+
+  .tk-sticky-create-button:hover:not(:disabled) {
+    background: linear-gradient(135deg, hsl(var(--tk-green)), rgb(15 118 110));
   }
 
   /* Status cards */
@@ -860,21 +865,28 @@
 
   /* Sticky notes */
   .tk-sticky-workspace {
-    @apply grid min-h-[620px] gap-5;
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    @apply grid min-h-[660px] gap-4;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  }
+
+  .tk-sticky-hero {
+    @apply rounded-lg border border-white/75 bg-[rgb(249_252_250/0.82)] px-4 py-3 shadow-[0_12px_28px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5;
   }
 
   .tk-sticky-sidebar-panel,
   .tk-sticky-main-panel {
-    @apply min-h-0 rounded-lg border border-white/80 bg-[rgb(250_252_250/0.92)] shadow-sm ring-1 ring-slate-900/5;
+    @apply min-h-0 rounded-lg border border-white/80 bg-[rgb(250_252_250/0.92)] shadow-[0_14px_38px_rgb(15_23_42/0.055)] ring-1 ring-slate-900/5;
   }
 
   .tk-sticky-sidebar-panel {
-    @apply flex flex-col overflow-hidden p-3;
+    @apply flex flex-col overflow-hidden p-3.5;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(246 251 248 / 0.92)),
+      radial-gradient(circle at top left, rgb(20 184 166 / 0.1), transparent 32%);
   }
 
   .tk-sticky-search {
-    @apply flex h-10 shrink-0 items-center gap-2 rounded-md border border-slate-200/80 bg-white/90 px-3;
+    @apply flex h-11 shrink-0 items-center gap-2 rounded-md border border-slate-200/80 bg-white/95 px-3 shadow-inner shadow-slate-100/70;
   }
 
   .tk-sticky-search input {
@@ -885,16 +897,43 @@
     @apply mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1;
   }
 
+  .tk-sticky-category-panel {
+    @apply mt-3 space-y-1.5 rounded-md border border-emerald-100/80 bg-emerald-50/35 p-2.5;
+  }
+
+  .tk-sticky-category-actions,
+  .tk-sticky-category-row {
+    @apply flex items-center gap-1.5;
+  }
+
+  .tk-sticky-category-actions input,
+  .tk-sticky-category-row input {
+    @apply min-w-0 flex-1 rounded-md border border-white/80 bg-white/90 px-2.5 py-1.5 text-xs text-slate-800 shadow-sm outline-none focus:border-emerald-200 focus:ring-2 focus:ring-emerald-100;
+  }
+
+  .tk-sticky-category-item {
+    @apply flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-slate-600 transition hover:bg-white/80 hover:text-emerald-700;
+  }
+
+  .tk-sticky-category-item span {
+    @apply rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-slate-500 ring-1 ring-slate-200/60;
+  }
+
+  .tk-sticky-category-item-active {
+    @apply bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-100;
+  }
+
   .tk-sticky-list-item {
-    @apply flex w-full items-start gap-3 rounded-md border border-transparent bg-white px-3 py-3 text-left shadow-sm transition hover:border-emerald-100 hover:bg-emerald-50/35;
+    @apply relative flex w-full items-start gap-3 overflow-hidden rounded-md border border-transparent bg-white/90 px-3 py-3 text-left shadow-sm transition hover:border-emerald-100 hover:bg-white;
   }
 
   .tk-sticky-list-item-active {
-    @apply border-emerald-200 bg-emerald-50/70 ring-1 ring-emerald-100;
+    @apply border-emerald-200 bg-white ring-1 ring-emerald-100;
+    box-shadow: 0 12px 26px rgb(16 185 129 / 0.09);
   }
 
   .tk-sticky-list-color {
-    @apply mt-1 h-3 w-3 shrink-0 rounded-full border border-slate-200 shadow-sm;
+    @apply mt-1 h-3.5 w-3.5 shrink-0 rounded-full border border-white shadow-sm ring-1 ring-slate-200/70;
   }
 
   .tk-sticky-list-title {
@@ -909,16 +948,82 @@
     @apply shrink-0 text-[11px] text-slate-400;
   }
 
+  .tk-sticky-list-category {
+    @apply max-w-16 shrink-0 truncate rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 ring-1 ring-teal-100;
+  }
+
+  .tk-sticky-import-export {
+    @apply mt-3 grid grid-cols-2 gap-2 rounded-md border border-slate-200/70 bg-white/70 p-2.5;
+  }
+
+  .tk-sticky-import-export .tk-secondary-button {
+    @apply h-8 w-full px-2.5 text-xs;
+  }
+
+  .tk-sticky-import-export > div {
+    @apply col-span-2;
+  }
+
+  .tk-sticky-import-export span {
+    @apply text-[11px] font-medium text-slate-500;
+  }
+
+  .tk-sticky-import-export p {
+    @apply mt-1 text-[11px] leading-5 text-slate-400;
+  }
+
   .tk-sticky-main-panel {
     @apply flex min-h-0 flex-col overflow-hidden p-5;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(248 251 249 / 0.95)),
+      radial-gradient(circle at 90% 0%, rgb(245 158 11 / 0.08), transparent 30%);
   }
 
   .tk-sticky-main-header {
-    @apply mb-4 flex shrink-0 items-start justify-between gap-4 border-b border-border pb-4;
+    @apply mb-4 flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-slate-200/70 pb-4;
+  }
+
+  .tk-sticky-main-header > div:first-child {
+    @apply min-w-0 flex-1;
+  }
+
+  .tk-sticky-main-actions {
+    @apply flex shrink-0 flex-wrap items-center justify-end gap-2;
+  }
+
+  .tk-sticky-main-actions .tk-secondary-button,
+  .tk-sticky-main-actions .tk-ghost-button {
+    @apply min-w-fit whitespace-nowrap px-3;
+  }
+
+  .tk-sticky-main-header .tk-secondary-button {
+    @apply border-white/80 bg-white/80 text-slate-700 shadow-sm hover:border-emerald-200 hover:bg-emerald-50/80 hover:text-emerald-800;
+  }
+
+  .tk-sticky-main-header .tk-ghost-button {
+    @apply text-slate-500 hover:bg-rose-50/80 hover:text-rose-700;
+  }
+
+  .tk-sticky-main-category-select,
+  .tk-sticky-category-select {
+    @apply h-7 rounded-md border border-slate-200 bg-white/70 px-2 text-xs font-medium text-slate-600 outline-none focus:border-emerald-200 focus:ring-2 focus:ring-emerald-100;
+  }
+
+  .tk-sticky-main-category-select {
+    @apply mt-2;
   }
 
   .tk-sticky-editor {
-    @apply flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-yellow-100/70 bg-[var(--sticky-note-color)] p-4 shadow-sm ring-1 ring-white/60;
+    @apply relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-white/80 p-4 shadow-[0_18px_42px_rgb(15_23_42/0.08)] ring-1 ring-slate-900/5;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--sticky-note-color) 82%, white), color-mix(in srgb, var(--sticky-note-color) 64%, white)),
+      var(--sticky-note-color);
+  }
+
+  .tk-sticky-editor::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 h-1 opacity-80;
+    background: linear-gradient(90deg, hsl(var(--tk-green)), hsl(var(--tk-mint)), hsl(var(--tk-amber)));
   }
 
   .tk-sticky-editor-compact {
@@ -945,16 +1050,33 @@
     @apply h-10 bg-white/50 text-base focus:bg-white/75;
   }
 
-  .tk-sticky-editor-compact .tk-sticky-content-input {
+  .tk-sticky-editor-compact .tk-sticky-content-input,
+  .tk-sticky-editor-compact .tk-sticky-markdown-preview {
     @apply bg-white/50 focus:bg-white/75;
   }
 
+  .tk-sticky-editor-tile {
+    @apply rounded-none border-0 shadow-none ring-0;
+  }
+
+  .tk-sticky-editor-tile .tk-sticky-editor-toolbar {
+    @apply mb-2;
+  }
+
   .tk-sticky-editor-toolbar {
-    @apply mb-3 flex shrink-0 items-center justify-between gap-3;
+    @apply mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2 rounded-md border border-white/70 bg-white/45 p-2 shadow-sm backdrop-blur;
+  }
+
+  .tk-sticky-toolbar-meta {
+    @apply flex min-w-0 flex-1 flex-wrap items-center gap-2;
+  }
+
+  .tk-sticky-toolbar-actions {
+    @apply flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5;
   }
 
   .tk-sticky-color-swatch {
-    @apply h-6 w-6 rounded-md border border-slate-200 shadow-sm ring-offset-2 transition hover:scale-105;
+    @apply h-6 w-6 shrink-0 rounded-md border border-white shadow-sm ring-offset-2 transition hover:scale-105;
   }
 
   .tk-sticky-color-active {
@@ -969,16 +1091,87 @@
     @apply hover:border-rose-200 hover:text-rose-700;
   }
 
+  .tk-icon-button-active {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100;
+  }
+
   .tk-sticky-title-input {
-    @apply mb-3 h-11 shrink-0 rounded-md border border-black/5 bg-white/45 px-3 text-lg font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-emerald-200 focus:bg-white/70 focus:ring-2 focus:ring-emerald-100;
+    @apply mb-3 h-12 shrink-0 rounded-md border border-white/70 bg-white/70 px-3.5 text-lg font-semibold text-slate-950 shadow-inner shadow-white/60 outline-none transition placeholder:text-slate-400 focus:border-emerald-200 focus:bg-white/90 focus:ring-2 focus:ring-emerald-100;
   }
 
   .tk-sticky-content-input {
-    @apply min-h-0 flex-1 resize-none rounded-md border border-black/5 bg-white/45 p-3 text-sm leading-7 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-200 focus:bg-white/70 focus:ring-2 focus:ring-emerald-100;
+    @apply min-h-0 flex-1 resize-none rounded-md border border-white/70 bg-white/70 p-4 text-sm leading-7 text-slate-800 shadow-inner shadow-white/60 outline-none transition placeholder:text-slate-400 focus:border-emerald-200 focus:bg-white/90 focus:ring-2 focus:ring-emerald-100;
+  }
+
+  .tk-sticky-editor-content {
+    @apply grid min-h-0 flex-1 gap-3;
+  }
+
+  .tk-sticky-view-edit,
+  .tk-sticky-view-preview {
+    @apply grid-cols-1;
+  }
+
+  .tk-sticky-view-split {
+    @apply grid-cols-2;
+  }
+
+  .tk-sticky-markdown-preview {
+    @apply min-h-0 overflow-auto rounded-md border border-white/70 bg-white/70 p-4 text-sm leading-7 text-slate-800 shadow-inner shadow-white/60;
+  }
+
+  .tk-sticky-markdown-preview h1 {
+    @apply mb-3 text-xl font-bold leading-snug text-slate-950;
+  }
+
+  .tk-sticky-markdown-preview h2 {
+    @apply mb-2 text-lg font-semibold leading-snug text-slate-900;
+  }
+
+  .tk-sticky-markdown-preview h3,
+  .tk-sticky-markdown-preview h4 {
+    @apply mb-2 text-base font-semibold leading-snug text-slate-900;
+  }
+
+  .tk-sticky-markdown-preview p {
+    @apply mb-3;
+  }
+
+  .tk-sticky-markdown-preview ul,
+  .tk-sticky-markdown-preview ol {
+    @apply mb-3 space-y-1 pl-5;
+  }
+
+  .tk-sticky-markdown-preview ul {
+    @apply list-disc;
+  }
+
+  .tk-sticky-markdown-preview ol {
+    @apply list-decimal;
+  }
+
+  .tk-sticky-markdown-preview blockquote {
+    @apply mb-3 border-l-4 border-emerald-200 bg-emerald-50/60 py-1 pl-3 text-slate-600;
+  }
+
+  .tk-sticky-markdown-preview pre {
+    @apply mb-3 overflow-auto rounded-md bg-slate-900 p-3 text-xs leading-6 text-slate-100;
+  }
+
+  .tk-sticky-markdown-preview code {
+    @apply rounded bg-slate-100 px-1 py-0.5 text-[0.92em] text-slate-800;
+  }
+
+  .tk-sticky-markdown-preview pre code {
+    @apply bg-transparent p-0 text-slate-100;
+  }
+
+  .tk-sticky-markdown-empty {
+    @apply flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed border-black/10 bg-white/35 text-sm text-slate-400;
   }
 
   .tk-sticky-editor-footer {
-    @apply mt-3 flex shrink-0 items-center justify-between gap-3 text-xs text-slate-500;
+    @apply mt-3 flex shrink-0 items-center justify-between gap-3 text-xs font-medium text-slate-500;
   }
 
   .tk-sticky-error {
