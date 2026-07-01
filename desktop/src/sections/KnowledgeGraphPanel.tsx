@@ -35,7 +35,7 @@ export function KnowledgeGraphPanel({
   onStatus: (message: string) => void
   noteAdapter?: NoteAdapterConfig
 }) {
-  const [graphLayer, setGraphLayer] = useState<KnowledgeGraphLayer>("documents")
+  const [graphLayer, setGraphLayer] = useState<KnowledgeGraphLayer>("all")
   const [graphQuery, setGraphQuery] = useState("")
   const [graphSourceType, setGraphSourceType] = useState("")
   const [graphResult, setGraphResult] = useState<KnowledgeGraphResponse | null>(null)

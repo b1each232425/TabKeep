@@ -387,6 +387,45 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(node.label == "Runtime Map" for node in concepts.nodes))
         self.assertTrue(any(node.label == "Beta Note" for node in documents.nodes))
 
+    async def test_graph_builds_markdown_links_and_title_mentions(self) -> None:
+        config = KnowledgeConfig()
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Alpha Link Hub",
+            path=str(self.tmp_dir / "notes" / "Alpha Link Hub.md"),
+            content=(
+                "# Alpha Link Hub\n\n"
+                "参考 [Beta Path](notes/Beta%20Path.md)，也会在正文里提到 Gamma Mention。"
+            ),
+        )
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Beta Path",
+            path=str(self.tmp_dir / "notes" / "Beta Path.md"),
+            content="# Beta Path\n\n被 Markdown 相对路径链接。",
+        )
+        await indexing.index_document(
+            config=config,
+            source_type="markdown",
+            title="Gamma Mention",
+            path=str(self.tmp_dir / "notes" / "Gamma Mention.md"),
+            content="# Gamma Mention\n\n被标题提及链接。",
+        )
+
+        graph.rebuild_graph()
+        documents = graph.get_graph(layer="documents", query="Alpha Link Hub", limit=100)
+        node_labels = {node.id: node.label for node in documents.nodes}
+        linked_labels = {
+            node_labels[edge.target]
+            for edge in documents.edges
+            if edge.kind == "links_to_document" and node_labels.get(edge.source) == "Alpha Link Hub"
+        }
+
+        self.assertIn("Beta Path", linked_labels)
+        self.assertIn("Gamma Mention", linked_labels)
+
     async def test_graph_rebuild_adds_semantic_similarity_edges(self) -> None:
         config = KnowledgeConfig()
         alpha, _ = await indexing.index_document(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Iterable
+from urllib.parse import unquote
 
 from schemas.knowledge import (
     KnowledgeGraphEdge,
@@ -24,6 +25,8 @@ SEMANTIC_SIMILARITY_THRESHOLD = 0.72
 SEMANTIC_TOP_K_PER_DOCUMENT = 3
 SEMANTIC_EDGE_LIMIT = 800
 SEMANTIC_VECTOR_RECORD_LIMIT = 10000
+TITLE_MENTION_MIN_LENGTH = 4
+DOCUMENT_REFERENCE_LIMIT = 120
 
 
 @dataclass
@@ -53,6 +56,20 @@ class GraphEdgeDraft:
     weight: float = 1
 
 
+@dataclass(frozen=True)
+class GraphMentionCandidate:
+    document_id: str
+    label: str
+
+
+@dataclass(frozen=True)
+class GraphDocumentReference:
+    label: str
+    target_doc_id: str | None
+    weight: float
+    allow_concept: bool = False
+
+
 def index_document_graph(
     *,
     document_id: str,
@@ -75,8 +92,12 @@ def index_document_graph(
         content=content,
     )
     with db.connection() as conn:
-        lookup = _load_document_lookup(conn)
-        nodes, edges = _build_document_graph(document, lookup)
+        documents = _load_documents(conn)
+        if not any(item.id == document.id for item in documents):
+            documents.append(document)
+        lookup = _build_document_lookup(documents)
+        mention_candidates = _build_document_mention_candidates(documents)
+        nodes, edges = _build_document_graph(document, lookup, mention_candidates)
         _replace_document_edges(conn, document_id, nodes, edges)
 
 
@@ -85,13 +106,14 @@ def rebuild_graph() -> KnowledgeGraphRebuildResponse:
     with db.connection() as conn:
         documents = _load_documents(conn)
         lookup = _build_document_lookup(documents)
+        mention_candidates = _build_document_mention_candidates(documents)
         conn.execute("DELETE FROM graph_edges")
         conn.execute("DELETE FROM graph_nodes")
 
         node_count = 0
         edge_count = 0
         for document in documents:
-            nodes, edges = _build_document_graph(document, lookup)
+            nodes, edges = _build_document_graph(document, lookup, mention_candidates)
             node_count += _upsert_nodes(conn, nodes)
             edge_count += _upsert_edges(conn, edges)
 
@@ -188,6 +210,7 @@ def get_graph(
 def _build_document_graph(
     document: GraphDocument,
     lookup: dict[str, str],
+    mention_candidates: list[GraphMentionCandidate],
 ) -> tuple[list[GraphNodeDraft], list[GraphEdgeDraft]]:
     doc_node_id = _document_node_id(document.id)
     source_node_id = _source_node_id(document.source_type)
@@ -207,13 +230,21 @@ def _build_document_graph(
         nodes.append(GraphNodeDraft(heading_node_id, "heading", heading))
         edges.append(GraphEdgeDraft(doc_node_id, heading_node_id, "has_heading", 1.4))
 
-    for link in _extract_wikilinks(document.content):
-        target_doc_id = lookup.get(_normalize_lookup_key(link))
-        if target_doc_id and target_doc_id != document.id:
-            edges.append(GraphEdgeDraft(doc_node_id, _document_node_id(target_doc_id), "links_to_document", 2.5))
+    for reference in _extract_document_references(document, lookup, mention_candidates):
+        if reference.target_doc_id and reference.target_doc_id != document.id:
+            edges.append(
+                GraphEdgeDraft(
+                    doc_node_id,
+                    _document_node_id(reference.target_doc_id),
+                    "links_to_document",
+                    reference.weight,
+                )
+            )
             continue
-        concept_node_id = _concept_node_id(link)
-        nodes.append(GraphNodeDraft(concept_node_id, "concept", link))
+        if not reference.allow_concept:
+            continue
+        concept_node_id = _concept_node_id(reference.label)
+        nodes.append(GraphNodeDraft(concept_node_id, "concept", reference.label))
         edges.append(GraphEdgeDraft(doc_node_id, concept_node_id, "mentions_concept", 1.8))
 
     return _dedupe_nodes(nodes), _dedupe_edges(edges)
@@ -419,6 +450,10 @@ def _build_document_lookup(documents: Iterable[GraphDocument]) -> dict[str, str]
             candidates.extend([path, filename, filename.rsplit(".", 1)[0]])
             if "/" in path:
                 candidates.append(path.rsplit(".", 1)[0])
+                parts = [part for part in path.split("/") if part]
+                for start in range(max(0, len(parts) - 4), len(parts)):
+                    suffix = "/".join(parts[start:])
+                    candidates.extend([suffix, suffix.rsplit(".", 1)[0]])
         for candidate in candidates:
             key = _normalize_lookup_key(candidate)
             if key:
@@ -609,6 +644,30 @@ def _extract_headings(content: str) -> list[str]:
     return _unique_clean(headings, limit=40)
 
 
+def _extract_document_references(
+    document: GraphDocument,
+    lookup: dict[str, str],
+    mention_candidates: list[GraphMentionCandidate],
+) -> list[GraphDocumentReference]:
+    references: list[GraphDocumentReference] = []
+
+    for link in _extract_wikilinks(document.content):
+        target_doc_id = lookup.get(_normalize_lookup_key(link))
+        references.append(GraphDocumentReference(link, target_doc_id, 2.5, allow_concept=True))
+
+    for label, target in _extract_markdown_note_links(document.content):
+        target_doc_id = lookup.get(_normalize_lookup_key(target)) or lookup.get(_normalize_lookup_key(label))
+        if target_doc_id:
+            references.append(GraphDocumentReference(label or target, target_doc_id, 2.3))
+        elif _looks_like_local_markdown_target(target):
+            references.append(GraphDocumentReference(label or target, None, 1.8, allow_concept=True))
+
+    for candidate in _extract_title_mentions(document, mention_candidates):
+        references.append(GraphDocumentReference(candidate.label, candidate.document_id, 1.2))
+
+    return _dedupe_references(references)
+
+
 def _extract_wikilinks(content: str) -> list[str]:
     links: list[str] = []
     for match in re.finditer(r"\[\[([^\]]+)\]\]", content):
@@ -616,6 +675,115 @@ def _extract_wikilinks(content: str) -> list[str]:
         if target:
             links.append(_clean_label(target))
     return _unique_clean(links, limit=80)
+
+
+def _extract_markdown_note_links(content: str) -> list[tuple[str, str]]:
+    links: list[tuple[str, str]] = []
+    for match in re.finditer(r"(?<!!)\[([^\]\n]+)\]\(([^)\n]+)\)", content):
+        label = _clean_label(match.group(1))
+        target = _clean_markdown_link_target(match.group(2))
+        if not target or _is_external_markdown_target(target):
+            continue
+        links.append((label, target))
+    return _unique_clean_pairs(links, limit=DOCUMENT_REFERENCE_LIMIT)
+
+
+def _extract_title_mentions(
+    document: GraphDocument,
+    candidates: list[GraphMentionCandidate],
+) -> list[GraphMentionCandidate]:
+    mentions: list[GraphMentionCandidate] = []
+    for candidate in candidates:
+        if candidate.document_id == document.id:
+            continue
+        if _label_mentioned_in_content(candidate.label, document.content):
+            mentions.append(candidate)
+    return mentions[:DOCUMENT_REFERENCE_LIMIT]
+
+
+def _build_document_mention_candidates(documents: Iterable[GraphDocument]) -> list[GraphMentionCandidate]:
+    candidates: dict[tuple[str, str], GraphMentionCandidate] = {}
+    for document in documents:
+        for label in _document_reference_labels(document):
+            cleaned = _clean_label(label)
+            if not _valid_title_mention_label(cleaned):
+                continue
+            key = _normalize_lookup_key(cleaned)
+            if not key:
+                continue
+            candidates[(document.id, key)] = GraphMentionCandidate(document.id, cleaned)
+    return sorted(candidates.values(), key=lambda item: (-len(item.label), item.label.lower(), item.document_id))
+
+
+def _document_reference_labels(document: GraphDocument) -> list[str]:
+    labels = [document.title]
+    if document.path:
+        path = _normalize_path_text(document.path)
+        filename = path.rsplit("/", 1)[-1]
+        stem = filename.rsplit(".", 1)[0]
+        labels.extend([filename, stem])
+    return labels
+
+
+def _clean_markdown_link_target(raw_target: str) -> str:
+    target = raw_target.strip()
+    if target.startswith("<") and ">" in target:
+        target = target[1 : target.index(">")]
+    else:
+        target = re.sub(r"\s+['\"].*['\"]\s*$", "", target).strip()
+    target = unquote(target).split("#", 1)[0].split("?", 1)[0].strip()
+    return _clean_label(target)
+
+
+def _is_external_markdown_target(target: str) -> bool:
+    normalized = target.strip().lower()
+    return normalized.startswith(("http://", "https://", "mailto:", "tel:", "#"))
+
+
+def _looks_like_local_markdown_target(target: str) -> bool:
+    normalized = target.replace("\\", "/").strip().lower()
+    return normalized.endswith(".md") or "/" in normalized
+
+
+def _valid_title_mention_label(label: str) -> bool:
+    if len(label) < TITLE_MENTION_MIN_LENGTH:
+        return False
+    if re.fullmatch(r"[\W_]+", label):
+        return False
+    return True
+
+
+def _label_mentioned_in_content(label: str, content: str) -> bool:
+    if re.search(r"[\u4e00-\u9fff]", label):
+        return label.lower() in content.lower()
+    pattern = rf"(?<![A-Za-z0-9_]){re.escape(label)}(?![A-Za-z0-9_])"
+    return re.search(pattern, content, flags=re.IGNORECASE) is not None
+
+
+def _dedupe_references(references: Iterable[GraphDocumentReference]) -> list[GraphDocumentReference]:
+    result: dict[tuple[str | None, str], GraphDocumentReference] = {}
+    for reference in references:
+        key = (reference.target_doc_id, _normalize_lookup_key(reference.label))
+        existing = result.get(key)
+        if existing is None or reference.weight > existing.weight:
+            result[key] = reference
+    return list(result.values())[:DOCUMENT_REFERENCE_LIMIT]
+
+
+def _unique_clean_pairs(values: Iterable[tuple[str, str]], limit: int) -> list[tuple[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    result: list[tuple[str, str]] = []
+    for label, target in values:
+        cleaned_label = _clean_label(label)
+        cleaned_target = _clean_label(target)
+        key = (cleaned_label.lower(), _normalize_lookup_key(cleaned_target))
+        if not cleaned_target or key in seen:
+            continue
+        seen.add(key)
+        result.append((cleaned_label[:120], cleaned_target[:240]))
+        if len(result) >= limit:
+            break
+    return result
 
 
 def _frontmatter(content: str) -> str:
@@ -659,10 +827,14 @@ def _clean_label(value: str) -> str:
 
 
 def _normalize_lookup_key(value: str) -> str:
-    normalized = value.replace("\\", "/").strip().lower()
+    normalized = _normalize_path_text(value).lower()
     normalized = normalized[:-3] if normalized.endswith(".md") else normalized
     normalized = normalized.strip("/")
     return re.sub(r"\s+", " ", normalized)
+
+
+def _normalize_path_text(value: str) -> str:
+    return unquote(value).replace("\\", "/").strip()
 
 
 def _document_node_id(document_id: str) -> str:
