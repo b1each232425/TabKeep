@@ -57,7 +57,7 @@
     width: 100vw;
     height: 100vh;
     overflow: hidden;
-    background: #fff7c2;
+    background: #ffd6e8;
   }
 
   button,
@@ -101,11 +101,11 @@
   }
 
   .tk-window-title {
-    @apply flex min-w-0 items-center gap-1 text-xs font-medium tracking-normal text-slate-200;
+    @apply flex min-w-0 items-center gap-1.5 text-xs font-medium tracking-normal text-slate-100;
   }
 
   .tk-window-title span:last-child {
-    @apply text-slate-400;
+    @apply rounded bg-white/[0.07] px-1.5 py-0.5 text-[11px] text-slate-300;
   }
 
   .tk-window-controls {
@@ -253,7 +253,7 @@
 
   /* Page headers */
   .tk-topbar {
-    @apply relative mb-4 flex items-start justify-between gap-4 overflow-hidden rounded-lg border border-white/75 bg-[rgb(248_251_249/0.9)] px-4 py-3 shadow-[0_12px_30px_rgb(15_23_42/0.055)] ring-1 ring-slate-900/5 backdrop-blur;
+    @apply relative mb-4 flex items-start justify-between gap-4 overflow-hidden rounded-lg border border-slate-200/70 bg-white/90 px-4 py-3 shadow-[0_10px_24px_rgb(15_23_42/0.045)] ring-1 ring-white/80 backdrop-blur;
   }
 
   .tk-topbar::before {
@@ -264,8 +264,8 @@
 
   .tk-topbar::after {
     content: "";
-    @apply pointer-events-none absolute inset-0 opacity-35;
-    background: linear-gradient(115deg, transparent 0 62%, rgb(255 255 255 / 0.34) 62% 63%, transparent 63% 100%);
+    @apply pointer-events-none absolute inset-0 opacity-20;
+    background: linear-gradient(115deg, transparent 0 68%, rgb(16 185 129 / 0.12) 68% 68.5%, transparent 68.5% 100%);
   }
 
   .tk-topbar > * {
@@ -277,7 +277,7 @@
   }
 
   .tk-page-subtitle {
-    @apply mt-0.5 text-sm text-slate-600;
+    @apply mt-0.5 text-sm text-slate-500;
   }
 
   .tk-page-hero {
@@ -394,7 +394,7 @@
   .tk-input,
   .tk-select,
   .tk-textarea {
-    @apply w-full rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm text-slate-900 shadow-inner shadow-white/50 outline-none transition-colors placeholder:text-slate-400;
+    @apply min-w-0 w-full rounded-md border border-slate-200/80 bg-white/90 px-3 text-sm text-slate-900 shadow-inner shadow-white/50 outline-none transition-colors placeholder:text-slate-400;
   }
 
   .tk-input,
@@ -417,7 +417,7 @@
   }
 
   .tk-primary-button {
-    @apply inline-flex h-8 items-center justify-center gap-2 rounded-md bg-[hsl(var(--tk-mint))] px-3 text-sm font-medium text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-8 min-w-fit shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md bg-[hsl(var(--tk-mint))] px-3 text-sm font-medium leading-none text-white shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .tk-primary-button:hover:not(:disabled) {
@@ -425,7 +425,7 @@
   }
 
   .tk-secondary-button {
-    @apply inline-flex h-8 items-center justify-center gap-2 rounded-md border border-slate-200/80 bg-[rgb(250_252_250)] px-3 text-sm font-medium text-slate-700 shadow-sm ring-1 ring-white/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-8 min-w-fit shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-slate-200/80 bg-[rgb(250_252_250)] px-3 text-sm font-medium leading-none text-slate-700 shadow-sm ring-1 ring-white/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .tk-secondary-button:hover:not(:disabled) {
@@ -433,11 +433,17 @@
   }
 
   .tk-ghost-button {
-    @apply inline-flex h-8 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-slate-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex h-8 min-w-fit shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 text-sm font-medium leading-none text-slate-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .tk-ghost-button:hover:not(:disabled) {
     @apply bg-emerald-50/60 text-slate-950;
+  }
+
+  .tk-primary-button svg,
+  .tk-secondary-button svg,
+  .tk-ghost-button svg {
+    @apply shrink-0;
   }
 
   .tk-icon-button {
@@ -865,28 +871,31 @@
 
   /* Sticky notes */
   .tk-sticky-workspace {
-    @apply grid min-h-[660px] gap-4;
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    @apply grid min-h-[680px] gap-5;
+    grid-template-columns: minmax(292px, 340px) minmax(0, 1fr);
   }
 
   .tk-sticky-hero {
-    @apply rounded-lg border border-white/75 bg-[rgb(249_252_250/0.82)] px-4 py-3 shadow-[0_12px_28px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5;
+    @apply rounded-lg border border-rose-100/80 bg-[rgb(255_255_255/0.95)] px-4 py-3 ring-1 ring-white/80;
+    box-shadow:
+      0 18px 44px rgb(190 24 93 / 0.08),
+      0 0 34px rgb(251 207 232 / 0.34);
   }
 
   .tk-sticky-sidebar-panel,
   .tk-sticky-main-panel {
-    @apply min-h-0 rounded-lg border border-white/80 bg-[rgb(250_252_250/0.92)] shadow-[0_14px_38px_rgb(15_23_42/0.055)] ring-1 ring-slate-900/5;
+    @apply min-h-0 rounded-lg border border-slate-200/80 bg-[rgb(255_255_255/0.96)] shadow-[0_18px_44px_rgb(15_23_42/0.065)] ring-1 ring-slate-900/5;
   }
 
   .tk-sticky-sidebar-panel {
     @apply flex flex-col overflow-hidden p-3.5;
     background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.86), rgb(246 251 248 / 0.92)),
-      radial-gradient(circle at top left, rgb(20 184 166 / 0.1), transparent 32%);
+      radial-gradient(circle at 0% 0%, rgb(251 207 232 / 0.22), transparent 34%),
+      rgb(255 255 255 / 0.97);
   }
 
   .tk-sticky-search {
-    @apply flex h-11 shrink-0 items-center gap-2 rounded-md border border-slate-200/80 bg-white/95 px-3 shadow-inner shadow-slate-100/70;
+    @apply flex h-11 shrink-0 items-center gap-2 rounded-md border border-rose-100 bg-white px-3 shadow-sm;
   }
 
   .tk-sticky-search input {
@@ -894,25 +903,35 @@
   }
 
   .tk-sticky-list {
-    @apply mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1;
+    @apply mt-3 min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1;
   }
 
   .tk-sticky-category-panel {
-    @apply mt-3 space-y-1.5 rounded-md border border-emerald-100/80 bg-emerald-50/35 p-2.5;
+    @apply mt-3 space-y-2 rounded-md border border-rose-100/80 bg-rose-50/35 p-2.5;
   }
 
-  .tk-sticky-category-actions,
-  .tk-sticky-category-row {
+  .tk-sticky-category-actions {
     @apply flex items-center gap-1.5;
   }
 
-  .tk-sticky-category-actions input,
+  .tk-sticky-category-flow {
+    @apply flex flex-wrap items-center gap-1.5;
+  }
+
+  .tk-sticky-category-row {
+    @apply inline-flex max-w-full items-center gap-1.5;
+  }
+
+  .tk-sticky-category-actions input {
+    @apply min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100;
+  }
+
   .tk-sticky-category-row input {
-    @apply min-w-0 flex-1 rounded-md border border-white/80 bg-white/90 px-2.5 py-1.5 text-xs text-slate-800 shadow-sm outline-none focus:border-emerald-200 focus:ring-2 focus:ring-emerald-100;
+    @apply h-7 w-28 flex-none rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100;
   }
 
   .tk-sticky-category-item {
-    @apply flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-slate-600 transition hover:bg-white/80 hover:text-emerald-700;
+    @apply inline-flex max-w-full shrink-0 items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-slate-600 transition hover:bg-white hover:text-rose-700;
   }
 
   .tk-sticky-category-item span {
@@ -920,20 +939,39 @@
   }
 
   .tk-sticky-category-item-active {
-    @apply bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-100;
+    @apply bg-rose-500 text-white shadow-sm ring-1 ring-rose-300;
+    box-shadow: 0 0 16px rgb(244 114 182 / 0.28);
+  }
+
+  .tk-sticky-category-item-active span {
+    @apply bg-white/15 text-white ring-white/20;
   }
 
   .tk-sticky-list-item {
-    @apply relative flex w-full items-start gap-3 overflow-hidden rounded-md border border-transparent bg-white/90 px-3 py-3 text-left shadow-sm transition hover:border-emerald-100 hover:bg-white;
+    @apply relative flex w-full items-start gap-3 overflow-hidden rounded-md border border-rose-100/80 bg-white px-3 py-3.5 text-left shadow-sm transition hover:border-rose-200 hover:bg-rose-50/30;
+  }
+
+  .tk-sticky-list-item::before {
+    content: "";
+    @apply absolute inset-y-3 left-0 w-1 rounded-r-full opacity-80;
+    background: currentColor;
+    color: rgb(244 114 182 / 0.65);
   }
 
   .tk-sticky-list-item-active {
-    @apply border-emerald-200 bg-white ring-1 ring-emerald-100;
-    box-shadow: 0 12px 26px rgb(16 185 129 / 0.09);
+    @apply border-rose-300 bg-white ring-1 ring-rose-200;
+    box-shadow:
+      0 14px 28px rgb(244 114 182 / 0.16),
+      0 0 22px rgb(251 207 232 / 0.32);
+  }
+
+  .tk-sticky-list-item-active::before {
+    color: rgb(219 39 119);
   }
 
   .tk-sticky-list-color {
-    @apply mt-1 h-3.5 w-3.5 shrink-0 rounded-full border border-white shadow-sm ring-1 ring-slate-200/70;
+    @apply mt-1 h-3.5 w-3.5 shrink-0 rounded-full border border-white shadow-sm ring-1 ring-rose-200;
+    background: radial-gradient(circle at 35% 30%, #fff 0 16%, #ffd6e8 28%, #f472b6 100%);
   }
 
   .tk-sticky-list-title {
@@ -949,11 +987,11 @@
   }
 
   .tk-sticky-list-category {
-    @apply max-w-16 shrink-0 truncate rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 ring-1 ring-teal-100;
+    @apply max-w-16 shrink-0 truncate rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-slate-200;
   }
 
   .tk-sticky-import-export {
-    @apply mt-3 grid grid-cols-2 gap-2 rounded-md border border-slate-200/70 bg-white/70 p-2.5;
+    @apply mt-3 grid grid-cols-2 gap-2 rounded-md border border-slate-200 bg-white p-2.5;
   }
 
   .tk-sticky-import-export .tk-secondary-button {
@@ -975,8 +1013,8 @@
   .tk-sticky-main-panel {
     @apply flex min-h-0 flex-col overflow-hidden p-5;
     background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.92), rgb(248 251 249 / 0.95)),
-      radial-gradient(circle at 90% 0%, rgb(245 158 11 / 0.08), transparent 30%);
+      radial-gradient(circle at 100% 0%, rgb(251 207 232 / 0.22), transparent 28%),
+      rgb(255 255 255 / 0.96);
   }
 
   .tk-sticky-main-header {
@@ -997,7 +1035,7 @@
   }
 
   .tk-sticky-main-header .tk-secondary-button {
-    @apply border-white/80 bg-white/80 text-slate-700 shadow-sm hover:border-emerald-200 hover:bg-emerald-50/80 hover:text-emerald-800;
+    @apply border-rose-100 bg-white text-slate-700 shadow-sm hover:border-rose-200 hover:bg-rose-50/70 hover:text-rose-700;
   }
 
   .tk-sticky-main-header .tk-ghost-button {
@@ -1006,7 +1044,7 @@
 
   .tk-sticky-main-category-select,
   .tk-sticky-category-select {
-    @apply h-7 rounded-md border border-slate-200 bg-white/70 px-2 text-xs font-medium text-slate-600 outline-none focus:border-emerald-200 focus:ring-2 focus:ring-emerald-100;
+    @apply h-7 rounded-md border border-rose-100 bg-white px-2 text-xs font-medium text-slate-600 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100;
   }
 
   .tk-sticky-main-category-select {
@@ -1014,57 +1052,259 @@
   }
 
   .tk-sticky-editor {
-    @apply relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-white/80 p-4 shadow-[0_18px_42px_rgb(15_23_42/0.08)] ring-1 ring-slate-900/5;
+    @apply relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rose-300/70 p-4 ring-1 ring-white/70;
     background:
-      linear-gradient(180deg, color-mix(in srgb, var(--sticky-note-color) 82%, white), color-mix(in srgb, var(--sticky-note-color) 64%, white)),
+      radial-gradient(circle at 88% 5%, rgb(255 255 255 / 0.9), transparent 20%),
+      radial-gradient(circle at 10% 104%, rgb(244 114 182 / 0.18), transparent 31%),
+      radial-gradient(circle at 48% -14%, rgb(251 207 232 / 0.36), transparent 35%),
+      linear-gradient(150deg, rgb(255 250 253 / 0.86), rgb(255 223 239 / 0.76) 54%, rgb(253 186 216 / 0.64)),
+      repeating-linear-gradient(180deg, transparent 0 31px, rgb(190 24 93 / 0.055) 31px 32px),
       var(--sticky-note-color);
+    box-shadow:
+      0 24px 58px rgb(190 24 93 / 0.15),
+      0 0 0 1px rgb(244 114 182 / 0.16),
+      0 0 28px rgb(244 114 182 / 0.22),
+      0 0 50px rgb(251 207 232 / 0.38),
+      inset 0 1px 0 rgb(255 255 255 / 0.76),
+      inset 0 0 52px rgb(255 255 255 / 0.2);
+    background-size:
+      auto,
+      auto,
+      auto,
+      auto,
+      auto;
   }
 
   .tk-sticky-editor::before {
     content: "";
-    @apply pointer-events-none absolute inset-x-0 top-0 h-1 opacity-80;
-    background: linear-gradient(90deg, hsl(var(--tk-green)), hsl(var(--tk-mint)), hsl(var(--tk-amber)));
+    @apply pointer-events-none absolute inset-0 z-20 rounded-lg;
+    padding: 2px;
+    background:
+      linear-gradient(
+        120deg,
+        transparent 0 14%,
+        rgb(255 255 255 / 0.96) 24%,
+        rgb(251 113 133 / 0.9) 34%,
+        rgb(244 114 182 / 0.94) 43%,
+        rgb(255 255 255 / 0.86) 52%,
+        transparent 66% 100%
+      );
+    background-position: -180% 0;
+    background-size: 190% 100%;
+    box-shadow:
+      0 0 26px rgb(244 114 182 / 0.34),
+      0 0 42px rgb(251 207 232 / 0.32),
+      inset 0 0 0 1px rgb(255 255 255 / 0.62);
+    animation: tk-sticky-border-flow 4.2s linear infinite;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+
+  .tk-sticky-editor[data-save-state="dirty"]::before {
+    background-size: 155% 100%;
+    box-shadow:
+      0 0 30px rgb(251 113 133 / 0.4),
+      0 0 46px rgb(251 207 232 / 0.34),
+      inset 0 0 0 1px rgb(255 255 255 / 0.7);
+  }
+
+  .tk-sticky-editor[data-save-state="saving"]::before {
+    animation-duration: 2.2s;
+    box-shadow:
+      0 0 34px rgb(244 114 182 / 0.46),
+      0 0 58px rgb(251 207 232 / 0.42),
+      inset 0 0 0 1px rgb(255 255 255 / 0.72);
+  }
+
+  .tk-sticky-editor[data-save-state="error"] {
+    border-color: rgb(244 63 94 / 0.72);
+    box-shadow:
+      0 24px 58px rgb(190 24 93 / 0.18),
+      0 0 0 1px rgb(244 63 94 / 0.22),
+      0 0 36px rgb(244 63 94 / 0.2),
+      inset 0 1px 0 rgb(255 255 255 / 0.76);
+  }
+
+  .tk-sticky-editor::after {
+    content: "";
+    @apply pointer-events-none absolute z-0;
+    inset: 0;
+    opacity: 0.44;
+    background-image:
+      url("./assets/sticky/sticky-feather.png"),
+      url("./assets/sticky/sticky-feather.png"),
+      url("./assets/sticky/sticky-feather.png");
+    background-position:
+      right -20px top 22px,
+      left -24px bottom 30px,
+      right 18px bottom 28px;
+    background-repeat: no-repeat;
+    background-size:
+      min(30%, 210px) auto,
+      96px auto,
+      58px auto;
+    filter: drop-shadow(0 0 12px rgb(244 114 182 / 0.18));
   }
 
   .tk-sticky-editor-compact {
-    @apply h-screen rounded-none border-0 bg-[var(--sticky-note-color)] p-3 shadow-none ring-0;
+    @apply h-screen rounded-none border-0 bg-[var(--sticky-note-color)] p-2.5 shadow-none ring-0;
+    background:
+      radial-gradient(circle at 88% 6%, rgb(255 255 255 / 0.86), transparent 22%),
+      radial-gradient(circle at 15% 102%, rgb(244 114 182 / 0.14), transparent 34%),
+      linear-gradient(155deg, rgb(255 249 252 / 0.82), rgb(255 221 237 / 0.7) 56%, rgb(253 186 216 / 0.58)),
+      repeating-linear-gradient(180deg, transparent 0 31px, rgb(190 24 93 / 0.052) 31px 32px),
+      var(--sticky-note-color);
+  }
+
+  .tk-sticky-editor-compact::before {
+    @apply hidden;
+  }
+
+  .tk-sticky-editor-compact[data-save-state="dirty"] {
+    box-shadow: inset 0 0 0 1px rgb(244 114 182 / 0.32), inset 0 0 30px rgb(244 114 182 / 0.1);
+  }
+
+  .tk-sticky-editor-compact[data-save-state="saving"] {
+    box-shadow: inset 0 0 0 2px rgb(251 113 133 / 0.36), inset 0 0 38px rgb(244 114 182 / 0.14);
+  }
+
+  .tk-sticky-editor-compact[data-save-state="error"] {
+    box-shadow: inset 0 0 0 2px rgb(244 63 94 / 0.52), inset 0 0 38px rgb(244 63 94 / 0.14);
+  }
+
+  .tk-sticky-editor-compact::after {
+    opacity: 0.38;
+    background-position:
+      right -48px top 48px,
+      left -36px bottom 22px,
+      right 10px bottom 24px;
+    background-size:
+      148px auto,
+      72px auto,
+      46px auto;
   }
 
   .tk-sticky-editor-compact .tk-sticky-editor-toolbar {
-    @apply flex-wrap items-start gap-2;
+    @apply flex-wrap items-start gap-2 rounded-md border-rose-200/50 bg-white/[0.48] p-1.5 shadow-sm backdrop-blur;
+    box-shadow:
+      0 10px 22px rgb(190 24 93 / 0.055),
+      inset 0 1px 0 rgb(255 255 255 / 0.5);
   }
 
   .tk-sticky-editor-compact .tk-badge {
-    @apply h-6 bg-white/50;
-  }
-
-  .tk-sticky-editor-compact .tk-sticky-color-swatch {
-    @apply h-5 w-5 rounded-sm;
+    @apply h-6 bg-white/[0.65];
   }
 
   .tk-sticky-editor-compact .tk-icon-button {
-    @apply h-7 w-7 bg-white/55;
+    @apply h-7 w-7 border-rose-100/75 bg-white/[0.68];
   }
 
   .tk-sticky-editor-compact .tk-sticky-title-input {
-    @apply h-10 bg-white/50 text-base focus:bg-white/75;
+    @apply h-11 text-base;
   }
 
   .tk-sticky-editor-compact .tk-sticky-content-input,
   .tk-sticky-editor-compact .tk-sticky-markdown-preview {
-    @apply bg-white/50 focus:bg-white/75;
+    @apply focus:bg-white/20;
+  }
+
+  .tk-sticky-editor-main {
+    min-height: 520px;
+    border-top-color: rgb(51 65 85 / 0.72);
+    box-shadow:
+      0 28px 64px rgb(190 24 93 / 0.13),
+      0 0 0 1px rgb(244 114 182 / 0.14),
+      0 0 36px rgb(251 207 232 / 0.28),
+      inset 0 1px 0 rgb(255 255 255 / 0.76);
+  }
+
+  .tk-sticky-editor-main .tk-sticky-editor-toolbar {
+    @apply mb-3 border-slate-200/70 bg-white/[0.72];
+  }
+
+  .tk-sticky-editor-main .tk-sticky-title-input {
+    @apply text-xl;
   }
 
   .tk-sticky-editor-tile {
-    @apply rounded-none border-0 shadow-none ring-0;
+    @apply rounded-none border-0 p-3 pt-11 shadow-none ring-0;
+    background:
+      radial-gradient(circle at 88% 6%, rgb(255 255 255 / 0.86), transparent 22%),
+      radial-gradient(circle at 15% 102%, rgb(244 114 182 / 0.14), transparent 34%),
+      linear-gradient(155deg, rgb(255 248 251 / 0.84), rgb(255 222 237 / 0.72) 56%, rgb(253 186 216 / 0.6)),
+      repeating-linear-gradient(180deg, transparent 0 31px, rgb(190 24 93 / 0.052) 31px 32px),
+      var(--sticky-note-color);
+  }
+
+  .tk-sticky-editor-tile::before {
+    @apply hidden;
+  }
+
+  .tk-sticky-editor-tile::after {
+    opacity: 0.28;
+    background-position:
+      right -52px top 28px,
+      left -38px bottom 18px,
+      right 12px bottom 18px;
+    background-size:
+      148px auto,
+      70px auto,
+      44px auto;
   }
 
   .tk-sticky-editor-tile .tk-sticky-editor-toolbar {
-    @apply mb-2;
+    @apply absolute right-3 top-3 z-30 mb-0 w-auto border-rose-100/50 bg-white/[0.46] p-1.5 shadow-sm backdrop-blur;
+    max-width: calc(100% - 1.5rem);
+  }
+
+  .tk-sticky-editor-tile .tk-sticky-toolbar-meta {
+    @apply hidden;
+  }
+
+  .tk-sticky-editor-tile .tk-sticky-toolbar-actions {
+    @apply gap-1;
+  }
+
+  .tk-sticky-editor-tile .tk-icon-button {
+    @apply h-7 w-7 bg-white/[0.62];
+  }
+
+  .tk-sticky-editor-tile .tk-sticky-title-input {
+    @apply h-10 px-3 text-base;
+  }
+
+  .tk-sticky-editor-tile .tk-sticky-content-input,
+  .tk-sticky-editor-tile .tk-sticky-markdown-preview {
+    @apply px-3 pb-3 pt-2;
+  }
+
+  .tk-sticky-editor-tile .tk-sticky-editor-footer {
+    @apply mt-2 text-[11px] text-rose-900/45;
+  }
+
+  .tk-sticky-editor-tile[data-save-state="dirty"] {
+    box-shadow: inset 0 0 0 1px rgb(244 114 182 / 0.32), inset 0 0 30px rgb(244 114 182 / 0.1);
+  }
+
+  .tk-sticky-editor-tile[data-save-state="saving"] {
+    box-shadow: inset 0 0 0 2px rgb(251 113 133 / 0.36), inset 0 0 38px rgb(244 114 182 / 0.14);
+  }
+
+  .tk-sticky-editor-tile[data-save-state="error"] {
+    box-shadow: inset 0 0 0 2px rgb(244 63 94 / 0.52), inset 0 0 38px rgb(244 63 94 / 0.14);
   }
 
   .tk-sticky-editor-toolbar {
-    @apply mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2 rounded-md border border-white/70 bg-white/45 p-2 shadow-sm backdrop-blur;
+    @apply relative z-10 mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2 rounded-md border border-rose-200/55 bg-white/[0.54] p-2 shadow-sm backdrop-blur;
+    box-shadow:
+      0 10px 24px rgb(190 24 93 / 0.05),
+      inset 0 1px 0 rgb(255 255 255 / 0.58);
   }
 
   .tk-sticky-toolbar-meta {
@@ -1075,16 +1315,22 @@
     @apply flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5;
   }
 
-  .tk-sticky-color-swatch {
-    @apply h-6 w-6 shrink-0 rounded-md border border-white shadow-sm ring-offset-2 transition hover:scale-105;
-  }
-
-  .tk-sticky-color-active {
-    @apply ring-2 ring-emerald-400;
-  }
-
   .tk-icon-button {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white/75 text-slate-600 shadow-sm transition hover:border-emerald-200 hover:bg-white hover:text-emerald-700;
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-rose-100/80 bg-white/[0.78] text-slate-600 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-45;
+    touch-action: manipulation;
+  }
+
+  .tk-icon-button:focus-visible {
+    @apply outline-none ring-2 ring-rose-300 ring-offset-2 ring-offset-white/70;
+  }
+
+  .tk-icon-button:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .tk-icon-button svg {
+    @apply relative z-10;
+    stroke: currentColor;
   }
 
   .tk-icon-button-danger {
@@ -1092,19 +1338,39 @@
   }
 
   .tk-icon-button-active {
-    @apply border-emerald-200 bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100;
+    @apply border-rose-300 bg-rose-50 text-rose-700 ring-1 ring-rose-200;
+    box-shadow:
+      0 0 18px rgb(244 114 182 / 0.32),
+      0 8px 18px rgb(190 24 93 / 0.12),
+      inset 0 1px 0 rgb(255 255 255 / 0.8);
+  }
+
+  .tk-icon-button-active:hover {
+    @apply border-rose-300 bg-rose-100 text-rose-800;
   }
 
   .tk-sticky-title-input {
-    @apply mb-3 h-12 shrink-0 rounded-md border border-white/70 bg-white/70 px-3.5 text-lg font-semibold text-slate-950 shadow-inner shadow-white/60 outline-none transition placeholder:text-slate-400 focus:border-emerald-200 focus:bg-white/90 focus:ring-2 focus:ring-emerald-100;
+    @apply relative z-10 mb-0 h-14 shrink-0 rounded-none border-0 border-b border-rose-200/50 bg-transparent px-4 text-xl font-semibold text-slate-950 outline-none transition placeholder:text-rose-300 focus:border-rose-300 focus:bg-white/[0.18] focus:ring-0;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.62),
+      0 10px 22px rgb(244 114 182 / 0.06);
+  }
+
+  .tk-sticky-title-input:disabled,
+  .tk-sticky-content-input:disabled,
+  .tk-sticky-category-select:disabled {
+    @apply cursor-wait opacity-70;
   }
 
   .tk-sticky-content-input {
-    @apply min-h-0 flex-1 resize-none rounded-md border border-white/70 bg-white/70 p-4 text-sm leading-7 text-slate-800 shadow-inner shadow-white/60 outline-none transition placeholder:text-slate-400 focus:border-emerald-200 focus:bg-white/90 focus:ring-2 focus:ring-emerald-100;
+    @apply relative z-10 min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent px-4 pb-4 pt-3 text-sm leading-7 text-slate-900 outline-none transition placeholder:text-rose-300 focus:bg-white/[0.18] focus:ring-0;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.16), transparent 26%),
+      transparent;
   }
 
   .tk-sticky-editor-content {
-    @apply grid min-h-0 flex-1 gap-3;
+    @apply grid min-h-0 flex-1 gap-0;
   }
 
   .tk-sticky-view-edit,
@@ -1112,12 +1378,11 @@
     @apply grid-cols-1;
   }
 
-  .tk-sticky-view-split {
-    @apply grid-cols-2;
-  }
-
   .tk-sticky-markdown-preview {
-    @apply min-h-0 overflow-auto rounded-md border border-white/70 bg-white/70 p-4 text-sm leading-7 text-slate-800 shadow-inner shadow-white/60;
+    @apply relative z-10 min-h-0 overflow-auto rounded-none border-0 bg-transparent px-4 pb-4 pt-3 text-sm leading-7 text-slate-900;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.16), transparent 26%),
+      transparent;
   }
 
   .tk-sticky-markdown-preview h1 {
@@ -1151,7 +1416,7 @@
   }
 
   .tk-sticky-markdown-preview blockquote {
-    @apply mb-3 border-l-4 border-emerald-200 bg-emerald-50/60 py-1 pl-3 text-slate-600;
+    @apply mb-3 border-l-4 border-slate-300 bg-white/70 py-1 pl-3 text-slate-700;
   }
 
   .tk-sticky-markdown-preview pre {
@@ -1167,11 +1432,11 @@
   }
 
   .tk-sticky-markdown-empty {
-    @apply flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed border-black/10 bg-white/35 text-sm text-slate-400;
+    @apply flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed border-rose-200/60 bg-white/25 text-sm text-slate-400;
   }
 
   .tk-sticky-editor-footer {
-    @apply mt-3 flex shrink-0 items-center justify-between gap-3 text-xs font-medium text-slate-500;
+    @apply relative z-10 mt-3 flex shrink-0 items-center justify-between gap-3 text-xs font-medium text-slate-500;
   }
 
   .tk-sticky-error {
@@ -1184,9 +1449,147 @@
 
   .tk-sticky-window-shell {
     @apply relative flex h-screen flex-col overflow-hidden bg-[var(--sticky-note-color)];
+    background:
+      radial-gradient(circle at 86% 8%, rgb(255 255 255 / 0.76), transparent 21%),
+      radial-gradient(circle at 10% 104%, rgb(244 114 182 / 0.15), transparent 34%),
+      linear-gradient(155deg, rgb(255 248 251 / 0.88), rgb(255 222 237 / 0.78) 58%, rgb(253 186 216 / 0.66));
+  }
+
+  .tk-sticky-window-shell::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 z-50;
+    padding: 2px;
+    background:
+      linear-gradient(
+        120deg,
+        transparent 0 12%,
+        rgb(255 255 255 / 0.94) 22%,
+        rgb(251 113 133 / 0.82) 33%,
+        rgb(244 114 182 / 0.9) 43%,
+        rgb(255 255 255 / 0.7) 52%,
+        transparent 66% 100%
+      );
+    background-position: -180% 0;
+    background-size: 190% 100%;
+    box-shadow:
+      0 0 18px rgb(244 114 182 / 0.34),
+      inset 0 0 0 1px rgb(255 255 255 / 0.6),
+      inset 0 0 24px rgb(244 114 182 / 0.2);
+    animation: tk-sticky-border-flow 4.8s linear infinite;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+
+  .tk-sticky-window-titlebar {
+    @apply relative z-30 flex h-9 shrink-0 items-center justify-between gap-2 border-b border-rose-200/55 bg-white/[0.48] px-2.5 text-xs font-medium text-slate-600 shadow-sm backdrop-blur;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.58),
+      0 10px 22px rgb(190 24 93 / 0.04);
+  }
+
+  .tk-sticky-window-shell-note .tk-sticky-window-titlebar {
+    @apply bg-white/[0.58];
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.62),
+      0 10px 22px rgb(190 24 93 / 0.055);
+  }
+
+  .tk-sticky-window-shell-tile .tk-sticky-window-titlebar {
+    @apply h-8 border-rose-100/40 bg-white/[0.3] text-slate-500;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 0.45),
+      0 8px 18px rgb(190 24 93 / 0.03);
+  }
+
+  .tk-sticky-window-shell-tile .tk-sticky-window-title > span:nth-child(2) {
+    display: none;
+  }
+
+  .tk-sticky-window-shell-tile .tk-sticky-window-title-mark {
+    @apply bg-white/80;
+    box-shadow: 0 0 10px rgb(244 114 182 / 0.28);
+  }
+
+  .tk-sticky-window-shell-tile .tk-sticky-window-controls button {
+    @apply h-6 w-6 border-white/45 bg-white/[0.42] text-slate-500 hover:bg-white/70;
+  }
+
+  .tk-sticky-window-titlebar::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 bottom-0 h-px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.92),
+      rgb(244 114 182 / 0.78),
+      rgb(255 255 255 / 0.82),
+      transparent
+    );
+    background-position: -160% 0;
+    background-size: 190% 100%;
+    box-shadow: 0 0 14px rgb(244 114 182 / 0.42);
+    animation: tk-sticky-border-flow 4.2s linear infinite;
+  }
+
+  .tk-sticky-window-title {
+    @apply flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden;
+  }
+
+  .tk-sticky-window-title-mark {
+    @apply h-2.5 w-2.5 shrink-0 rounded-full border border-white bg-rose-300 shadow-sm;
+    box-shadow: 0 0 12px rgb(244 114 182 / 0.46);
+  }
+
+  .tk-sticky-window-title-name {
+    @apply min-w-0 truncate text-slate-400;
+  }
+
+  .tk-sticky-window-controls {
+    @apply flex shrink-0 items-center gap-1;
+  }
+
+  .tk-sticky-window-controls button {
+    @apply inline-flex h-6 w-6 items-center justify-center rounded-md border border-rose-100/70 bg-white/[0.58] text-slate-500 shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700;
+  }
+
+  .tk-sticky-window-controls button:focus-visible {
+    @apply outline-none ring-2 ring-rose-300 ring-offset-1 ring-offset-white/60;
+  }
+
+  .tk-sticky-window-controls button:active {
+    transform: translateY(1px);
+  }
+
+  .tk-sticky-window-shell .tk-sticky-editor-compact {
+    @apply relative z-10 h-auto min-h-0 flex-1;
   }
 
   .tk-sticky-window-loading {
-    @apply flex flex-1 items-center justify-center bg-yellow-50 text-sm text-slate-500;
+    @apply relative z-10 flex flex-1 items-center justify-center bg-transparent text-sm text-slate-500;
+  }
+
+  @keyframes tk-sticky-border-flow {
+    0% {
+      background-position: -160% 0;
+    }
+
+    100% {
+      background-position: 160% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tk-sticky-editor::before,
+    .tk-sticky-window-shell::before,
+    .tk-sticky-window-titlebar::before {
+      animation: none;
+      background-position: 50% 0;
+    }
   }
 }

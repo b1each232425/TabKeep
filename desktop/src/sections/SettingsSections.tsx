@@ -42,7 +42,7 @@ export function SettingsSection({
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">设置</h1>
-          <p className="tk-page-subtitle">管理分组规则、模型 API 和笔记集成</p>
+          <p className="tk-page-subtitle">分组、模型与笔记</p>
         </div>
       </header>
 
@@ -107,7 +107,7 @@ function StickyShortcutConfigPanel() {
       <div className="tk-panel-header">
         <div>
           <h2 className="tk-panel-title">便签快捷键</h2>
-          <p className="text-xs text-muted-foreground">新建便签与切换最近便签小窗，Windows 下重启后生效</p>
+          <p className="text-xs text-muted-foreground">新建便签与切换最近小窗</p>
         </div>
         <Keyboard className="h-5 w-5 text-slate-400" />
       </div>
@@ -183,7 +183,7 @@ function ModelApiConfigPanel({
       <div className="tk-panel-header">
         <div>
           <h2 className="tk-panel-title">模型 API</h2>
-          <p className="text-xs text-muted-foreground">用于摘要、分组、问答等 LLM 功能</p>
+          <p className="text-xs text-muted-foreground">摘要、分组、问答</p>
         </div>
       </div>
       <div className="tk-panel-body space-y-4">
@@ -327,7 +327,7 @@ function CategoriesConfigPanel({
       <div className="tk-panel-header">
         <div>
           <h2 className="tk-panel-title">分组</h2>
-          <p className="text-xs text-muted-foreground">自定义分类组，并用 LLM 测试当前标签归类</p>
+          <p className="text-xs text-muted-foreground">标签归类规则</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={runClassify} disabled={classifying || tabs.length === 0}>

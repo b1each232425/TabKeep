@@ -138,7 +138,7 @@ export interface StickyWindowBounds {
   height: number
 }
 
-export type StickyNoteViewMode = "edit" | "split" | "preview"
+export type StickyNoteViewMode = "edit" | "preview"
 
 export interface StickyShortcutConfig {
   newNoteHotkey: string

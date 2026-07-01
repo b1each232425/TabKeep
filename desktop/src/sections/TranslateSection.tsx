@@ -74,7 +74,7 @@ export function TranslateSection() {
       if (translateProviderResult.status === "fulfilled") {
         setTranslateProviderConfigState(translateProviderResult.value)
       } else {
-        setStatus(`读取翻译 Provider 设置失败: ${errorMessage(translateProviderResult.reason)}`)
+        setStatus(`读取翻译服务设置失败: ${errorMessage(translateProviderResult.reason)}`)
       }
       if (selectionResult.status === "fulfilled") {
         setSelectionConfigState(selectionResult.value)
@@ -166,7 +166,7 @@ export function TranslateSection() {
     try {
       const saved = await setTranslateProviderConfig(translateProviderConfig)
       setTranslateProviderConfigState(saved)
-      setStatus("翻译 Provider 设置已保存")
+      setStatus("翻译服务设置已保存")
     } catch (err) {
       setStatus(errorMessage(err))
     } finally {
@@ -184,7 +184,7 @@ export function TranslateSection() {
       setStatus(
         result.ok
           ? `测试成功 · ${result.provider} · ${result.latencyMs}ms`
-          : result.error ?? "Provider 测试失败",
+          : result.error ?? "翻译服务测试失败",
       )
     } catch (err) {
       setStatus(errorMessage(err))
@@ -275,7 +275,7 @@ export function TranslateSection() {
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">翻译</h1>
-          <p className="tk-page-subtitle">文本翻译、截图 OCR 翻译和固定区域翻译</p>
+          <p className="tk-page-subtitle">文本、截图与固定区域</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={pasteText}>
@@ -445,7 +445,7 @@ export function TranslateSection() {
         <div className="tk-panel-header">
           <div>
             <h2 className="tk-panel-title">固定区域翻译框</h2>
-            <p className="text-xs text-muted-foreground">把区域框放到游戏或视频字幕上，直接翻译框内内容</p>
+            <p className="text-xs text-muted-foreground">框选字幕或固定区域</p>
           </div>
           <span className="tk-badge">区域</span>
         </div>
@@ -466,9 +466,9 @@ export function TranslateSection() {
       <section className="tk-panel">
         <div className="tk-panel-header">
           <div>
-            <h2 className="tk-panel-title">快速翻译 Provider</h2>
+            <h2 className="tk-panel-title">翻译服务</h2>
             <p className="text-xs text-muted-foreground">
-              文本翻译、截图翻译和固定区域翻译都会使用这里保存的 provider
+              文本、截图和固定区域共用此处设置
             </p>
           </div>
           <span className="tk-badge">
@@ -482,7 +482,7 @@ export function TranslateSection() {
         <div className="tk-panel-body space-y-4">
           <div className="tk-form-grid">
             <label className="tk-field">
-              <span className="tk-label">Provider</span>
+              <span className="tk-label">服务</span>
               <select
                 className="tk-select"
                 value={translateProviderConfig.provider}
@@ -576,7 +576,7 @@ export function TranslateSection() {
           </Button>
           <Button onClick={saveTranslateProviderSettings} disabled={translateProviderSaving}>
             <Settings2 className="h-4 w-4" />
-            {translateProviderSaving ? "保存中..." : "保存 Provider 设置"}
+            {translateProviderSaving ? "保存中..." : "保存翻译服务"}
           </Button>
           <Button
             variant="ghost"
@@ -620,7 +620,7 @@ export function TranslateSection() {
         <div className="tk-panel-body space-y-4">
           <div className="tk-form-grid">
             <label className="tk-field">
-              <span className="tk-label">OCR Provider</span>
+              <span className="tk-label">OCR 引擎</span>
               <select
                 className="tk-select"
                 value={ocrConfig.provider}

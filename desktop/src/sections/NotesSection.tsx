@@ -18,7 +18,7 @@ export function NotesSection({
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">笔记集成</h1>
-          <p className="tk-page-subtitle">收藏当前标签页到本地 Markdown、思源或 Obsidian</p>
+          <p className="tk-page-subtitle">保存位置</p>
         </div>
       </header>
 
@@ -84,13 +84,13 @@ export function NotesConfigPanel({
         <div className="tk-panel-header">
           <div>
             <h2 className="tk-panel-title">笔记集成</h2>
-            <p className="text-xs text-muted-foreground">收藏当前标签页到本地 Markdown、思源或 Obsidian</p>
+            <p className="text-xs text-muted-foreground">收藏页会保存到这里</p>
           </div>
         </div>
         <div className="tk-panel-body space-y-4">
           {status && <Notice tone={status.startsWith("连接成功") || status === "已保存" ? "success" : "warning"}>{status}</Notice>}
           <label className="tk-field">
-            <span className="tk-label">Provider</span>
+            <span className="tk-label">保存到</span>
             <select
               className="tk-select"
               value={provider}
@@ -182,7 +182,7 @@ export function NotesConfigPanel({
           )}
 
           {provider === "local" && (
-            <div className="tk-muted-box">本地模式会写入后端 data/notes/inbox.md。</div>
+            <div className="tk-muted-box">收藏内容会写入默认收件箱。</div>
           )}
         </div>
         <div className="tk-command-bar">

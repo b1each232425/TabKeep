@@ -148,7 +148,7 @@ pub fn explain_translate_error(error: &str) -> String {
         || lower.contains("语种")
         || lower.contains("lang")
     {
-        Some("当前语言方向可能不被该 provider 支持")
+        Some("当前语言方向可能不被该翻译服务支持")
     } else {
         None
     };

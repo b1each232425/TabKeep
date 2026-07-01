@@ -203,7 +203,7 @@ export function VectorDebugSection() {
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">向量库</h1>
-          <p className="tk-page-subtitle">调试文档级索引状态、LanceDB chunks 表和 SQLite paragraph 对照</p>
+          <p className="tk-page-subtitle">索引诊断</p>
         </div>
         <Button
           variant="secondary"
@@ -285,9 +285,9 @@ export function VectorDebugSection() {
               className="tk-select"
               value={debugMode}
               onChange={(event) => setDebugMode(event.target.value as KnowledgeSearchMode)}>
-              <option value="hybrid">Hybrid</option>
+              <option value="hybrid">混合</option>
               <option value="fts">FTS</option>
-              <option value="vector">Vector</option>
+              <option value="vector">向量</option>
             </select>
             <input
               className="tk-input"

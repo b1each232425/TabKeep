@@ -205,7 +205,7 @@ export default function EvalWorkbench() {
         <header className="tk-topbar">
           <div>
             <h1 className="tk-page-title">TabKeep RAG 评估台</h1>
-            <p className="tk-page-subtitle">独立浏览器工作台</p>
+            <p className="tk-page-subtitle">检索与回答评估</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <span className={`tk-badge ${backendReady ? "tk-badge-success" : "tk-badge-warning"}`}>

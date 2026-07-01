@@ -1,8 +1,6 @@
 import type { StickyNote, StickyNoteDraft } from "../../types"
 
-export const STICKY_NOTE_COLORS = ["#fff7c2", "#e0f2fe", "#dcfce7", "#fae8ff", "#ffe4e6"]
-
-export const DEFAULT_STICKY_NOTE_COLOR = STICKY_NOTE_COLORS[0]
+export const DEFAULT_STICKY_NOTE_COLOR = "#ffd6e8"
 
 export function stickyNoteTitle(note: Pick<StickyNote, "title" | "content">): string {
   const title = note.title.trim()

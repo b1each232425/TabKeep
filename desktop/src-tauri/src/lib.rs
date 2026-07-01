@@ -538,9 +538,9 @@ fn open_sticky_note_window_for_note(
         STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
         STICKY_NOTE_WINDOW_MIN_HEIGHT as f64,
     )
-    .decorations(true)
+    .decorations(false)
     .transparent(false)
-    .background_color(Color(255, 247, 194, 255))
+    .background_color(Color(255, 214, 232, 255))
     .always_on_top(true)
     .focused(true)
     .resizable(true)
@@ -611,9 +611,9 @@ fn open_sticky_note_tile_window_for_note(
         STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
         STICKY_NOTE_WINDOW_MIN_HEIGHT as f64,
     )
-    .decorations(true)
+    .decorations(false)
     .transparent(false)
-    .background_color(Color(255, 247, 194, 255))
+    .background_color(Color(255, 214, 232, 255))
     .always_on_top(true)
     .focused(true)
     .resizable(true)
@@ -880,7 +880,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let menu = Menu::with_items(app, &[&new_sticky, &show, &quit])?;
 
     let mut builder = TrayIconBuilder::new()
-        .tooltip("TabKeep Desktop")
+        .tooltip("TabKeep")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -2593,7 +2593,7 @@ async fn test_openai_compatible_provider(state: &DesktopState) -> Result<String,
         "hello",
         "English",
         "简体中文",
-        Some("Provider 连接测试"),
+        Some("翻译服务连接测试"),
     )
     .await
     .map_err(error_from_json_response)
@@ -2612,7 +2612,7 @@ fn status_payload(state: &DesktopState) -> DesktopStatus {
     let usage = current_usage_stats(state);
     DesktopStatus {
         ok: true,
-        app: "TabKeep Desktop Status",
+        app: "TabKeep",
         version: env!("CARGO_PKG_VERSION"),
         backend_url: BACKEND_URL,
         desktop_url: format!("http://127.0.0.1:{DESKTOP_PORT}"),

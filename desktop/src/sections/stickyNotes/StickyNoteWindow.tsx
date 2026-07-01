@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import type { MouseEvent } from "react"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { Minus, X } from "lucide-react"
 
 import { deleteStickyNote, getStickyNote, listStickyNoteCategories } from "../../api/stickyNotes"
 import type { StickyNote } from "../../types"
+import { DEFAULT_STICKY_NOTE_COLOR } from "./stickyNoteModel"
 import { StickyNoteEditor } from "./StickyNoteEditor"
 
 type StickyNotesChangedPayload = {
@@ -18,6 +21,7 @@ export function StickyNoteWindow() {
   const [note, setNote] = useState<StickyNote | null>(null)
   const [categories, setCategories] = useState<string[]>([])
   const [error, setError] = useState("")
+  const closing = useRef(false)
 
   const loadNote = useCallback(async () => {
     if (!noteId) {
@@ -89,6 +93,56 @@ export function StickyNoteWindow() {
   }, [loadCategories])
 
   useEffect(() => {
+    if (!note) return
+    const prefix = tileMode ? "TabKeep 磁贴" : "TabKeep 便签"
+    void getCurrentWindow().setTitle(`${prefix} - ${stickyWindowTitle(note)}`)
+  }, [note, tileMode])
+
+  const flushAndDestroyWindow = useCallback(async () => {
+    if (closing.current) return
+    closing.current = true
+    try {
+      if (!note) {
+        await getCurrentWindow().destroy()
+        return
+      }
+      const activeElement = document.activeElement
+      if (activeElement instanceof HTMLElement) {
+        activeElement.blur()
+      }
+      await requestStickyEditorFlush()
+      await getCurrentWindow().destroy()
+    } catch (err) {
+      closing.current = false
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [note])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+
+    getCurrentWindow().onCloseRequested((event) => {
+      if (closing.current) return
+      event.preventDefault()
+      void flushAndDestroyWindow()
+    }).then((value) => {
+      if (disposed) {
+        value()
+      } else {
+        unlisten = value
+      }
+    }).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err))
+    })
+
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [flushAndDestroyWindow])
+
+  useEffect(() => {
     let disposed = false
     let unlisten: (() => void) | undefined
 
@@ -101,7 +155,8 @@ export function StickyNoteWindow() {
       }
       if (payload.noteId !== noteId) return
       if (payload.action === "delete") {
-        void getCurrentWindow().close()
+        closing.current = true
+        void getCurrentWindow().destroy()
         return
       }
       void loadNote()
@@ -124,16 +179,65 @@ export function StickyNoteWindow() {
   const deleteNote = async (target: StickyNote) => {
     try {
       await deleteStickyNote(target.id)
-      await getCurrentWindow().close()
+      closing.current = true
+      await getCurrentWindow().destroy()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      throw new Error(message)
     }
+  }
+
+  const startDrag = async (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail > 1) return
+    try {
+      await getCurrentWindow().startDragging()
+    } catch {
+      // Native dragging may be rejected if the pointer is already released.
+    }
+  }
+
+  const stopControlDrag = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+  }
+
+  const closeWindow = () => {
+    void flushAndDestroyWindow()
+  }
+
+  const minimizeWindow = () => {
+    void getCurrentWindow().minimize()
   }
 
   return (
     <div
-      className="tk-sticky-window-shell"
-      style={{ ["--sticky-note-color" as string]: note?.color ?? "#fff7c2" }}>
+      className={`tk-sticky-window-shell ${tileMode ? "tk-sticky-window-shell-tile" : "tk-sticky-window-shell-note"}`}
+      style={{ ["--sticky-note-color" as string]: DEFAULT_STICKY_NOTE_COLOR }}>
+      <div className="tk-sticky-window-titlebar" onMouseDown={startDrag}>
+        <div className="tk-sticky-window-title">
+          <span className="tk-sticky-window-title-mark" />
+          <span>{tileMode ? "便签磁贴" : "便签"}</span>
+          {note && <span className="tk-sticky-window-title-name">{note.title.trim() || "未命名"}</span>}
+        </div>
+        <div className="tk-sticky-window-controls">
+          <button
+            type="button"
+            title="最小化"
+            aria-label="最小化便签窗口"
+            onMouseDown={stopControlDrag}
+            onClick={minimizeWindow}>
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            title="关闭"
+            aria-label="关闭便签窗口"
+            onMouseDown={stopControlDrag}
+            onClick={closeWindow}>
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
       {note ? (
         <>
           <StickyNoteEditor
@@ -147,7 +251,7 @@ export function StickyNoteWindow() {
               void getCurrentWindow().close()
             }}
           />
-          {error && <p className="tk-sticky-error px-3 pb-2">{error}</p>}
+          {error && <p className="tk-sticky-error px-3 pb-2" role="alert">{error}</p>}
         </>
       ) : (
         <div className="tk-sticky-window-loading">{error || "正在加载便签..."}</div>
@@ -175,6 +279,16 @@ function stickyNoteIdFromWindowLabel(label: string): string {
   return label.startsWith("sticky-note-") ? label.slice("sticky-note-".length) : ""
 }
 
+function stickyWindowTitle(note: StickyNote): string {
+  const title = note.title.trim()
+  if (title) return title.slice(0, 24)
+  const firstLine = note.content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+  return firstLine ? firstLine.slice(0, 24) : "未命名"
+}
+
 async function postStickyWindowDebugResult(payload: unknown) {
   const env = (import.meta as ImportMeta & {
     env?: Record<string, string | boolean | undefined>
@@ -189,4 +303,17 @@ async function postStickyWindowDebugResult(payload: unknown) {
   } catch {
     // Debug-only reporting must not affect sticky note editing.
   }
+}
+
+function requestStickyEditorFlush(): Promise<void> {
+  return new Promise((resolve) => {
+    let resolved = false
+    const done = () => {
+      if (resolved) return
+      resolved = true
+      resolve()
+    }
+    window.dispatchEvent(new CustomEvent("tk-sticky-request-flush", { detail: { done } }))
+    window.setTimeout(done, 2500)
+  })
 }

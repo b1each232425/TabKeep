@@ -32,7 +32,7 @@ export function KnowledgeAskPanel({
           className="tk-textarea"
           value={question}
           onChange={(event) => onQuestionChange(event.target.value)}
-          placeholder="例如：TabKeep 桌面端翻译功能目前做到哪一步了？"
+          placeholder="例如：最近保存的翻译方案是什么？"
         />
         <div className="flex flex-wrap gap-2">
           <Button onClick={onAsk} disabled={asking || !question.trim()}>

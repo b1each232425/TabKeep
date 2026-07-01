@@ -231,7 +231,7 @@ function DesktopApp() {
           <div className="tk-wordmark">
             Tab<span className="tk-wordmark-accent">Keep</span>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Desktop Status</p>
+          <p className="mt-1 text-xs text-muted-foreground">桌面端</p>
         </div>
 
         <nav className="tk-sidebar-nav">
@@ -272,11 +272,11 @@ function DesktopApp() {
         <div className="space-y-3 border-t border-border pt-4">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <PlugZap className="h-3.5 w-3.5" />
-            <span>{desktopStatus?.desktop_url ?? "http://127.0.0.1:38472"}</span>
+            <span>{desktopStatus?.ok ? "服务已连接" : "等待连接"}</span>
           </div>
           <Button variant="secondary" className="w-full" onClick={refreshAll} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            刷新状态
+            刷新
           </Button>
         </div>
         </aside>
@@ -376,7 +376,7 @@ function DesktopTitlebar() {
         <div className="tk-window-mark" aria-hidden="true" />
         <div className="tk-window-title">
           <span>TabKeep</span>
-          <span>Desktop</span>
+          <span>桌面端</span>
         </div>
       </div>
       <div className="tk-window-controls">

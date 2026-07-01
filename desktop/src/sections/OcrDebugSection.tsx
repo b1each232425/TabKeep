@@ -83,7 +83,7 @@ export function OcrDebugSection() {
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">OCR 调试</h1>
-          <p className="tk-page-subtitle">对比固定区域原图、预处理图和文本后处理结果</p>
+          <p className="tk-page-subtitle">识别诊断</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="secondary" onClick={openRegionBox}>
@@ -168,7 +168,7 @@ export function OcrDebugSection() {
           </div>
           <div className="tk-panel-body space-y-4">
             <label className="tk-field">
-              <span className="tk-label">OCR Provider</span>
+              <span className="tk-label">OCR 引擎</span>
               <select
                 className="tk-select"
                 value={ocrConfig.provider}

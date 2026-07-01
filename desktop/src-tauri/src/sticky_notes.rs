@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 const STICKY_NOTES_FILE: &str = "sticky-notes.json";
-const DEFAULT_COLOR: &str = "#fff7c2";
+const DEFAULT_COLOR: &str = "#ffd6e8";
 const MAX_TITLE_CHARS: usize = 120;
 const MAX_CONTENT_CHARS: usize = 50_000;
 const MAX_CATEGORY_CHARS: usize = 60;
@@ -339,7 +339,7 @@ pub fn import_markdown_file(
             color: Some(DEFAULT_COLOR.to_string()),
             pinned: Some(false),
             category,
-            view_mode: Some("split".to_string()),
+            view_mode: Some(DEFAULT_VIEW_MODE.to_string()),
             tile_pinned: Some(false),
             window_bounds: None,
             tile_bounds: None,
@@ -537,21 +537,14 @@ fn category_chars_valid(value: &str) -> bool {
         .any(|ch| matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
 }
 
-fn normalize_color(value: Option<&str>) -> String {
-    let candidate = value.unwrap_or(DEFAULT_COLOR).trim();
-    if candidate.len() == 7
-        && candidate.starts_with('#')
-        && candidate.chars().skip(1).all(|ch| ch.is_ascii_hexdigit())
-    {
-        candidate.to_string()
-    } else {
-        DEFAULT_COLOR.to_string()
-    }
+fn normalize_color(_value: Option<&str>) -> String {
+    DEFAULT_COLOR.to_string()
 }
 
 fn normalize_view_mode(value: &str) -> String {
     match value.trim() {
-        "edit" | "split" | "preview" => value.trim().to_string(),
+        "preview" => "preview".to_string(),
+        "edit" | "split" => DEFAULT_VIEW_MODE.to_string(),
         _ => DEFAULT_VIEW_MODE.to_string(),
     }
 }

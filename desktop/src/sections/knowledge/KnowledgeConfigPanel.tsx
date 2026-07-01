@@ -31,12 +31,12 @@ export function KnowledgeConfigPanel({
       <div className="tk-panel-header">
         <div>
           <h2 className="tk-panel-title">知识库索引与检索</h2>
-          <p className="text-xs text-muted-foreground">统一配置同步来源和语义检索；rerank 自动复用同一 API Key</p>
+          <p className="text-xs text-muted-foreground">同步来源与语义检索</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="tk-badge">{config.enabled ? "索引启用" : "索引关闭"}</span>
           <span className="tk-badge">{config.embedding.enabled ? "语义检索" : "FTS"}</span>
-          <span className="tk-badge">{autoRerankReady ? "自动 Rerank" : "未重排"}</span>
+          <span className="tk-badge">{autoRerankReady ? "重排已启用" : "未重排"}</span>
         </div>
       </div>
       <div className="tk-panel-body">
@@ -44,7 +44,7 @@ export function KnowledgeConfigPanel({
           <section className="space-y-4 lg:border-r lg:border-slate-200/70 lg:pr-6">
             <div>
               <h3 className="text-sm font-semibold text-slate-950">同步来源</h3>
-              <p className="mt-1 text-xs text-muted-foreground">本地 Markdown、Obsidian 和已配置的笔记集成</p>
+              <p className="mt-1 text-xs text-muted-foreground">笔记来源</p>
             </div>
             <Checkbox
               label="启用知识库索引"
@@ -74,7 +74,7 @@ export function KnowledgeConfigPanel({
           <section className="space-y-4">
             <div>
               <h3 className="text-sm font-semibold text-slate-950">向量检索</h3>
-              <p className="mt-1 text-xs text-muted-foreground">默认使用 SiliconFlow embedding 和 rerank</p>
+              <p className="mt-1 text-xs text-muted-foreground">语义召回与重排</p>
             </div>
             <Checkbox
               label="启用语义检索"
@@ -103,7 +103,7 @@ export function KnowledgeConfigPanel({
         </div>
       </div>
       <div className="tk-command-bar justify-between">
-        <span className="text-xs text-muted-foreground">保存会同时写入同步来源和向量检索配置</span>
+        <span className="text-xs text-muted-foreground">保存后生效</span>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={onSave} disabled={saving || syncingKnowledge}>
             {saving ? "保存中..." : "保存知识库设置"}

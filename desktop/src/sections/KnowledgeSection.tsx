@@ -224,7 +224,7 @@ export function KnowledgeSection() {
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">知识库</h1>
-          <p className="tk-page-subtitle">索引 TabKeep 收藏和 Markdown / Obsidian 笔记，进行搜索与 RAG 问答</p>
+          <p className="tk-page-subtitle">搜索与问答</p>
         </div>
         <Button variant="secondary" onClick={refresh} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />

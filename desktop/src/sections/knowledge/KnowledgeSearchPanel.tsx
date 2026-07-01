@@ -29,7 +29,7 @@ export function KnowledgeSearchPanel({
         </div>
       </div>
       <div className="tk-panel-body space-y-4">
-        <div className="flex gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <input
             className="tk-input"
             value={searchQuery}

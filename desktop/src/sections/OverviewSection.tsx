@@ -77,7 +77,6 @@ export function OverviewSection({
   )
   const [style, setStyle] = useState<TabGroupStyleOptions>(() => loadTabGroupStyle())
   const [saved, setSaved] = useState(false)
-  const [groupNotice, setGroupNotice] = useState<string | null>(null)
 
   const saveStyle = () => {
     localStorage.setItem(TAB_GROUP_STYLE_KEY, JSON.stringify(style))
@@ -90,7 +89,7 @@ export function OverviewSection({
       <header className="tk-topbar">
         <div>
           <h1 className="tk-page-title">概览</h1>
-          <p className="tk-page-subtitle">桌面伴侣运行概况、今日用量和 Tab Group 默认样式</p>
+          <p className="tk-page-subtitle">今日概况</p>
         </div>
         <Button variant="secondary" onClick={onRefresh} disabled={refreshing}>
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -101,7 +100,7 @@ export function OverviewSection({
       <section className="tk-status-grid">
         <StatusCard
           icon={<Monitor className="h-4 w-4" />}
-          title="桌面伴侣"
+          title="桌面端"
           value={desktopStatus?.ok ? "在线" : "未就绪"}
           tone={desktopStatus?.ok ? "success" : "warning"}
           detail={desktopStatus?.version ? `v${desktopStatus.version}` : "等待状态"}
@@ -111,7 +110,7 @@ export function OverviewSection({
           title="后端连接"
           value={backendReady === null ? "检查中" : backendReady ? "已连接" : "未连接"}
           tone={backendReady ? "success" : backendReady === false ? "error" : "warning"}
-          detail={desktopStatus?.backend_url ?? "http://127.0.0.1:38471"}
+          detail={backendReady ? "服务正常" : "等待连接"}
         />
         <StatusCard
           icon={<KeyRound className="h-4 w-4" />}
@@ -155,8 +154,7 @@ export function OverviewSection({
           <section className="tk-panel">
             <div className="tk-panel-header">
               <div>
-                <h2 className="tk-panel-title">Tab Group 默认样式</h2>
-                <p className="text-xs text-muted-foreground">配置会保存在桌面端本地</p>
+                <h2 className="tk-panel-title">标签分组样式</h2>
               </div>
               <span className="tk-badge">{saved ? "已保存" : "本地"}</span>
             </div>
@@ -212,19 +210,12 @@ export function OverviewSection({
             </div>
             <div className="tk-command-bar">
               <Button onClick={saveStyle}>{saved ? "已保存" : "保存设置"}</Button>
-              <Button
-                variant="secondary"
-                onClick={() => setGroupNotice("桌面端已保留该配置；实际整理当前 Chrome 窗口仍由扩展执行。")}>
-                立即对当前窗口分组
-              </Button>
               <Button variant="ghost" onClick={() => setStyle(DEFAULT_STYLE)}>
                 <RotateCcw className="h-4 w-4" />
                 重置
               </Button>
             </div>
           </section>
-
-          {groupNotice && <Notice>{groupNotice}</Notice>}
         </div>
 
         <section className="tk-panel">
@@ -234,25 +225,25 @@ export function OverviewSection({
           </div>
           <div className="tk-panel-body space-y-3">
             <label className="tk-field">
-              <span className="tk-label">TabKeep API Token</span>
+              <span className="tk-label">连接密钥</span>
               <input
                 className="tk-input"
                 type="password"
                 value={tokenInput}
                 onChange={(event) => setTokenInput(event.target.value)}
-                placeholder="由扩展同步，或手动粘贴"
+                placeholder="自动获取，或手动粘贴"
               />
             </label>
             <div className="flex flex-wrap gap-2">
               <Button onClick={onSaveToken} disabled={!tokenInput.trim()}>
-                保存 Token
+                保存密钥
               </Button>
               <Button variant="secondary" onClick={onClearToken}>
                 清除
               </Button>
             </div>
             <div className="tk-muted-box">
-              打开扩展 popup 后，桌面状态会自动缓存扩展传来的 token。
+              打开浏览器扩展后会自动完成连接。
             </div>
           </div>
         </section>
