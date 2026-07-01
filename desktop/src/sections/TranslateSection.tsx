@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
-import { Camera, Clipboard, Copy, Keyboard, Languages, Move, PlugZap, RotateCcw, Settings2, X } from "lucide-react"
+import { Clipboard, Copy, Keyboard, Languages, Move, PlugZap, RotateCcw, Settings2, X } from "lucide-react"
 
 import {
   DEFAULT_OCR_CONFIG,
@@ -14,7 +14,6 @@ import {
   setOcrConfig,
   setSelectionTranslateConfig,
   setTranslateProviderConfig,
-  startOcrRecognize,
   startOcrTranslate,
   testTranslateProvider,
   translateText,
@@ -42,7 +41,7 @@ export function TranslateSection() {
   const [translating, setTranslating] = useState(false)
   const [ocrConfig, setOcrConfigState] = useState<OcrConfig>(DEFAULT_OCR_CONFIG)
   const [ocrSaving, setOcrSaving] = useState(false)
-  const [ocrBusy, setOcrBusy] = useState<"recognize" | "translate" | null>(null)
+  const [ocrBusy, setOcrBusy] = useState<"translate" | null>(null)
   const [translateProviderConfig, setTranslateProviderConfigState] =
     useState<TranslateProviderConfig>(DEFAULT_TRANSLATE_PROVIDER_CONFIG)
   const [translateProviderSaving, setTranslateProviderSaving] = useState(false)
@@ -226,9 +225,9 @@ export function TranslateSection() {
     }
   }
 
-  const runScreenshotOcr = async (mode: "recognize" | "translate") => {
-    setOcrBusy(mode)
-    setStatus("请在屏幕上框选要识别的区域")
+  const runScreenshotTranslate = async () => {
+    setOcrBusy("translate")
+    setStatus("请在屏幕上框选要翻译的区域")
     try {
       const payload = {
         screenshot: true,
@@ -236,11 +235,8 @@ export function TranslateSection() {
         sourceLang,
         targetLang,
       }
-      const result =
-        mode === "recognize"
-          ? await startOcrRecognize(payload)
-          : await startOcrTranslate(payload)
-      setStatus(result.ok ? "OCR 结果已在悬浮窗显示" : result.error ?? "OCR 未完成")
+      const result = await startOcrTranslate(payload)
+      setStatus(result.ok ? "截图翻译结果已在悬浮窗显示" : result.error ?? "截图翻译未完成")
     } catch (err) {
       setStatus(errorMessage(err))
     } finally {
@@ -600,18 +596,11 @@ export function TranslateSection() {
       <section className="tk-panel">
         <div className="tk-panel-header">
           <div>
-            <h2 className="tk-panel-title">截图 OCR</h2>
-            <p className="text-xs text-muted-foreground">框选屏幕区域后，结果会在置顶悬浮窗显示</p>
+            <h2 className="tk-panel-title">截图翻译</h2>
+            <p className="text-xs text-muted-foreground">框选屏幕区域后，译文会在置顶悬浮窗显示</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => runScreenshotOcr("recognize")}
-              disabled={ocrBusy !== null}>
-              <Camera className={`h-4 w-4 ${ocrBusy === "recognize" ? "animate-pulse" : ""}`} />
-              截图 OCR
-            </Button>
-            <Button onClick={() => runScreenshotOcr("translate")} disabled={ocrBusy !== null}>
+            <Button onClick={runScreenshotTranslate} disabled={ocrBusy !== null}>
               <Languages className={`h-4 w-4 ${ocrBusy === "translate" ? "animate-pulse" : ""}`} />
               截图翻译
             </Button>

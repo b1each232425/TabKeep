@@ -86,26 +86,31 @@
 
   .tk-window-titlebar::after {
     content: "";
-    @apply pointer-events-none absolute left-0 right-0 top-9 h-px opacity-70;
-    background: linear-gradient(90deg, hsl(var(--tk-green)), hsl(var(--tk-mint)), hsl(var(--tk-amber)) 72%, transparent);
+    @apply pointer-events-none absolute bottom-0 left-0 right-0 h-px opacity-90;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(46 211 183 / 0.28) 12%,
+      rgb(124 255 224 / 0.9) 31%,
+      rgb(143 167 255 / 0.72) 67%,
+      transparent 100%
+    );
+    box-shadow: 0 1px 10px rgb(46 211 183 / 0.22);
   }
 
   .tk-window-drag-region {
     @apply flex h-full min-w-0 flex-1 items-center gap-2 px-4;
   }
 
-  .tk-window-mark {
-    @apply h-2.5 w-2.5 rounded-[3px];
-    background: linear-gradient(135deg, hsl(var(--tk-green)), hsl(var(--tk-mint)));
-    box-shadow: 0 0 0 3px rgb(255 255 255 / 0.08);
+  .tk-window-app-icon {
+    @apply h-4 w-4 shrink-0 rounded-[4px] object-cover;
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.14),
+      0 0 10px rgb(46 211 183 / 0.18);
   }
 
   .tk-window-title {
-    @apply flex min-w-0 items-center gap-1.5 text-xs font-medium tracking-normal text-slate-100;
-  }
-
-  .tk-window-title span:last-child {
-    @apply rounded bg-white/[0.07] px-1.5 py-0.5 text-[11px] text-slate-300;
+    @apply flex min-w-0 items-center gap-1.5 text-xs font-semibold tracking-normal text-slate-100;
   }
 
   .tk-window-controls {
@@ -203,8 +208,20 @@
     @apply relative z-10;
   }
 
+  .tk-brand-lockup {
+    @apply flex items-center gap-2.5;
+  }
+
+  .tk-brand-icon {
+    @apply h-8 w-8 shrink-0 rounded-lg object-cover;
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.12),
+      0 10px 24px rgb(0 0 0 / 0.22),
+      0 0 18px rgb(46 211 183 / 0.18);
+  }
+
   .tk-wordmark {
-    @apply text-xl font-semibold tracking-normal text-white;
+    @apply text-xl font-semibold leading-none tracking-normal text-white;
   }
 
   .tk-wordmark-accent {
@@ -676,11 +693,11 @@
   }
 
   .tk-region-corner-brand {
-    @apply pointer-events-none absolute bottom-1.5 right-1.5 z-40 rounded-sm border border-emerald-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700 shadow-sm backdrop-blur-[2px];
+    @apply pointer-events-none absolute bottom-1.5 right-1.5 z-40 h-5 w-5 rounded-md border border-white/70 bg-white/90 p-0.5 object-cover shadow-sm backdrop-blur-[2px];
   }
 
   .tk-region-box-passthrough .tk-region-corner-brand {
-    @apply bg-white/80 text-emerald-700;
+    @apply bg-white/80 opacity-90;
   }
 
   .tk-region-edge-toolbar {

@@ -20,6 +20,7 @@ import type { OcrFlowResult, RegionBoxConfig, SelectionTranslateResult } from ".
 import { Button, Notice } from "../components/primitives"
 import { errorMessage } from "../lib/errors"
 import { formatTranslationForPanel } from "../lib/ocr"
+import tabkeepIcon from "../assets/tabkeep-icon.png"
 
 type ResizeDirection =
   | "East"
@@ -349,9 +350,7 @@ export function RegionBoxWindow() {
       className={`tk-region-box ${config.passThrough ? "tk-region-box-passthrough" : ""}`}
       style={frameStyle}>
       {!config.passThrough && <div className="tk-region-drag-surface" onMouseDown={startDrag} />}
-      <div className="tk-region-corner-brand" aria-hidden="true">
-        TabKeep
-      </div>
+      <img className="tk-region-corner-brand" src={tabkeepIcon} alt="" aria-hidden="true" />
       {!config.passThrough &&
         handles.map((handle) => (
           <button

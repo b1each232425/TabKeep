@@ -54,6 +54,7 @@ import { StickyNotesSection } from "./sections/StickyNotesSection"
 import { StickyNoteWindow } from "./sections/stickyNotes/StickyNoteWindow"
 import { TranslateSection } from "./sections/TranslateSection"
 import { VectorDebugSection } from "./sections/VectorDebugSection"
+import tabkeepIcon from "./assets/tabkeep-icon.png"
 
 type Section =
   | "overview"
@@ -228,10 +229,12 @@ function DesktopApp() {
       <div className="tk-desktop-shell">
         <aside className="tk-sidebar">
         <div>
-          <div className="tk-wordmark">
-            Tab<span className="tk-wordmark-accent">Keep</span>
+          <div className="tk-brand-lockup">
+            <img className="tk-brand-icon" src={tabkeepIcon} alt="" />
+            <div className="tk-wordmark">
+              Tab<span className="tk-wordmark-accent">Keep</span>
+            </div>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">桌面端</p>
         </div>
 
         <nav className="tk-sidebar-nav">
@@ -373,10 +376,9 @@ function DesktopTitlebar() {
   return (
     <div className="tk-window-titlebar">
       <div className="tk-window-drag-region" onMouseDown={startDrag} onDoubleClick={toggleMaximize}>
-        <div className="tk-window-mark" aria-hidden="true" />
+        <img className="tk-window-app-icon" src={tabkeepIcon} alt="" />
         <div className="tk-window-title">
           <span>TabKeep</span>
-          <span>桌面端</span>
         </div>
       </div>
       <div className="tk-window-controls">
