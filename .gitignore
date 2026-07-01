@@ -33,6 +33,12 @@ backend/.env*
 backend/data/
 backend/logs/
 
+# === 个人开发文档（本地保留，不对外发布） ===
+/*.md
+!/README.md
+/docs/*.md
+/docs/**/*.md
+
 # === 通用构建缓存 / 日志 / 临时文件 ===
 *.tsbuildinfo
 *.log
