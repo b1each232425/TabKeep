@@ -36,6 +36,9 @@ backend/logs/
 # === 个人开发文档（本地保留，不对外发布） ===
 /*.md
 !/README.md
+!/AGENTS.md
+!/claude.md
+!/design.md
 /docs/*.md
 /docs/**/*.md
 
