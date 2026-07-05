@@ -234,7 +234,7 @@ export function KnowledgeSection() {
 
       {status && <Notice tone={statusTone}>{status}</Notice>}
 
-      <section className="tk-grid-two">
+      <section className="tk-knowledge-workspace">
         <KnowledgeSearchPanel
           searchQuery={searchQuery}
           searchResult={searchResult}

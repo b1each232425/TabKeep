@@ -8,11 +8,13 @@ import { formatSourceType, sourceTarget } from "./knowledgeFormat"
 export function CitationList({
   items,
   emptyText,
+  sourceIndexes,
   compact = false,
   onStatus,
 }: {
   items: KnowledgeCitation[]
   emptyText: string
+  sourceIndexes?: number[]
   compact?: boolean
   onStatus?: (message: string) => void
 }) {
@@ -20,19 +22,21 @@ export function CitationList({
     return <div className="tk-muted-box">{emptyText}</div>
   }
   return (
-    <div className="grid gap-2">
+    <div className="tk-citation-list">
       {items.map((item, index) => (
-        <div key={`${item.paragraphId ?? item.chunkId}:${index}`} className="rounded-md border border-border p-3">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="tk-badge">来源 {index + 1}</span>
-            <span className="tk-badge">段落</span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
-              {item.title}
-            </span>
-            <span className="tk-badge">{formatSourceType(item.sourceType)}</span>
+        <div
+          key={`${item.paragraphId ?? item.chunkId}:${index}`}
+          className={`tk-citation-card ${compact ? "tk-citation-card-compact" : ""}`}>
+          <div className="tk-citation-heading">
+            <div className="tk-citation-badges">
+              <span className="tk-badge">来源 {sourceIndexes?.[index] ?? index + 1}</span>
+              <span className="tk-badge">段落</span>
+              <span className="tk-badge">{formatSourceType(item.sourceType)}</span>
+            </div>
+            <h3 className="tk-citation-title">{item.title}</h3>
           </div>
-          <div className="flex items-center gap-2">
-            <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          <div className="tk-citation-source-row">
+            <p className="tk-citation-source">
               {sourceTarget(item) || item.documentId}
             </p>
             <button
@@ -50,7 +54,7 @@ export function CitationList({
             </button>
           </div>
           {!compact && (
-            <p className="mt-2 max-h-24 overflow-hidden whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            <p className="tk-citation-content">
               {item.content}
             </p>
           )}
