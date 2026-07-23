@@ -16,7 +16,7 @@ import {
   setRegionBoxConfig,
   setRegionBoxPassthrough,
 } from "../api"
-import type { OcrFlowResult, RegionBoxConfig, SelectionTranslateResult } from "../types"
+import type { ComicTextRegion, OcrFlowResult, RegionBoxConfig, SelectionTranslateResult } from "../types"
 import { Button, Notice } from "../components/primitives"
 import { errorMessage } from "../lib/errors"
 import { formatTranslationForPanel } from "../lib/ocr"
@@ -228,6 +228,7 @@ export function OcrResultWindow() {
 
 export function RegionBoxWindow() {
   const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
+  const [result, setResult] = useState<OcrFlowResult | null>(null)
   const configRef = useRef(config)
 
   useEffect(() => {
@@ -249,6 +250,7 @@ export function RegionBoxWindow() {
     let unlistenMoved: (() => void) | undefined
     let unlistenResized: (() => void) | undefined
     let unlistenConfig: (() => void) | undefined
+    let unlistenResult: (() => void) | undefined
 
     const syncGeometry = () => {
       if (timer) window.clearTimeout(timer)
@@ -289,11 +291,17 @@ export function RegionBoxWindow() {
     }).then((value) => {
       unlistenConfig = value
     })
+    listen<OcrFlowResult>("region-result-updated", (event) => {
+      setResult(event.payload)
+    }).then((value) => {
+      unlistenResult = value
+    })
     return () => {
       if (timer) window.clearTimeout(timer)
       unlistenMoved?.()
       unlistenResized?.()
       unlistenConfig?.()
+      unlistenResult?.()
       document.documentElement.style.background = previousHtmlBg
       document.body.style.background = previousBodyBg
       document.documentElement.classList.remove("tk-region-window-root")
@@ -319,6 +327,26 @@ export function RegionBoxWindow() {
       // Same as dragging: a missed native resize is harmless.
     }
   }
+
+  const inlineTranslation = result?.translatedText
+    ? formatTranslationForPanel(result.translatedText)
+    : result?.phase === "translate"
+      ? "翻译中..."
+      : null
+  const shouldShowInlineTranslation = Boolean(
+    inlineTranslation &&
+    (config.translationDisplayMode === "inline" || config.translationDisplayMode === "both")
+  )
+  const inlineRegions = shouldShowInlineTranslation
+    ? buildInlineTextRegions(
+        result?.translatedRegions ?? [],
+        result?.imageWidth,
+        result?.imageHeight,
+        window.innerWidth,
+        window.innerHeight,
+      )
+    : []
+  const shouldUseRegionOverlay = inlineRegions.length > 0
 
   const handles: { direction: ResizeDirection; className: string }[] = [
     { direction: "North", className: "tk-region-handle-n" },
@@ -350,6 +378,29 @@ export function RegionBoxWindow() {
       className={`tk-region-box ${config.passThrough ? "tk-region-box-passthrough" : ""}`}
       style={frameStyle}>
       {!config.passThrough && <div className="tk-region-drag-surface" onMouseDown={startDrag} />}
+      {shouldShowInlineTranslation && shouldUseRegionOverlay && (
+        <div className="tk-region-box-translation-layer" aria-live="polite">
+          {inlineRegions.map((item) => (
+            <div
+              key={item.id}
+              className="tk-region-box-translation-chip"
+              style={{
+                left: `${item.centerX}px`,
+                top: `${item.centerY}px`,
+                width: `${item.width}px`,
+                minHeight: `${item.minHeight}px`,
+                fontSize: `${item.fontSize}px`,
+              }}>
+              {item.text}
+            </div>
+          ))}
+        </div>
+      )}
+      {shouldShowInlineTranslation && !shouldUseRegionOverlay && (
+        <div className="tk-region-inline-translation" aria-live="polite">
+          {inlineTranslation}
+        </div>
+      )}
       <img className="tk-region-corner-brand" src={tabkeepIcon} alt="" aria-hidden="true" />
       {!config.passThrough &&
         handles.map((handle) => (
@@ -366,6 +417,60 @@ export function RegionBoxWindow() {
         ))}
     </div>
   )
+}
+
+function buildInlineTextRegions(
+  regions: ComicTextRegion[],
+  imageWidth: number | null | undefined,
+  imageHeight: number | null | undefined,
+  viewportWidth: number,
+  viewportHeight: number,
+) {
+  const scaleX = imageWidth && imageWidth > 0 ? viewportWidth / imageWidth : 1
+  const scaleY = imageHeight && imageHeight > 0 ? viewportHeight / imageHeight : 1
+
+  return regions
+    .filter((region) => region.translatedText?.trim())
+    .slice(0, 20)
+    .map((region) => {
+      const bounds = region.bubbleBounds ?? region.textBounds
+      const text = formatTranslationForPanel(region.translatedText ?? "").trim()
+      const textLength = Array.from(text).length
+      const scaledWidth = bounds.width * scaleX
+      const scaledHeight = bounds.height * scaleY
+      const maxWidth = Math.max(104, Math.min(420, viewportWidth - 24))
+      const width = clamp(
+        Math.max(scaledWidth * 1.12, Math.min(textLength * 10 + 28, scaledWidth * 2.15), 104),
+        104,
+        maxWidth,
+      )
+      const minHeight = clamp(
+        Math.max(scaledHeight * 0.72, Math.ceil(textLength / 18) * 23 + 18, 44),
+        44,
+        Math.max(44, Math.min(200, viewportHeight - 24)),
+      )
+      const fontSize = clamp(
+        Math.round(18 - Math.max(0, textLength - 24) * 0.08),
+        13,
+        scaledHeight < 38 ? 15 : 18,
+      )
+      const sourceCenterX = (bounds.x + bounds.width / 2) * scaleX
+      const sourceCenterY = (bounds.y + bounds.height / 2) * scaleY
+
+      return {
+        id: region.id,
+        text,
+        centerX: clamp(sourceCenterX, width / 2 + 8, viewportWidth - width / 2 - 8),
+        centerY: clamp(sourceCenterY, minHeight / 2 + 8, viewportHeight - minHeight / 2 - 8),
+        width,
+        minHeight,
+        fontSize,
+      }
+    })
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
 }
 
 export function RegionPanelWindow() {
@@ -562,6 +667,8 @@ export function RegionPanelWindow() {
   const formattedTranslationText = result?.translatedText
     ? formatTranslationForPanel(result.translatedText)
     : translationText
+  const shouldShowPanelTranslation =
+    config.translationDisplayMode === "panel" || config.translationDisplayMode === "both"
 
   return (
     <div className="tk-region-panel tk-region-translation-panel tk-region-panel-resizable">
@@ -613,6 +720,19 @@ export function RegionPanelWindow() {
               </option>
             ))}
         </select>
+        <select
+          className="tk-select tk-region-select"
+          value={config.translationDisplayMode}
+          onChange={(event) =>
+            updateConfig({
+              translationDisplayMode: event.target.value as RegionBoxConfig["translationDisplayMode"],
+            })
+          }
+          title="译文显示方式">
+          <option value="both">双显</option>
+          <option value="inline">区域内</option>
+          <option value="panel">面板</option>
+        </select>
         <Button className="h-8" onClick={runTranslate} disabled={busy !== null}>
           <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
           {busy === "translate" ? "翻译中" : "翻译"}
@@ -625,12 +745,18 @@ export function RegionPanelWindow() {
 
       {notice && <div className="tk-region-notice">{notice}</div>}
 
-      <pre
-        className={`tk-region-result-text tk-region-result-translation ${
-          result && !result.ok && result.error ? "tk-region-result-error" : ""
-        }`}>
-        {formattedTranslationText}
-      </pre>
+      {shouldShowPanelTranslation ? (
+        <pre
+          className={`tk-region-result-text tk-region-result-translation ${
+            result && !result.ok && result.error ? "tk-region-result-error" : ""
+          }`}>
+          {formattedTranslationText}
+        </pre>
+      ) : (
+        <div className="tk-region-inline-only-hint">
+          译文显示在框选区域内
+        </div>
+      )}
       {panelResizeHandles.map((handle) => (
         <button
           key={handle.direction}

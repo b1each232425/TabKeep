@@ -56,7 +56,10 @@ pnpm install
 ```powershell
 cd TabKeep
 
-# 同时启动 backend、extension、desktop
+# 日常开发：启动 backend、extension、desktop，不打开 RAG 评估台
+pnpm dev:app
+
+# 全量开发：额外启动 RAG 评估台
 pnpm dev
 
 # 只启动某一部分

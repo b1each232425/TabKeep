@@ -776,6 +776,67 @@
     @apply bg-white/80 opacity-90;
   }
 
+  .tk-region-inline-translation {
+    @apply pointer-events-none absolute inset-3 z-20 flex items-center justify-center overflow-hidden rounded-md border border-white/65 bg-white/[0.78] px-4 py-3 text-center font-semibold text-slate-950 shadow-xl backdrop-blur-[2px];
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.55;
+    font-size: clamp(16px, min(3.2vw, 4.6vh), 30px);
+    text-shadow:
+      0 1px 0 rgb(255 255 255 / 0.95),
+      0 0 8px rgb(255 255 255 / 0.72);
+    box-shadow:
+      0 18px 48px rgb(15 23 42 / 0.18),
+      inset 0 1px 0 rgb(255 255 255 / 0.8);
+  }
+
+  .tk-region-box-passthrough .tk-region-inline-translation {
+    @apply bg-white/[0.72];
+  }
+
+  .tk-region-box-translation-layer {
+    @apply pointer-events-none absolute inset-0 z-20 overflow-hidden;
+  }
+
+  .tk-region-box-translation-chip {
+    @apply absolute flex items-center justify-center overflow-visible rounded-[18px] border px-3 py-2 text-center font-semibold text-slate-950;
+    transform: translate(-50%, -50%);
+    border-color: rgb(15 23 42 / 0.74);
+    background:
+      radial-gradient(circle at 22% 18%, rgb(255 255 255 / 0.98), rgb(255 255 255 / 0.9) 34%, rgb(255 253 247 / 0.84) 100%);
+    line-height: 1.28;
+    word-break: break-word;
+    white-space: pre-wrap;
+    text-shadow:
+      0 1px 0 rgb(255 255 255 / 0.96),
+      0 0 1px rgb(255 255 255 / 0.9);
+    box-shadow:
+      0 8px 0 rgb(15 23 42 / 0.08),
+      0 18px 34px rgb(15 23 42 / 0.24),
+      inset 0 1px 0 rgb(255 255 255 / 0.96);
+    backdrop-filter: blur(2px) saturate(1.08);
+  }
+
+  .tk-region-box-translation-chip::after {
+    content: "";
+    position: absolute;
+    right: 18%;
+    bottom: -8px;
+    width: 18px;
+    height: 14px;
+    border-right: 1px solid rgb(15 23 42 / 0.58);
+    border-bottom: 1px solid rgb(15 23 42 / 0.58);
+    background: rgb(255 253 247 / 0.86);
+    transform: rotate(36deg) skew(10deg);
+    box-shadow: 4px 6px 14px rgb(15 23 42 / 0.14);
+    z-index: -1;
+  }
+
+  .tk-region-box-passthrough .tk-region-box-translation-chip {
+    background:
+      radial-gradient(circle at 22% 18%, rgb(255 255 255 / 0.94), rgb(255 255 255 / 0.8) 34%, rgb(255 253 247 / 0.72) 100%);
+  }
+
   .tk-region-edge-toolbar {
     @apply absolute bottom-2 left-2 z-[60] flex max-w-[calc(100%-1rem)] items-center gap-2 rounded-md border border-white/40 bg-white/95 p-1.5 text-xs shadow-lg backdrop-blur;
     pointer-events: auto;
@@ -903,6 +964,10 @@
 
   .tk-region-translation-panel .tk-region-result-translation {
     @apply mt-2 rounded-md border border-emerald-100 p-3 text-sm leading-6;
+  }
+
+  .tk-region-inline-only-hint {
+    @apply mt-2 flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed border-emerald-100 bg-emerald-50/45 px-4 py-6 text-center text-sm text-emerald-800;
   }
 
   .tk-region-result-error {

@@ -177,6 +177,10 @@ struct OcrDebugResponse {
     #[serde(rename = "rawText")]
     raw_text: String,
     text: String,
+    #[serde(rename = "textBoxes")]
+    text_boxes: Vec<ocr::OcrTextBox>,
+    #[serde(rename = "translatedRegions")]
+    translated_regions: Vec<ocr::ComicTextRegion>,
     #[serde(rename = "elapsedMs")]
     elapsed_ms: u128,
     config: ocr::OcrConfig,
@@ -221,6 +225,17 @@ struct ChatChoicePayload {
 #[derive(Deserialize)]
 struct ChatMessagePayload {
     content: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RegionTranslationEnvelope {
+    translations: Vec<RegionTranslationItem>,
+}
+
+#[derive(Deserialize)]
+struct RegionTranslationItem {
+    id: String,
+    text: String,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -296,6 +311,7 @@ pub fn run() {
             finish_screen_selection,
             cancel_screen_selection,
             get_latest_ocr_result,
+            get_ocr_debug_records,
             open_region_box,
             close_region_box,
             get_region_box_config,
@@ -947,7 +963,10 @@ fn sticky_note_hotkey_thread(app: tauri::AppHandle) {
             log::info!("便签小窗切换快捷键已注册: {}", config.toggle_window_hotkey);
         }
     } else {
-        log::warn!("便签小窗切换快捷键配置无效: {}", config.toggle_window_hotkey);
+        log::warn!(
+            "便签小窗切换快捷键配置无效: {}",
+            config.toggle_window_hotkey
+        );
     }
 
     loop {
@@ -983,7 +1002,11 @@ fn parse_windows_hotkey(
 
     let mut modifiers = HOT_KEY_MODIFIERS(0);
     let mut key: Option<u32> = None;
-    for part in value.split('+').map(|part| part.trim()).filter(|part| !part.is_empty()) {
+    for part in value
+        .split('+')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+    {
         match part.to_ascii_lowercase().as_str() {
             "ctrl" | "control" => modifiers |= MOD_CONTROL,
             "alt" | "option" => modifiers |= MOD_ALT,
@@ -1536,27 +1559,35 @@ async fn call_translation_model(
     target_lang: &str,
     context: Option<&str>,
 ) -> Result<String, (StatusCode, Value)> {
-    let endpoint = format!("{}/chat/completions", config.base_url.trim_end_matches('/'));
     let context_line = context
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| format!("\n上下文:{value}"))
         .unwrap_or_default();
+    call_translation_model_with_prompts(
+        state,
+        config,
+        "你是 TabKeep 的桌面翻译助手。请忠实翻译用户给出的文本,保留原有换行、列表和代码片段。只输出译文,不要解释。",
+        &format!(
+            "源语言:{source_lang}\n目标语言:{target_lang}{context_line}\n\n待翻译文本:\n{text}"
+        ),
+    )
+    .await
+}
 
+async fn call_translation_model_with_prompts(
+    state: &DesktopState,
+    config: &ModelConfigPayload,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String, (StatusCode, Value)> {
+    let endpoint = format!("{}/chat/completions", config.base_url.trim_end_matches('/'));
     let body = json!({
         "model": config.model,
         "temperature": 0,
         "messages": [
-            {
-                "role": "system",
-                "content": "你是 TabKeep 的桌面翻译助手。请忠实翻译用户给出的文本,保留原有换行、列表和代码片段。只输出译文,不要解释。"
-            },
-            {
-                "role": "user",
-                "content": format!(
-                    "源语言:{source_lang}\n目标语言:{target_lang}{context_line}\n\n待翻译文本:\n{text}"
-                )
-            }
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": user_prompt }
         ]
     });
 
@@ -1765,6 +1796,7 @@ async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, Str
     let preprocessed_dimensions = preprocessed_path
         .as_deref()
         .and_then(|path| image::image_dimensions(path).ok());
+    let translated_regions = ocr::build_comic_text_regions(&debug.text_boxes, &source_lang);
 
     Ok(OcrDebugResponse {
         ok: true,
@@ -1780,6 +1812,8 @@ async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, Str
         preprocessed_height: preprocessed_dimensions.map(|value| value.1),
         raw_text: debug.raw_text,
         text: debug.text,
+        text_boxes: debug.text_boxes,
+        translated_regions,
         elapsed_ms: debug.elapsed_ms,
         config: ocr_config,
     })
@@ -1819,8 +1853,8 @@ async fn finish_screen_selection(
     let provider_for_ocr = provider.clone();
     let path_for_ocr = cut_path.clone();
     let lang_for_ocr = source_lang.clone();
-    let text_result = tauri::async_runtime::spawn_blocking(move || {
-        ocr::recognize(
+    let recognition_result = tauri::async_runtime::spawn_blocking(move || {
+        ocr::recognize_with_debug(
             &app_for_ocr,
             &config_for_ocr,
             provider_for_ocr,
@@ -1831,8 +1865,8 @@ async fn finish_screen_selection(
     .await
     .map_err(|err| format!("OCR 任务失败: {err}"))?;
 
-    let text = match text_result {
-        Ok(value) if !value.trim().is_empty() => value,
+    let recognition = match recognition_result {
+        Ok(value) if !value.text.trim().is_empty() => value,
         Ok(_) => {
             let result = ocr::error_result("未识别到文字".to_string(), provider, Some(&cut_path));
             let _ = show_ocr_result_window(&app, &desktop, &result);
@@ -1846,27 +1880,59 @@ async fn finish_screen_selection(
             return Ok(());
         }
     };
+    let text = recognition.text.clone();
+    let image_dimensions = image::image_dimensions(&cut_path).ok();
+    let regions = ocr::build_comic_text_regions(&recognition.text_boxes, &source_lang);
 
     record_desktop_usage(&app, &desktop, DesktopUsageKind::Ocr);
     let result = match pending.mode {
-        OcrFlowMode::Recognize => ocr::success_result(text, provider, &cut_path, None, None),
+        OcrFlowMode::Recognize => ocr::with_comic_layout(
+            ocr::success_result(text, provider.clone(), &cut_path, None, None),
+            &recognition.text_boxes,
+            &regions,
+            image_dimensions,
+        ),
         OcrFlowMode::Translate => {
-            let mut progress =
-                ocr::success_result(text.clone(), provider.clone(), &cut_path, None, None);
+            let mut progress = ocr::with_comic_layout(
+                ocr::success_result(text.clone(), provider.clone(), &cut_path, None, None),
+                &recognition.text_boxes,
+                &regions,
+                image_dimensions,
+            );
             progress.phase = Some("translate".to_string());
             progress.message = Some("OCR 完成,正在翻译...".to_string());
             let _ = show_ocr_result_window(&app, &desktop, &progress);
 
-            match translate_ocr_text(&app, &desktop, &text, &source_lang, &target_lang).await {
-                Ok((translated_text, model)) => ocr::success_result(
-                    text,
-                    provider,
-                    &cut_path,
-                    Some(translated_text),
-                    Some(model),
+            let translation_result = if regions.is_empty() {
+                translate_ocr_text(&app, &desktop, &text, &source_lang, &target_lang)
+                    .await
+                    .map(|(translated_text, model)| (translated_text, Vec::new(), model))
+            } else {
+                translate_ocr_regions(&app, &desktop, regions.clone(), &source_lang, &target_lang)
+                    .await
+                    .map(|(regions, model)| (joined_region_translations(&regions), regions, model))
+            };
+
+            match translation_result {
+                Ok((translated_text, translated_regions, model)) => ocr::with_comic_layout(
+                    ocr::success_result(
+                        text,
+                        provider.clone(),
+                        &cut_path,
+                        Some(translated_text),
+                        Some(model),
+                    ),
+                    &recognition.text_boxes,
+                    &translated_regions,
+                    image_dimensions,
                 ),
                 Err(err) => {
-                    let mut result = ocr::success_result(text, provider, &cut_path, None, None);
+                    let mut result = ocr::with_comic_layout(
+                        ocr::success_result(text, provider.clone(), &cut_path, None, None),
+                        &recognition.text_boxes,
+                        &regions,
+                        image_dimensions,
+                    );
                     result.ok = false;
                     result.error = Some(err);
                     result.phase = Some("error".to_string());
@@ -1913,6 +1979,11 @@ fn get_latest_ocr_result(state: tauri::State<'_, DesktopState>) -> Option<ocr::O
         .lock()
         .ok()
         .and_then(|guard| guard.clone())
+}
+
+#[tauri::command]
+fn get_ocr_debug_records(app: tauri::AppHandle) -> Result<Vec<ocr::OcrDebugRecord>, String> {
+    ocr::load_debug_records(&app)
 }
 
 #[tauri::command]
@@ -2177,8 +2248,8 @@ async fn run_region_flow(
     let provider_for_ocr = provider.clone();
     let path_for_ocr = image_path.clone();
     let lang_for_ocr = source_lang.clone();
-    let text_result = tauri::async_runtime::spawn_blocking(move || {
-        ocr::recognize(
+    let recognition_result = tauri::async_runtime::spawn_blocking(move || {
+        ocr::recognize_with_debug(
             &app_for_ocr,
             &config_for_ocr,
             provider_for_ocr,
@@ -2189,8 +2260,8 @@ async fn run_region_flow(
     .await
     .map_err(|err| format!("区域 OCR 任务失败: {err}"))?;
 
-    let text = match text_result {
-        Ok(value) if !value.trim().is_empty() => value,
+    let recognition = match recognition_result {
+        Ok(value) if !value.text.trim().is_empty() => value,
         Ok(_) => {
             let result = ocr::error_result_without_image(
                 "未识别到文字".to_string(),
@@ -2206,35 +2277,75 @@ async fn run_region_flow(
             return Ok(result);
         }
     };
+    let text = recognition.text.clone();
+    let image_dimensions = image::image_dimensions(&image_path).ok();
+    let regions = ocr::build_comic_text_regions(&recognition.text_boxes, &source_lang);
 
     record_desktop_usage(&app, &state, DesktopUsageKind::Ocr);
+    let mode_label = match mode {
+        OcrFlowMode::Recognize => "recognize",
+        OcrFlowMode::Translate => "translate",
+    };
     let result = match mode {
-        OcrFlowMode::Recognize => {
-            ocr::success_result_without_image(text, provider, &image_path, None, None)
-        }
+        OcrFlowMode::Recognize => ocr::with_comic_layout(
+            ocr::success_result_without_image(text, provider.clone(), &image_path, None, None),
+            &recognition.text_boxes,
+            &regions,
+            image_dimensions,
+        ),
         OcrFlowMode::Translate => {
-            let mut progress = ocr::success_result_without_image(
-                text.clone(),
-                provider.clone(),
-                &image_path,
-                None,
-                None,
+            let mut progress = ocr::with_comic_layout(
+                ocr::success_result_without_image(
+                    text.clone(),
+                    provider.clone(),
+                    &image_path,
+                    None,
+                    None,
+                ),
+                &recognition.text_boxes,
+                &regions,
+                image_dimensions,
             );
             progress.phase = Some("translate".to_string());
             progress.message = Some("OCR 完成,正在翻译...".to_string());
             publish_region_result(&app, &state, &progress);
 
-            match translate_ocr_text(&app, &state, &text, &source_lang, &target_lang).await {
-                Ok((translated_text, model)) => ocr::success_result_without_image(
-                    text,
-                    provider,
-                    &image_path,
-                    Some(translated_text),
-                    Some(model),
+            let translation_result = if regions.is_empty() {
+                translate_ocr_text(&app, &state, &text, &source_lang, &target_lang)
+                    .await
+                    .map(|(translated_text, model)| (translated_text, Vec::new(), model))
+            } else {
+                translate_ocr_regions(&app, &state, regions.clone(), &source_lang, &target_lang)
+                    .await
+                    .map(|(regions, model)| (joined_region_translations(&regions), regions, model))
+            };
+
+            match translation_result {
+                Ok((translated_text, translated_regions, model)) => ocr::with_comic_layout(
+                    ocr::success_result_without_image(
+                        text,
+                        provider.clone(),
+                        &image_path,
+                        Some(translated_text),
+                        Some(model),
+                    ),
+                    &recognition.text_boxes,
+                    &translated_regions,
+                    image_dimensions,
                 ),
                 Err(err) => {
-                    let mut result =
-                        ocr::success_result_without_image(text, provider, &image_path, None, None);
+                    let mut result = ocr::with_comic_layout(
+                        ocr::success_result_without_image(
+                            text,
+                            provider.clone(),
+                            &image_path,
+                            None,
+                            None,
+                        ),
+                        &recognition.text_boxes,
+                        &regions,
+                        image_dimensions,
+                    );
                     result.ok = false;
                     result.error = Some(err);
                     result.phase = Some("error".to_string());
@@ -2244,6 +2355,19 @@ async fn run_region_flow(
             }
         }
     };
+
+    if let Err(err) = ocr::save_region_debug_record(
+        &app,
+        mode_label,
+        &source_lang,
+        &target_lang,
+        provider.clone(),
+        &image_path,
+        &recognition,
+        &result,
+    ) {
+        log::warn!("保存 OCR 调试记录失败: {err}");
+    }
 
     publish_region_result(&app, &state, &result);
     Ok(result)
@@ -2537,6 +2661,133 @@ async fn translate_ocr_text(
     .await
 }
 
+async fn translate_ocr_regions(
+    app: &tauri::AppHandle,
+    state: &DesktopState,
+    mut regions: Vec<ocr::ComicTextRegion>,
+    source_lang: &str,
+    target_lang: &str,
+) -> Result<(Vec<ocr::ComicTextRegion>, String), String> {
+    if regions.is_empty() {
+        return Err("没有可翻译的漫画文本区域".to_string());
+    }
+
+    let provider_config = translation::load_config(app);
+    if provider_config.provider != translation::TranslateProvider::OpenaiCompatible {
+        for region in &mut regions {
+            let translated_text = translation::translate_fast_provider(
+                &state.client,
+                &provider_config,
+                &region.source_text,
+                source_lang,
+                target_lang,
+            )
+            .await
+            .map_err(|err| translation::explain_translate_error(&err))?;
+            region.translated_text = Some(translated_text);
+        }
+        record_desktop_usage(app, state, DesktopUsageKind::Translation);
+        return Ok((regions, provider_config.provider.display_name().to_string()));
+    }
+
+    let token = get_cached_token(state);
+    let model_config = load_model_config(state, token.as_deref())
+        .await
+        .map_err(error_from_json_response)?;
+    let model = model_config.model.clone();
+    let source_payload = regions
+        .iter()
+        .map(|region| {
+            json!({
+                "id": region.id,
+                "text": region.source_text,
+                "readingOrder": region.reading_order,
+                "direction": region.direction,
+            })
+        })
+        .collect::<Vec<_>>();
+    let user_prompt = format!(
+        "源语言:{source_lang}\n目标语言:{target_lang}\n场景:漫画或图片中的多个独立文本区域。请结合整页上下文翻译，但不要合并、拆分或重排区域。\n\n输入区域 JSON:\n{}",
+        serde_json::to_string_pretty(&source_payload).unwrap_or_default()
+    );
+    let structured_result = call_translation_model_with_prompts(
+        state,
+        &model_config,
+        "你是漫画翻译助手。必须只输出合法 JSON，格式为 {\"translations\":[{\"id\":\"region_01\",\"text\":\"译文\"}]}。每个输入 id 必须且只能出现一次，不得改变 id，不得增加解释。",
+        &user_prompt,
+    )
+    .await
+    .map_err(error_from_json_response)
+    .and_then(|raw| apply_region_translations(&mut regions, &raw));
+
+    if structured_result.is_err() {
+        log::warn!("结构化区域翻译解析失败，改为逐区域翻译以保持坐标映射");
+        for region in &mut regions {
+            let translated_text = call_translation_model(
+                state,
+                &model_config,
+                &region.source_text,
+                source_lang,
+                target_lang,
+                Some("漫画中的单个文本区域，只返回该区域译文"),
+            )
+            .await
+            .map_err(error_from_json_response)?;
+            region.translated_text = Some(translated_text);
+        }
+    }
+
+    record_desktop_usage(app, state, DesktopUsageKind::Translation);
+    Ok((regions, model))
+}
+
+fn apply_region_translations(
+    regions: &mut [ocr::ComicTextRegion],
+    raw: &str,
+) -> Result<(), String> {
+    let value = clean_llm_output(raw);
+    let envelope = serde_json::from_str::<RegionTranslationEnvelope>(&value)
+        .map_err(|err| format!("区域翻译响应不是合法 JSON: {err}"))?;
+    if envelope.translations.len() != regions.len() {
+        return Err(format!(
+            "区域翻译数量不一致: 期望 {}, 实际 {}",
+            regions.len(),
+            envelope.translations.len()
+        ));
+    }
+
+    let mut translated_values = Vec::with_capacity(regions.len());
+    for region in regions.iter() {
+        let matches = envelope
+            .translations
+            .iter()
+            .filter(|item| item.id == region.id)
+            .collect::<Vec<_>>();
+        if matches.len() != 1 {
+            return Err(format!("区域 {} 缺失或重复", region.id));
+        }
+        let translated_text = matches[0].text.trim();
+        if translated_text.is_empty() {
+            return Err(format!("区域 {} 的译文为空", region.id));
+        }
+        translated_values.push(translated_text.to_string());
+    }
+    for (region, translated_text) in regions.iter_mut().zip(translated_values) {
+        region.translated_text = Some(translated_text);
+    }
+    Ok(())
+}
+
+fn joined_region_translations(regions: &[ocr::ComicTextRegion]) -> String {
+    regions
+        .iter()
+        .filter_map(|region| region.translated_text.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 async fn translate_desktop_text(
     app: &tauri::AppHandle,
     state: &DesktopState,
@@ -2783,6 +3034,56 @@ fn clean_llm_output(raw: &str) -> String {
         body = body.trim_end_matches('`').trim_end().to_string();
     }
     body.trim().to_string()
+}
+
+#[cfg(test)]
+mod region_translation_tests {
+    use super::*;
+
+    fn region(id: &str) -> ocr::ComicTextRegion {
+        ocr::ComicTextRegion {
+            id: id.to_string(),
+            text_bounds: ocr::OcrBounds {
+                x: 0.0,
+                y: 0.0,
+                width: 120.0,
+                height: 48.0,
+            },
+            bubble_bounds: None,
+            source_text: format!("source {id}"),
+            translated_text: None,
+            direction: ocr::ComicTextDirection::Horizontal,
+            reading_order: 0,
+            confidence: Some(0.95),
+            line_boxes: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn applies_structured_translations_by_id_instead_of_response_order() {
+        let mut regions = vec![region("region_01"), region("region_02")];
+        let response = r#"```json
+{"translations":[{"id":"region_02","text":"第二段"},{"id":"region_01","text":"第一段"}]}
+```"#;
+
+        apply_region_translations(&mut regions, response).unwrap();
+
+        assert_eq!(regions[0].translated_text.as_deref(), Some("第一段"));
+        assert_eq!(regions[1].translated_text.as_deref(), Some("第二段"));
+    }
+
+    #[test]
+    fn rejects_incomplete_structured_translation_without_partial_updates() {
+        let mut regions = vec![region("region_01"), region("region_02")];
+        let response = r#"{"translations":[{"id":"region_01","text":"第一段"},{"id":"unknown","text":"错误"}]}"#;
+
+        let error = apply_region_translations(&mut regions, response).unwrap_err();
+
+        assert!(error.contains("region_02"));
+        assert!(regions
+            .iter()
+            .all(|region| region.translated_text.is_none()));
+    }
 }
 
 fn json_response(status: StatusCode, value: Value) -> Response {

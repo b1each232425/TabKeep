@@ -4,6 +4,7 @@ param(
   [switch] $NoBackend,
   [switch] $NoExtension,
   [switch] $NoDesktop,
+  [switch] $NoEval,
   [switch] $DryRun
 )
 
@@ -56,6 +57,10 @@ function Test-TargetEnabled {
   }
 
   if ($NoDesktop -and $Target.Id -eq "desktop") {
+    return $false
+  }
+
+  if ($NoEval -and $Target.Id -eq "eval") {
     return $false
   }
 

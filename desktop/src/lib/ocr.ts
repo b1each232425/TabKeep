@@ -9,6 +9,7 @@ export const OCR_TEXT_LAYOUT_OPTIONS: {
   { value: "preserve", label: "保留原样", description: "保留 OCR 行结构，适合菜单、表格和代码" },
   { value: "conservative", label: "保守合并", description: "只合并明显的视觉折行，适合字幕和混合内容" },
   { value: "paragraph", label: "段落优先", description: "尽量整理为自然段，适合网页、PDF 和文档" },
+  { value: "manga", label: "漫画模式", description: "按文本框位置排序，保留短句和气泡感，适合日漫/图片对白" },
 ]
 
 export function formatTranslationForPanel(value: string): string {

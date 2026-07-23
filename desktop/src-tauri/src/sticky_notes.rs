@@ -272,7 +272,10 @@ pub fn rename_category(app: &AppHandle, old_name: &str, new_name: &str) -> Resul
         return Err("分类名不能为空".to_string());
     }
     let mut store = read_store(app)?;
-    if !store.categories.iter().any(|category| category == &old_name)
+    if !store
+        .categories
+        .iter()
+        .any(|category| category == &old_name)
         && !store.notes.iter().any(|note| note.category == old_name)
     {
         return Err("分类不存在".to_string());
@@ -304,7 +307,11 @@ pub fn delete_category(app: &AppHandle, name: &str) -> Result<(), String> {
     write_store(app, &store)
 }
 
-pub fn move_note_to_category(app: &AppHandle, id: &str, category: &str) -> Result<StickyNote, String> {
+pub fn move_note_to_category(
+    app: &AppHandle,
+    id: &str,
+    category: &str,
+) -> Result<StickyNote, String> {
     let id = sanitize_id(id)?;
     let category = normalize_category(category)?;
     let mut store = read_store(app)?;
@@ -347,11 +354,7 @@ pub fn import_markdown_file(
     )
 }
 
-pub fn export_markdown_file(
-    app: &AppHandle,
-    id: &str,
-    path: Option<String>,
-) -> Result<(), String> {
+pub fn export_markdown_file(app: &AppHandle, id: &str, path: Option<String>) -> Result<(), String> {
     let path = path_from_optional(path, "请选择导出 Markdown 的保存路径")?;
     let note = get_note(app, id)?;
     if let Some(parent) = path.parent() {

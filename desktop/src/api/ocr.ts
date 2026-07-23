@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core"
 
 import type {
   OcrConfig,
+  OcrDebugRecord,
   OcrDebugResult,
   OcrFlowResult,
   OcrRequest,
@@ -45,6 +46,10 @@ export async function cancelScreenSelection(): Promise<void> {
 
 export async function getLatestOcrResult(): Promise<OcrFlowResult | null> {
   return invoke<OcrFlowResult | null>("get_latest_ocr_result")
+}
+
+export async function getOcrDebugRecords(): Promise<OcrDebugRecord[]> {
+  return invoke<OcrDebugRecord[]>("get_ocr_debug_records")
 }
 
 export async function debugRegionOcr(): Promise<OcrDebugResult> {

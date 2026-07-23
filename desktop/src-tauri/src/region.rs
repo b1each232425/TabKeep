@@ -18,6 +18,20 @@ const MIN_REGION_WIDTH: u32 = 120;
 const MIN_REGION_HEIGHT: u32 = 60;
 const SCREEN_PADDING: i32 = 12;
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslationDisplayMode {
+    Panel,
+    Inline,
+    Both,
+}
+
+impl Default for TranslationDisplayMode {
+    fn default() -> Self {
+        Self::Both
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RegionBoxConfig {
     pub x: i32,
@@ -30,6 +44,8 @@ pub struct RegionBoxConfig {
     pub source_lang: String,
     #[serde(rename = "targetLang")]
     pub target_lang: String,
+    #[serde(rename = "translationDisplayMode", default)]
+    pub translation_display_mode: TranslationDisplayMode,
     #[serde(rename = "panelX", default, skip_serializing_if = "Option::is_none")]
     pub panel_x: Option<i32>,
     #[serde(rename = "panelY", default, skip_serializing_if = "Option::is_none")]
@@ -50,6 +66,7 @@ impl Default for RegionBoxConfig {
             pass_through: false,
             source_lang: "auto".to_string(),
             target_lang: "简体中文".to_string(),
+            translation_display_mode: TranslationDisplayMode::Both,
             panel_x: None,
             panel_y: None,
             panel_width: default_panel_width(),
@@ -114,7 +131,10 @@ pub fn open_windows(app: &AppHandle) -> Result<RegionBoxConfig, String> {
     )
     .title("TabKeep Region Translator")
     .inner_size(config.panel_width as f64, config.panel_height as f64)
-    .min_inner_size(MIN_REGION_PANEL_WIDTH as f64, MIN_REGION_PANEL_HEIGHT as f64)
+    .min_inner_size(
+        MIN_REGION_PANEL_WIDTH as f64,
+        MIN_REGION_PANEL_HEIGHT as f64,
+    )
     .position(panel_position.0 as f64, panel_position.1 as f64)
     .decorations(false)
     .transparent(true)
@@ -445,8 +465,12 @@ fn panel_position(config: &RegionBoxConfig) -> (i32, i32) {
         .max(screen_top.saturating_add(SCREEN_PADDING));
     let min_x = screen_left.saturating_add(SCREEN_PADDING);
     let min_y = screen_top.saturating_add(SCREEN_PADDING);
-    let x = default_x.max(config.x.saturating_add(REGION_PANEL_GAP)).clamp(min_x, max_x);
-    let y = default_y.max(config.y.saturating_add(REGION_PANEL_GAP)).clamp(min_y, max_y);
+    let x = default_x
+        .max(config.x.saturating_add(REGION_PANEL_GAP))
+        .clamp(min_x, max_x);
+    let y = default_y
+        .max(config.y.saturating_add(REGION_PANEL_GAP))
+        .clamp(min_y, max_y);
 
     (x, y)
 }

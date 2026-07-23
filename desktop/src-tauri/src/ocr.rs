@@ -6,6 +6,7 @@ use std::{
 };
 
 use base64::{engine::general_purpose, Engine};
+use chrono::Utc;
 use image::{imageops::FilterType, DynamicImage, GenericImageView};
 use screenshots::{Compression, Screen};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,8 @@ const OCR_CONFIG_FILE: &str = "ocr-config.json";
 const FULL_SCREENSHOT_FILE: &str = "tabkeep_screenshot.png";
 const CUT_SCREENSHOT_FILE: &str = "tabkeep_screenshot_cut.png";
 const PREPROCESSED_OCR_FILE: &str = "tabkeep_ocr_preprocessed.png";
+const OCR_DEBUG_RECORDS_FILE: &str = "ocr-debug-records.json";
+const OCR_DEBUG_RECORD_LIMIT: usize = 20;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +40,7 @@ pub enum OcrTextLayoutMode {
     Preserve,
     Conservative,
     Paragraph,
+    Manga,
 }
 
 impl Default for OcrTextLayoutMode {
@@ -155,6 +159,64 @@ pub struct OcrFlowResult {
     pub error: Option<String>,
     pub phase: Option<String>,
     pub message: Option<String>,
+    #[serde(rename = "textBoxes", default)]
+    pub text_boxes: Vec<OcrTextBox>,
+    #[serde(rename = "translatedRegions", default)]
+    pub translated_regions: Vec<ComicTextRegion>,
+    #[serde(rename = "imageWidth")]
+    pub image_width: Option<u32>,
+    #[serde(rename = "imageHeight")]
+    pub image_height: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OcrTextBox {
+    pub text: String,
+    pub score: Option<f32>,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub struct OcrBounds {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComicTextDirection {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ComicTextRegion {
+    pub id: String,
+    #[serde(rename = "textBounds")]
+    pub text_bounds: OcrBounds,
+    #[serde(rename = "bubbleBounds")]
+    pub bubble_bounds: Option<OcrBounds>,
+    #[serde(rename = "sourceText")]
+    pub source_text: String,
+    #[serde(rename = "translatedText")]
+    pub translated_text: Option<String>,
+    pub direction: ComicTextDirection,
+    #[serde(rename = "readingOrder")]
+    pub reading_order: usize,
+    pub confidence: Option<f32>,
+    #[serde(rename = "lineBoxes")]
+    pub line_boxes: Vec<OcrTextBox>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct OcrRawResult {
+    text: String,
+    boxes: Vec<OcrTextBox>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,8 +224,41 @@ pub struct OcrRecognitionDebug {
     #[serde(rename = "rawText")]
     pub raw_text: String,
     pub text: String,
+    #[serde(rename = "textBoxes")]
+    pub text_boxes: Vec<OcrTextBox>,
     #[serde(rename = "preprocessedImagePath")]
     pub preprocessed_image_path: Option<String>,
+    #[serde(rename = "elapsedMs")]
+    pub elapsed_ms: u128,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct OcrDebugRecord {
+    pub id: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    pub mode: String,
+    #[serde(rename = "sourceLang")]
+    pub source_lang: String,
+    #[serde(rename = "targetLang")]
+    pub target_lang: String,
+    pub provider: OcrProvider,
+    #[serde(rename = "imagePath")]
+    pub image_path: String,
+    #[serde(rename = "preprocessedImagePath")]
+    pub preprocessed_image_path: Option<String>,
+    #[serde(rename = "rawText")]
+    pub raw_text: String,
+    pub text: String,
+    #[serde(rename = "textBoxes", default)]
+    pub text_boxes: Vec<OcrTextBox>,
+    #[serde(rename = "translatedRegions", default)]
+    pub translated_regions: Vec<ComicTextRegion>,
+    #[serde(rename = "translatedText")]
+    pub translated_text: Option<String>,
+    pub model: Option<String>,
+    pub ok: bool,
+    pub error: Option<String>,
     #[serde(rename = "elapsedMs")]
     pub elapsed_ms: u128,
 }
@@ -245,16 +340,6 @@ pub fn crop_selection(
     Ok(path)
 }
 
-pub fn recognize(
-    app: &AppHandle,
-    config: &OcrConfig,
-    provider: OcrProvider,
-    image_path: &Path,
-    lang: &str,
-) -> Result<String, String> {
-    recognize_with_debug(app, config, provider, image_path, lang).map(|result| result.text)
-}
-
 pub fn recognize_with_debug(
     app: &AppHandle,
     config: &OcrConfig,
@@ -269,17 +354,81 @@ pub fn recognize_with_debug(
         None
     };
     let ocr_image_path = preprocessed_path.as_deref().unwrap_or(image_path);
-    let raw_text = match provider {
-        OcrProvider::WindowsOcr => recognize_windows(ocr_image_path, lang),
-        OcrProvider::PaddleocrJson => recognize_paddle(config, ocr_image_path),
-    }?;
+    let raw_result = match provider {
+        OcrProvider::WindowsOcr => OcrRawResult {
+            text: recognize_windows(ocr_image_path, lang)?,
+            boxes: Vec::new(),
+        },
+        OcrProvider::PaddleocrJson => recognize_paddle(config, ocr_image_path, lang)?,
+    };
+    let scale = if preprocessed_path.is_some() {
+        config.preprocess_scale.clamp(1, 4) as f32
+    } else {
+        1.0
+    };
+    let mut text_boxes = normalize_ocr_boxes(raw_result.boxes, lang, scale);
+    if config.text_layout_mode == OcrTextLayoutMode::Manga {
+        sort_boxes_for_manga(&mut text_boxes);
+    }
+    let raw_text = if text_boxes.is_empty() {
+        raw_result.text
+    } else {
+        text_boxes
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     let text = postprocess_ocr_text(&raw_text, lang, config);
     Ok(OcrRecognitionDebug {
         raw_text,
         text,
+        text_boxes,
         preprocessed_image_path: preprocessed_path.as_deref().map(path_to_string),
         elapsed_ms: started.elapsed().as_millis(),
     })
+}
+
+pub fn load_debug_records(app: &AppHandle) -> Result<Vec<OcrDebugRecord>, String> {
+    let path = debug_records_path(app)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = fs::read_to_string(&path).map_err(|err| format!("读取 OCR 调试记录失败: {err}"))?;
+    serde_json::from_str(&raw).map_err(|err| format!("解析 OCR 调试记录失败: {err}"))
+}
+
+pub fn save_region_debug_record(
+    app: &AppHandle,
+    mode: &str,
+    source_lang: &str,
+    target_lang: &str,
+    provider: OcrProvider,
+    image_path: &Path,
+    recognition: &OcrRecognitionDebug,
+    result: &OcrFlowResult,
+) -> Result<(), String> {
+    let now = Utc::now();
+    let record = OcrDebugRecord {
+        id: format!("{}-{mode}", now.timestamp_millis()),
+        created_at: now.to_rfc3339(),
+        mode: mode.to_string(),
+        source_lang: source_lang.to_string(),
+        target_lang: target_lang.to_string(),
+        provider,
+        image_path: path_to_string(image_path),
+        preprocessed_image_path: recognition.preprocessed_image_path.clone(),
+        raw_text: recognition.raw_text.clone(),
+        text: recognition.text.clone(),
+        text_boxes: recognition.text_boxes.clone(),
+        translated_regions: result.translated_regions.clone(),
+        translated_text: result.translated_text.clone(),
+        model: result.model.clone(),
+        ok: result.ok,
+        error: result.error.clone(),
+        elapsed_ms: recognition.elapsed_ms,
+    };
+    append_debug_record(app, record)
 }
 
 pub fn image_data_url(path: &Path) -> Option<String> {
@@ -308,6 +457,10 @@ pub fn success_result(
         error: None,
         phase: Some("done".to_string()),
         message: None,
+        text_boxes: Vec::new(),
+        translated_regions: Vec::new(),
+        image_width: None,
+        image_height: None,
     }
 }
 
@@ -329,7 +482,283 @@ pub fn success_result_without_image(
         error: None,
         phase: Some("done".to_string()),
         message: None,
+        text_boxes: Vec::new(),
+        translated_regions: Vec::new(),
+        image_width: None,
+        image_height: None,
     }
+}
+
+pub fn with_comic_layout(
+    mut result: OcrFlowResult,
+    text_boxes: &[OcrTextBox],
+    regions: &[ComicTextRegion],
+    image_dimensions: Option<(u32, u32)>,
+) -> OcrFlowResult {
+    result.text_boxes = text_boxes.to_vec();
+    result.translated_regions = regions.to_vec();
+    result.image_width = image_dimensions.map(|value| value.0);
+    result.image_height = image_dimensions.map(|value| value.1);
+    result
+}
+
+pub fn build_comic_text_regions(
+    text_boxes: &[OcrTextBox],
+    source_lang: &str,
+) -> Vec<ComicTextRegion> {
+    let candidates = text_boxes
+        .iter()
+        .filter(|item| item.width > 8.0 && item.height > 8.0 && !item.text.trim().is_empty())
+        .cloned()
+        .take(64)
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    let mut groups: Vec<Vec<OcrTextBox>> = Vec::new();
+    for candidate in candidates {
+        let candidate_direction = infer_box_direction(&candidate, source_lang);
+        let mut best_group: Option<(usize, f32)> = None;
+        for (index, group) in groups.iter().enumerate() {
+            let group_direction = infer_group_direction(group, source_lang);
+            if group_direction != candidate_direction {
+                continue;
+            }
+            let score = group_merge_score(group, &candidate, group_direction);
+            if score > 0.0 && best_group.is_none_or(|value| score > value.1) {
+                best_group = Some((index, score));
+            }
+        }
+
+        if let Some((index, _)) = best_group {
+            groups[index].push(candidate);
+        } else {
+            groups.push(vec![candidate]);
+        }
+    }
+
+    let page_vertical = source_lang_is_japanese(source_lang)
+        && groups
+            .iter()
+            .filter(|group| {
+                infer_group_direction(group, source_lang) == ComicTextDirection::Vertical
+            })
+            .count()
+            * 2
+            >= groups.len();
+
+    let mut regions = groups
+        .into_iter()
+        .filter_map(|mut group| {
+            let direction = infer_group_direction(&group, source_lang);
+            sort_region_lines(&mut group, direction);
+            let bounds = bounds_for_boxes(&group)?;
+            let source_text = join_region_text(&group, source_lang);
+            if source_text.is_empty() {
+                return None;
+            }
+            let scores = group
+                .iter()
+                .filter_map(|item| item.score)
+                .collect::<Vec<_>>();
+            let confidence =
+                (!scores.is_empty()).then(|| scores.iter().sum::<f32>() / scores.len() as f32);
+            Some(ComicTextRegion {
+                id: String::new(),
+                text_bounds: bounds,
+                bubble_bounds: None,
+                source_text,
+                translated_text: None,
+                direction,
+                reading_order: 0,
+                confidence,
+                line_boxes: group,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    regions.sort_by(|a, b| compare_region_order(a, b, page_vertical));
+    for (index, region) in regions.iter_mut().enumerate() {
+        region.reading_order = index;
+        region.id = format!("region_{:02}", index + 1);
+    }
+    regions
+}
+
+fn infer_box_direction(item: &OcrTextBox, source_lang: &str) -> ComicTextDirection {
+    if item.height > item.width * 1.35
+        && (source_lang_is_japanese(source_lang) || item.height > item.width * 2.0)
+    {
+        ComicTextDirection::Vertical
+    } else {
+        ComicTextDirection::Horizontal
+    }
+}
+
+fn infer_group_direction(group: &[OcrTextBox], source_lang: &str) -> ComicTextDirection {
+    let vertical = group
+        .iter()
+        .filter(|item| infer_box_direction(item, source_lang) == ComicTextDirection::Vertical)
+        .count();
+    if vertical * 2 > group.len() {
+        ComicTextDirection::Vertical
+    } else {
+        ComicTextDirection::Horizontal
+    }
+}
+
+fn group_merge_score(
+    group: &[OcrTextBox],
+    candidate: &OcrTextBox,
+    direction: ComicTextDirection,
+) -> f32 {
+    group
+        .iter()
+        .filter_map(|item| box_merge_score(item, candidate, direction))
+        .fold(0.0, f32::max)
+}
+
+fn box_merge_score(
+    first: &OcrTextBox,
+    second: &OcrTextBox,
+    direction: ComicTextDirection,
+) -> Option<f32> {
+    let first_right = first.x + first.width;
+    let second_right = second.x + second.width;
+    let first_bottom = first.y + first.height;
+    let second_bottom = second.y + second.height;
+    let gap_x = (first.x - second_right)
+        .max(second.x - first_right)
+        .max(0.0);
+    let gap_y = (first.y - second_bottom)
+        .max(second.y - first_bottom)
+        .max(0.0);
+    let overlap_x = (first_right.min(second_right) - first.x.max(second.x)).max(0.0);
+    let overlap_y = (first_bottom.min(second_bottom) - first.y.max(second.y)).max(0.0);
+    let overlap_x_ratio = overlap_x / first.width.min(second.width).max(1.0);
+    let overlap_y_ratio = overlap_y / first.height.min(second.height).max(1.0);
+    let typical_height = first.height.max(second.height).max(12.0);
+    let typical_width = first.width.max(second.width).max(12.0);
+
+    let related = match direction {
+        ComicTextDirection::Horizontal => {
+            let stacked = overlap_x_ratio >= 0.22 && gap_y <= typical_height * 1.45;
+            let same_line = overlap_y_ratio >= 0.45 && gap_x <= typical_height * 2.4;
+            stacked || same_line
+        }
+        ComicTextDirection::Vertical => {
+            let same_column = overlap_x_ratio >= 0.4 && gap_y <= typical_width * 1.8;
+            let adjacent_columns = overlap_y_ratio >= 0.24 && gap_x <= typical_width * 1.45;
+            same_column || adjacent_columns
+        }
+    };
+    related.then(|| overlap_x_ratio + overlap_y_ratio + 1.0 / (1.0 + gap_x + gap_y))
+}
+
+fn bounds_for_boxes(boxes: &[OcrTextBox]) -> Option<OcrBounds> {
+    let first = boxes.first()?;
+    let mut left = first.x;
+    let mut top = first.y;
+    let mut right = first.x + first.width;
+    let mut bottom = first.y + first.height;
+    for item in &boxes[1..] {
+        left = left.min(item.x);
+        top = top.min(item.y);
+        right = right.max(item.x + item.width);
+        bottom = bottom.max(item.y + item.height);
+    }
+    Some(OcrBounds {
+        x: left,
+        y: top,
+        width: (right - left).max(0.0),
+        height: (bottom - top).max(0.0),
+    })
+}
+
+fn sort_region_lines(boxes: &mut [OcrTextBox], direction: ComicTextDirection) {
+    boxes.sort_by(|a, b| match direction {
+        ComicTextDirection::Horizontal => {
+            a.y.partial_cmp(&b.y)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
+        }
+        ComicTextDirection::Vertical => {
+            b.x.partial_cmp(&a.x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal))
+        }
+    });
+}
+
+fn join_region_text(boxes: &[OcrTextBox], source_lang: &str) -> String {
+    let separator = if source_lang_is_cjk(source_lang) {
+        ""
+    } else {
+        " "
+    };
+    boxes
+        .iter()
+        .map(|item| item.text.trim())
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>()
+        .join(separator)
+}
+
+fn compare_region_order(
+    first: &ComicTextRegion,
+    second: &ComicTextRegion,
+    page_vertical: bool,
+) -> std::cmp::Ordering {
+    if page_vertical {
+        return second
+            .text_bounds
+            .x
+            .partial_cmp(&first.text_bounds.x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                first
+                    .text_bounds
+                    .y
+                    .partial_cmp(&second.text_bounds.y)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+    }
+    first
+        .text_bounds
+        .y
+        .partial_cmp(&second.text_bounds.y)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| {
+            first
+                .text_bounds
+                .x
+                .partial_cmp(&second.text_bounds.x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+fn source_lang_is_japanese(source_lang: &str) -> bool {
+    matches!(source_lang, "ja" | "ja-JP" | "jp" | "日本語" | "日语")
+}
+
+fn source_lang_is_cjk(source_lang: &str) -> bool {
+    source_lang_is_japanese(source_lang)
+        || matches!(
+            source_lang,
+            "zh" | "zh-CN"
+                | "zh-TW"
+                | "zh-Hans"
+                | "zh-Hant"
+                | "中文"
+                | "简体中文"
+                | "繁體中文"
+                | "繁体中文"
+                | "ko"
+                | "ko-KR"
+                | "한국어"
+                | "韩语"
+        )
 }
 
 pub fn error_result(
@@ -348,6 +777,10 @@ pub fn error_result(
         error: Some(error),
         phase: Some("error".to_string()),
         message: None,
+        text_boxes: Vec::new(),
+        translated_regions: Vec::new(),
+        image_width: None,
+        image_height: None,
     }
 }
 
@@ -367,6 +800,10 @@ pub fn error_result_without_image(
         error: Some(error),
         phase: Some("error".to_string()),
         message: None,
+        text_boxes: Vec::new(),
+        translated_regions: Vec::new(),
+        image_width: None,
+        image_height: None,
     }
 }
 
@@ -398,6 +835,14 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join(OCR_CONFIG_FILE))
 }
 
+fn debug_records_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_local_data_dir()
+        .map_err(|err| format!("获取应用数据目录失败: {err}"))?
+        .join(OCR_DEBUG_RECORDS_FILE))
+}
+
 fn cache_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -407,7 +852,31 @@ fn cache_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
     Ok(dir.join(name))
 }
 
-fn preprocess_image(app: &AppHandle, config: &OcrConfig, image_path: &Path) -> Result<PathBuf, String> {
+fn append_debug_record(app: &AppHandle, record: OcrDebugRecord) -> Result<(), String> {
+    let path = debug_records_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("创建 OCR 调试目录失败: {err}"))?;
+    }
+
+    let mut records = if path.exists() {
+        let raw = fs::read_to_string(&path).unwrap_or_default();
+        serde_json::from_str::<Vec<OcrDebugRecord>>(&raw).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    records.insert(0, record);
+    records.truncate(OCR_DEBUG_RECORD_LIMIT);
+
+    let raw = serde_json::to_string_pretty(&records)
+        .map_err(|err| format!("序列化 OCR 调试记录失败: {err}"))?;
+    fs::write(&path, raw).map_err(|err| format!("写入 OCR 调试记录失败: {err}"))
+}
+
+fn preprocess_image(
+    app: &AppHandle,
+    config: &OcrConfig,
+    image_path: &Path,
+) -> Result<PathBuf, String> {
     let mut image = image::open(image_path).map_err(|err| format!("读取 OCR 图片失败: {err}"))?;
     let scale = config.preprocess_scale.clamp(1, 4);
     if scale > 1 {
@@ -444,7 +913,11 @@ fn threshold_image(image: DynamicImage) -> DynamicImage {
     DynamicImage::ImageLuma8(gray)
 }
 
-fn recognize_paddle(config: &OcrConfig, image_path: &Path) -> Result<String, String> {
+fn recognize_paddle(
+    config: &OcrConfig,
+    image_path: &Path,
+    lang: &str,
+) -> Result<OcrRawResult, String> {
     if config.paddle_exe_path.trim().is_empty() {
         return Err("未配置 PaddleOCR-json.exe 路径".to_string());
     }
@@ -461,8 +934,8 @@ fn recognize_paddle(config: &OcrConfig, image_path: &Path) -> Result<String, Str
     if !config.paddle_models_path.trim().is_empty() {
         command.arg(format!("-models_path={}", config.paddle_models_path.trim()));
     }
-    if !config.paddle_config_path.trim().is_empty() {
-        command.arg(format!("-config_path={}", config.paddle_config_path.trim()));
+    if let Some(config_path) = paddle_config_path_for_lang(config, lang) {
+        command.arg(format!("-config_path={}", config_path.display()));
     }
 
     let output = command
@@ -481,7 +954,30 @@ fn recognize_paddle(config: &OcrConfig, image_path: &Path) -> Result<String, Str
     parse_paddle_output(&stdout, config.paddle_min_score)
 }
 
-fn parse_paddle_output(stdout: &str, min_score: f32) -> Result<String, String> {
+fn paddle_config_path_for_lang(config: &OcrConfig, lang: &str) -> Option<PathBuf> {
+    let manual = config.paddle_config_path.trim();
+    if !manual.is_empty() {
+        return Some(PathBuf::from(manual));
+    }
+
+    let models_path = config.paddle_models_path.trim();
+    if models_path.is_empty() {
+        return None;
+    }
+
+    let config_file = match lang {
+        "ja-JP" | "ja" | "日本語" | "日语" => "config_japan.txt",
+        "zh-TW" | "zh-Hant" | "zh-HK" | "繁體中文" | "繁体中文" => "config_chinese_cht.txt",
+        "zh-CN" | "zh-Hans" | "简体中文" | "中文" => "config_chinese.txt",
+        "en-US" | "en" | "English" | "英语" => "config_en.txt",
+        "ko-KR" | "ko" | "한국어" | "韩语" => "config_korean.txt",
+        _ => return None,
+    };
+    let path = PathBuf::from(models_path).join(config_file);
+    path.exists().then_some(path)
+}
+
+fn parse_paddle_output(stdout: &str, min_score: f32) -> Result<OcrRawResult, String> {
     let Some(line) = stdout
         .lines()
         .rev()
@@ -497,32 +993,132 @@ fn parse_paddle_output(stdout: &str, min_score: f32) -> Result<String, String> {
         .unwrap_or_default();
     match code {
         100 => {
-            let lines = value
+            let boxes = value
                 .get("data")
                 .and_then(Value::as_array)
                 .map(|items| {
                     items
                         .iter()
-                        .filter(|item| {
-                            match item.get("score").and_then(Value::as_f64) {
-                                Some(score) => score >= min_score.clamp(0.0, 1.0) as f64,
-                                None => true,
-                            }
+                        .filter(|item| match item.get("score").and_then(Value::as_f64) {
+                            Some(score) => score >= min_score.clamp(0.0, 1.0) as f64,
+                            None => true,
                         })
-                        .filter_map(|item| item.get("text").and_then(Value::as_str))
-                        .map(str::trim)
-                        .filter(|text| !text.is_empty())
+                        .filter_map(parse_paddle_text_box)
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            Ok(lines.join("\n").trim().to_string())
+            let text = boxes
+                .iter()
+                .map(|item| item.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string();
+            Ok(OcrRawResult { text, boxes })
         }
-        101 => Ok(String::new()),
+        101 => Ok(OcrRawResult {
+            text: String::new(),
+            boxes: Vec::new(),
+        }),
         _ => Err(value
             .get("data")
             .map(Value::to_string)
             .unwrap_or_else(|| json!(value).to_string())),
     }
+}
+
+fn parse_paddle_text_box(item: &Value) -> Option<OcrTextBox> {
+    let text = item.get("text").and_then(Value::as_str)?.trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    let score = item
+        .get("score")
+        .and_then(Value::as_f64)
+        .map(|value| value as f32);
+    let (x, y, width, height) = item
+        .get("box")
+        .and_then(parse_paddle_box_bounds)
+        .unwrap_or((0.0, 0.0, 0.0, 0.0));
+    Some(OcrTextBox {
+        text,
+        score,
+        x,
+        y,
+        width,
+        height,
+    })
+}
+
+fn parse_paddle_box_bounds(value: &Value) -> Option<(f32, f32, f32, f32)> {
+    let points = value.as_array()?;
+    let mut xs = Vec::new();
+    let mut ys = Vec::new();
+
+    for point in points {
+        if let Some(pair) = point.as_array() {
+            if pair.len() >= 2 {
+                if let (Some(x), Some(y)) = (pair[0].as_f64(), pair[1].as_f64()) {
+                    xs.push(x as f32);
+                    ys.push(y as f32);
+                }
+            }
+        }
+    }
+
+    if xs.is_empty() && points.len() >= 8 {
+        for chunk in points.chunks(2) {
+            if chunk.len() == 2 {
+                if let (Some(x), Some(y)) = (chunk[0].as_f64(), chunk[1].as_f64()) {
+                    xs.push(x as f32);
+                    ys.push(y as f32);
+                }
+            }
+        }
+    }
+
+    if xs.is_empty() || ys.is_empty() {
+        return None;
+    }
+
+    let min_x = xs.iter().copied().fold(f32::INFINITY, f32::min);
+    let max_x = xs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let min_y = ys.iter().copied().fold(f32::INFINITY, f32::min);
+    let max_y = ys.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    Some((
+        min_x,
+        min_y,
+        (max_x - min_x).max(0.0),
+        (max_y - min_y).max(0.0),
+    ))
+}
+
+fn normalize_ocr_boxes(mut boxes: Vec<OcrTextBox>, lang: &str, scale: f32) -> Vec<OcrTextBox> {
+    let scale = scale.max(1.0);
+    boxes
+        .drain(..)
+        .filter_map(|mut item| {
+            item.text = normalize_ocr_line(&clean_ocr_text(&item.text, lang));
+            if item.text.is_empty() || looks_like_noise_line(&item.text) {
+                return None;
+            }
+            item.x /= scale;
+            item.y /= scale;
+            item.width /= scale;
+            item.height /= scale;
+            Some(item)
+        })
+        .collect()
+}
+
+fn sort_boxes_for_manga(boxes: &mut [OcrTextBox]) {
+    boxes.sort_by(|a, b| {
+        let right_to_left = b.x.partial_cmp(&a.x).unwrap_or(std::cmp::Ordering::Equal);
+        if (a.x - b.x).abs() > a.width.max(b.width).max(24.0) * 0.6 {
+            return right_to_left;
+        }
+        a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 #[cfg(windows)]
@@ -620,6 +1216,7 @@ fn postprocess_ocr_text(text: &str, lang: &str, config: &OcrConfig) -> String {
 
     match resolve_text_layout_mode(&lines, config) {
         OcrTextLayoutMode::Preserve => lines.join("\n"),
+        OcrTextLayoutMode::Manga => lines.join("\n"),
         OcrTextLayoutMode::Conservative => merge_ocr_lines(&lines, MergeProfile::Conservative),
         OcrTextLayoutMode::Paragraph => merge_ocr_lines(&lines, MergeProfile::Paragraph),
         OcrTextLayoutMode::Auto => merge_ocr_lines(&lines, MergeProfile::Conservative),
@@ -669,6 +1266,7 @@ fn resolve_text_layout_mode(lines: &[String], config: &OcrConfig) -> OcrTextLayo
         OcrTextLayoutMode::Preserve => OcrTextLayoutMode::Preserve,
         OcrTextLayoutMode::Conservative => OcrTextLayoutMode::Conservative,
         OcrTextLayoutMode::Paragraph => OcrTextLayoutMode::Paragraph,
+        OcrTextLayoutMode::Manga => OcrTextLayoutMode::Manga,
     }
 }
 
@@ -891,6 +1489,56 @@ mod tests {
 
     fn lines(items: &[&str]) -> Vec<String> {
         items.iter().map(|item| item.to_string()).collect()
+    }
+
+    fn text_box(text: &str, x: f32, y: f32, width: f32, height: f32) -> OcrTextBox {
+        OcrTextBox {
+            text: text.to_string(),
+            score: Some(0.95),
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn comic_regions_merge_lines_but_keep_distant_bubbles_separate() {
+        let regions = build_comic_text_regions(
+            &[
+                text_box("I wonder if", 600.0, 120.0, 180.0, 30.0),
+                text_box("there are rumors", 585.0, 158.0, 210.0, 30.0),
+                text_box("about me", 620.0, 196.0, 140.0, 30.0),
+                text_box("Maybe I should", 260.0, 430.0, 190.0, 30.0),
+                text_box("go back home", 275.0, 468.0, 165.0, 30.0),
+            ],
+            "en-US",
+        );
+
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[0].id, "region_01");
+        assert_eq!(
+            regions[0].source_text,
+            "I wonder if there are rumors about me"
+        );
+        assert_eq!(regions[0].line_boxes.len(), 3);
+        assert_eq!(regions[1].source_text, "Maybe I should go back home");
+    }
+
+    #[test]
+    fn comic_regions_sort_japanese_vertical_columns_right_to_left() {
+        let regions = build_comic_text_regions(
+            &[
+                text_box("左", 120.0, 80.0, 28.0, 120.0),
+                text_box("右", 220.0, 70.0, 28.0, 120.0),
+            ],
+            "ja-JP",
+        );
+
+        assert_eq!(regions.len(), 2);
+        assert_eq!(regions[0].source_text, "右");
+        assert_eq!(regions[1].source_text, "左");
+        assert_eq!(regions[0].direction, ComicTextDirection::Vertical);
     }
 
     #[test]

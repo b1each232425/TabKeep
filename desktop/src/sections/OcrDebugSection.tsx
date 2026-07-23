@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react"
-import { Clipboard, X } from "lucide-react"
 
-import { DEFAULT_OCR_CONFIG, debugRegionOcr, getOcrConfig, openRegionBox, setOcrConfig } from "../api"
-import type { OcrConfig, OcrDebugResult, OcrProvider, OcrTextLayoutMode } from "../types"
+import { DEFAULT_OCR_CONFIG, debugRegionOcr, getOcrConfig, getOcrDebugRecords, openRegionBox, setOcrConfig } from "../api"
+import type { OcrConfig, OcrDebugRecord, OcrDebugResult, OcrProvider, OcrTextLayoutMode } from "../types"
 import { Button, Checkbox, Notice, TextField } from "../components/primitives"
 import { errorMessage } from "../lib/errors"
 import { OCR_TEXT_LAYOUT_OPTIONS } from "../lib/ocr"
@@ -10,18 +9,23 @@ import { OCR_TEXT_LAYOUT_OPTIONS } from "../lib/ocr"
 export function OcrDebugSection() {
   const [ocrConfig, setOcrConfigState] = useState<OcrConfig>(DEFAULT_OCR_CONFIG)
   const [result, setResult] = useState<OcrDebugResult | null>(null)
+  const [records, setRecords] = useState<OcrDebugRecord[]>([])
   const [status, setStatus] = useState("打开固定区域框后，运行一次调试即可对比原图和预处理效果")
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    getOcrConfig()
-      .then((config) => {
-        setOcrConfigState(config)
-      })
-      .catch((err) => {
-        setStatus(`读取 OCR 设置失败: ${errorMessage(err)}`)
+    Promise.allSettled([getOcrConfig(), getOcrDebugRecords()])
+      .then(([configResult, recordsResult]) => {
+        if (configResult.status === "fulfilled") {
+          setOcrConfigState(configResult.value)
+        } else {
+          setStatus(`读取 OCR 设置失败: ${errorMessage(configResult.reason)}`)
+        }
+        if (recordsResult.status === "fulfilled") {
+          setRecords(recordsResult.value)
+        }
       })
       .finally(() => setLoading(false))
   }, [])
@@ -57,8 +61,13 @@ export function OcrDebugSection() {
       await setOcrConfig(ocrConfig)
       const nextResult = await debugRegionOcr()
       setResult(nextResult)
+      setRecords(await getOcrDebugRecords())
       const textState = nextResult.text.trim() ? "已识别到文本" : "未识别到文本"
-      setStatus(`${textState}，耗时 ${nextResult.elapsedMs} ms`)
+      const boxState = nextResult.textBoxes.length > 0 ? `，文本框 ${nextResult.textBoxes.length} 个` : ""
+      const regionState = nextResult.translatedRegions.length > 0
+        ? `，合并为 ${nextResult.translatedRegions.length} 个区域`
+        : ""
+      setStatus(`${textState}${boxState}${regionState}，耗时 ${nextResult.elapsedMs} ms`)
     } catch (err) {
       setStatus(`OCR 调试失败: ${errorMessage(err)}`)
     } finally {
@@ -110,6 +119,8 @@ export function OcrDebugSection() {
               <div className="flex flex-wrap gap-2">
                 <span className="tk-badge">原图 {originalSize}</span>
                 <span className="tk-badge">预处理 {preprocessedSize}</span>
+                {result && <span className="tk-badge">文本框 {result.textBoxes.length}</span>}
+                {result && <span className="tk-badge">文本区域 {result.translatedRegions.length}</span>}
                 {result && <span className="tk-badge">耗时 {result.elapsedMs} ms</span>}
               </div>
             </div>
@@ -155,6 +166,32 @@ export function OcrDebugSection() {
                 <DebugTextBlock title="原始 OCR 输出" value={result?.rawText ?? ""} />
                 <DebugTextBlock title="后处理输出" value={result?.text ?? ""} />
               </div>
+            </div>
+          </section>
+
+          <section className="tk-panel">
+            <div className="tk-panel-header">
+              <div>
+                <h2 className="tk-panel-title">最近记录</h2>
+                <p className="mt-1 text-xs text-muted-foreground">固定翻译框会保存最近 20 次 OCR / 翻译调试信息</p>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  setRecords(await getOcrDebugRecords())
+                  setStatus("调试记录已刷新")
+                }}>
+                刷新记录
+              </Button>
+            </div>
+            <div className="tk-panel-body space-y-3">
+              {records.length === 0 ? (
+                <div className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-muted-foreground">
+                  暂无固定区域调试记录
+                </div>
+              ) : (
+                records.map((record) => <DebugRecordCard key={record.id} record={record} />)
+              )}
             </div>
           </section>
         </div>
@@ -289,6 +326,50 @@ export function OcrDebugSection() {
         </aside>
       </section>
     </div>
+  )
+}
+
+function DebugRecordCard({ record }: { record: OcrDebugRecord }) {
+  const time = new Date(record.createdAt).toLocaleString()
+  return (
+    <article className="rounded-md border border-slate-200/70 bg-white/80 p-3 shadow-sm">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="tk-badge">{record.mode === "translate" ? "翻译" : "识别"}</span>
+        <span className="tk-badge">{record.sourceLang} → {record.targetLang}</span>
+        <span className="tk-badge">{record.provider === "paddleocr_json" ? "PaddleOCR-json" : "Windows OCR"}</span>
+        <span className="tk-badge">文本框 {record.textBoxes?.length ?? 0}</span>
+        <span className="tk-badge">文本区域 {record.translatedRegions?.length ?? 0}</span>
+        <span className="tk-badge">{record.elapsedMs} ms</span>
+        <span className="ml-auto text-xs text-muted-foreground">{time}</span>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <DebugTextBlock title="OCR 后处理文本" value={record.text} />
+        <DebugTextBlock title="翻译结果" value={record.translatedText ?? record.error ?? ""} />
+      </div>
+      <details className="mt-3 text-xs text-muted-foreground">
+        <summary className="cursor-pointer text-slate-700">查看区域映射 / 原始 OCR</summary>
+        <div className="mt-2 grid gap-3 lg:grid-cols-2">
+          <DebugTextBlock title="原始 OCR 输出" value={record.rawText} />
+          <pre className="overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3">
+{`原图: ${record.imagePath || "-"}
+预处理: ${record.preprocessedImagePath || "-"}`}
+          </pre>
+        </div>
+        {(record.translatedRegions?.length ?? 0) > 0 && (
+          <div className="mt-3 grid gap-2">
+            {record.translatedRegions?.map((region) => (
+              <div key={region.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-1 font-semibold text-slate-700">
+                  {region.id} · {region.direction === "vertical" ? "竖排" : "横排"} · 顺序 {region.readingOrder + 1}
+                </div>
+                <div>{region.sourceText}</div>
+                {region.translatedText && <div className="mt-1 text-emerald-700">→ {region.translatedText}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
+    </article>
   )
 }
 

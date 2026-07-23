@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1",
+    "dev:app": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -NoEval",
     "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only backend",
     "dev:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only extension",
     "dev:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only desktop",

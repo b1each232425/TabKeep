@@ -746,7 +746,37 @@ export interface TranslateProviderTestResponse {
 // -----------------------------------------------------------------------------
 
 export type OcrProvider = "windows_ocr" | "paddleocr_json"
-export type OcrTextLayoutMode = "auto" | "preserve" | "conservative" | "paragraph"
+export type OcrTextLayoutMode = "auto" | "preserve" | "conservative" | "paragraph" | "manga"
+
+export interface OcrTextBox {
+  text: string
+  score?: number | null
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface OcrBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type ComicTextDirection = "horizontal" | "vertical"
+
+export interface ComicTextRegion {
+  id: string
+  textBounds: OcrBounds
+  bubbleBounds?: OcrBounds | null
+  sourceText: string
+  translatedText?: string | null
+  direction: ComicTextDirection
+  readingOrder: number
+  confidence?: number | null
+  lineBoxes: OcrTextBox[]
+}
 
 export interface OcrConfig {
   provider: OcrProvider
@@ -792,6 +822,10 @@ export interface OcrFlowResult {
   error?: string | null
   phase?: "ocr" | "translate" | "done" | "error" | null
   message?: string | null
+  textBoxes?: OcrTextBox[]
+  translatedRegions?: ComicTextRegion[]
+  imageWidth?: number | null
+  imageHeight?: number | null
 }
 
 export interface OcrDebugResult {
@@ -808,8 +842,30 @@ export interface OcrDebugResult {
   preprocessedHeight?: number | null
   rawText: string
   text: string
+  textBoxes: OcrTextBox[]
+  translatedRegions: ComicTextRegion[]
   elapsedMs: number
   config: OcrConfig
+}
+
+export interface OcrDebugRecord {
+  id: string
+  createdAt: string
+  mode: "recognize" | "translate" | string
+  sourceLang: string
+  targetLang: string
+  provider: OcrProvider
+  imagePath: string
+  preprocessedImagePath?: string | null
+  rawText: string
+  text: string
+  textBoxes?: OcrTextBox[]
+  translatedRegions?: ComicTextRegion[]
+  translatedText?: string | null
+  model?: string | null
+  ok: boolean
+  error?: string | null
+  elapsedMs: number
 }
 
 export interface RegionBoxConfig {
@@ -820,6 +876,7 @@ export interface RegionBoxConfig {
   passThrough: boolean
   sourceLang: string
   targetLang: string
+  translationDisplayMode: "panel" | "inline" | "both"
   panelX?: number | null
   panelY?: number | null
   panelWidth: number
