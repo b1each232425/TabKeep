@@ -52,10 +52,6 @@ export function OverviewSection({
   backendReady,
   desktopStatus,
   connectionError,
-  tokenInput,
-  setTokenInput,
-  onSaveToken,
-  onClearToken,
   onRefresh,
   refreshing,
 }: {
@@ -63,10 +59,6 @@ export function OverviewSection({
   backendReady: boolean | null
   desktopStatus: DesktopStatus | null
   connectionError: string | null
-  tokenInput: string
-  setTokenInput: (value: string) => void
-  onSaveToken: () => Promise<void>
-  onClearToken: () => Promise<void>
   onRefresh: () => Promise<void>
   refreshing: boolean
 }) {
@@ -114,10 +106,10 @@ export function OverviewSection({
         />
         <StatusCard
           icon={<KeyRound className="h-4 w-4" />}
-          title="模型凭据"
-          value={desktopStatus?.token_cached ? "已缓存" : "未缓存"}
+          title="扩展连接"
+          value={desktopStatus?.token_cached ? "凭据已获取" : "等待扩展"}
           tone={desktopStatus?.token_cached ? "success" : "warning"}
-          detail="翻译与知识问答"
+          detail="自动连接"
         />
         <StatusCard
           icon={<PanelsTopLeft className="h-4 w-4" />}
@@ -149,104 +141,70 @@ export function OverviewSection({
 
       {connectionError && <Notice tone="warning">{connectionError}</Notice>}
 
-      <section className="tk-grid-two">
-        <div className="space-y-4">
-          <section className="tk-panel">
-            <div className="tk-panel-header">
-              <div>
-                <h2 className="tk-panel-title">标签分组样式</h2>
-              </div>
-              <span className="tk-badge">{saved ? "已保存" : "本地"}</span>
-            </div>
-            <div className="tk-panel-body space-y-4">
-              <div className="tk-form-grid">
-                <label className="tk-field">
-                  <span className="tk-label">颜色模式</span>
-                  <select
-                    className="tk-select"
-                    value={style.colorMode}
-                    onChange={(event) =>
-                      setStyle({
-                        ...style,
-                        colorMode: event.target.value as TabGroupStyleOptions["colorMode"],
-                      })
-                    }>
-                    <option value="random">按域名随机</option>
-                    <option value="uniform">统一颜色</option>
-                  </select>
-                </label>
-
-                {style.colorMode === "uniform" && (
-                  <label className="tk-field">
-                    <span className="tk-label">统一颜色</span>
-                    <select
-                      className="tk-select"
-                      value={style.uniformColor}
-                      onChange={(event) =>
-                        setStyle({ ...style, uniformColor: event.target.value as TabGroupColor })
-                      }>
-                      {COLORS.map((color) => (
-                        <option key={color} value={color}>
-                          {COLOR_LABEL[color]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </div>
-
-              <div className="grid gap-2">
-                <Checkbox
-                  label="使用域名作为分组标题"
-                  checked={style.useDomainAsTitle}
-                  onChange={(checked) => setStyle({ ...style, useDomainAsTitle: checked })}
-                />
-                <Checkbox
-                  label="默认折叠分组"
-                  checked={style.collapsedByDefault}
-                  onChange={(checked) => setStyle({ ...style, collapsedByDefault: checked })}
-                />
-              </div>
-            </div>
-            <div className="tk-command-bar">
-              <Button onClick={saveStyle}>{saved ? "已保存" : "保存设置"}</Button>
-              <Button variant="ghost" onClick={() => setStyle(DEFAULT_STYLE)}>
-                <RotateCcw className="h-4 w-4" />
-                重置
-              </Button>
-            </div>
-          </section>
+      <section className="tk-panel">
+        <div className="tk-panel-header">
+          <div>
+            <h2 className="tk-panel-title">标签分组样式</h2>
+          </div>
+          <span className="tk-badge">{saved ? "已保存" : "本地"}</span>
         </div>
-
-        <section className="tk-panel">
-          <div className="tk-panel-header">
-            <h2 className="tk-panel-title">连接凭据</h2>
-            <span className="tk-badge tk-badge-warning">本机</span>
-          </div>
-          <div className="tk-panel-body space-y-3">
+        <div className="tk-panel-body space-y-4">
+          <div className="tk-form-grid">
             <label className="tk-field">
-              <span className="tk-label">连接密钥</span>
-              <input
-                className="tk-input"
-                type="password"
-                value={tokenInput}
-                onChange={(event) => setTokenInput(event.target.value)}
-                placeholder="自动获取，或手动粘贴"
-              />
+              <span className="tk-label">颜色模式</span>
+              <select
+                className="tk-select"
+                value={style.colorMode}
+                onChange={(event) =>
+                  setStyle({
+                    ...style,
+                    colorMode: event.target.value as TabGroupStyleOptions["colorMode"],
+                  })
+                }>
+                <option value="random">按域名随机</option>
+                <option value="uniform">统一颜色</option>
+              </select>
             </label>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={onSaveToken} disabled={!tokenInput.trim()}>
-                保存密钥
-              </Button>
-              <Button variant="secondary" onClick={onClearToken}>
-                清除
-              </Button>
-            </div>
-            <div className="tk-muted-box">
-              打开浏览器扩展后会自动完成连接。
-            </div>
+
+            {style.colorMode === "uniform" && (
+              <label className="tk-field">
+                <span className="tk-label">统一颜色</span>
+                <select
+                  className="tk-select"
+                  value={style.uniformColor}
+                  onChange={(event) =>
+                    setStyle({ ...style, uniformColor: event.target.value as TabGroupColor })
+                  }>
+                  {COLORS.map((color) => (
+                    <option key={color} value={color}>
+                      {COLOR_LABEL[color]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
-        </section>
+
+          <div className="grid gap-2">
+            <Checkbox
+              label="使用域名作为分组标题"
+              checked={style.useDomainAsTitle}
+              onChange={(checked) => setStyle({ ...style, useDomainAsTitle: checked })}
+            />
+            <Checkbox
+              label="默认折叠分组"
+              checked={style.collapsedByDefault}
+              onChange={(checked) => setStyle({ ...style, collapsedByDefault: checked })}
+            />
+          </div>
+        </div>
+        <div className="tk-command-bar">
+          <Button onClick={saveStyle}>{saved ? "已保存" : "保存设置"}</Button>
+          <Button variant="ghost" onClick={() => setStyle(DEFAULT_STYLE)}>
+            <RotateCcw className="h-4 w-4" />
+            重置
+          </Button>
+        </div>
       </section>
 
       <section className="tk-panel">

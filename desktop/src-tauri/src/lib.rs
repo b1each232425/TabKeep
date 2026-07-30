@@ -12,11 +12,14 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::{engine::general_purpose, Engine};
 use chrono::Local;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{window::Color, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+#[cfg(not(windows))]
+use tauri_plugin_notification::NotificationExt;
 use tokio::{
     sync::oneshot,
     time::{sleep, Duration},
@@ -34,14 +37,17 @@ const DESKTOP_PORT: u16 = 38472;
 const MAX_TRANSLATE_CHARS: usize = 12_000;
 const STICKY_NOTE_WINDOW_DEFAULT_WIDTH: u32 = 380;
 const STICKY_NOTE_WINDOW_DEFAULT_HEIGHT: u32 = 460;
-const STICKY_NOTE_TILE_DEFAULT_WIDTH: u32 = 320;
-const STICKY_NOTE_TILE_DEFAULT_HEIGHT: u32 = 360;
 const STICKY_NOTE_WINDOW_MIN_WIDTH: u32 = 280;
 const STICKY_NOTE_WINDOW_MIN_HEIGHT: u32 = 260;
 const STICKY_NOTE_WINDOW_HIDDEN_COORDINATE: i32 = -10_000;
 const STICKY_NOTE_WINDOW_LABEL_PREFIX: &str = "sticky-note-";
-const STICKY_NOTE_TILE_LABEL_PREFIX: &str = "sticky-note-tile-";
 const STICKY_NOTES_CHANGED_EVENT: &str = "sticky-notes-changed";
+const SHOW_STICKY_REMINDERS_EVENT: &str = "show-sticky-reminders";
+const STICKY_REMINDER_POLL_SECONDS: u64 = 30;
+const MAX_INDIVIDUAL_OVERDUE_NOTIFICATIONS: usize = 3;
+const STICKY_NOTIFICATION_APP_ID: &str = "com.tabkeep.desktop";
+const STICKY_NOTIFICATION_APP_NAME: &str = "TabKeep";
+const STICKY_NOTIFICATION_ICON_FILE: &str = "notification-icon.png";
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
 const STICKY_NOTE_TOGGLE_HOTKEY_ID: i32 = 0x544f;
 const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
@@ -64,6 +70,9 @@ struct HttpState {
     desktop: DesktopState,
     app: tauri::AppHandle,
 }
+
+#[derive(Default)]
+struct StickyReminderTrayItem(Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>>);
 
 #[derive(Debug, Clone)]
 enum OcrFlowMode {
@@ -156,6 +165,10 @@ struct TranslateResponse {
 struct OcrDebugResponse {
     ok: bool,
     provider: ocr::OcrProvider,
+    #[serde(rename = "ocrEngine")]
+    ocr_engine: String,
+    #[serde(rename = "ocrFallbackReason")]
+    ocr_fallback_reason: Option<String>,
     #[serde(rename = "sourceLang")]
     source_lang: String,
     #[serde(rename = "originalImagePath")]
@@ -184,6 +197,72 @@ struct OcrDebugResponse {
     #[serde(rename = "elapsedMs")]
     elapsed_ms: u128,
     config: ocr::OcrConfig,
+}
+
+#[derive(Serialize)]
+struct MangaOcrRequest {
+    #[serde(rename = "imageBase64")]
+    image_base64: String,
+    regions: Vec<MangaOcrRegionRequest>,
+}
+
+#[derive(Serialize)]
+struct MangaOcrRegionRequest {
+    id: String,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct MangaOcrResponse {
+    ok: bool,
+    engine: String,
+    regions: Vec<MangaOcrRegionResponse>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MangaOcrRegionResponse {
+    id: String,
+    text: String,
+}
+
+#[derive(Serialize)]
+struct ComicDetectionRequest {
+    #[serde(rename = "imageBase64")]
+    image_base64: String,
+    #[serde(rename = "sourceLang")]
+    source_lang: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComicDetectionResponse {
+    ok: bool,
+    engine: String,
+    regions: Vec<ComicDetectionRegionResponse>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComicDetectionRegionResponse {
+    id: String,
+    #[serde(rename = "textBounds")]
+    text_bounds: ocr::OcrBounds,
+    #[serde(rename = "bubbleBounds")]
+    bubble_bounds: Option<ocr::OcrBounds>,
+    direction: ocr::ComicTextDirection,
+    #[serde(rename = "readingOrder")]
+    reading_order: usize,
+    confidence: f32,
+}
+
+struct OcrRegionRefinement {
+    text: String,
+    regions: Vec<ocr::ComicTextRegion>,
+    engine: String,
+    fallback_reason: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -260,6 +339,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
@@ -272,15 +352,35 @@ pub fn run() {
                 .build(),
         )
         .manage(state.clone())
+        .manage(StickyReminderTrayItem::default())
         .setup(move |app| {
             match load_usage_stats(&app.handle()) {
                 Ok(stats) => set_usage_stats(&state, stats),
                 Err(err) => log::warn!("读取桌面用量统计失败: {err}"),
             }
             setup_tray(app)?;
+            if let Err(err) = setup_sticky_notification_identity(&app.handle()) {
+                log::warn!("初始化 TabKeep 通知身份失败: {err}");
+            }
             setup_close_to_hide(app);
             setup_selection_hotkey(app, state.clone());
             setup_sticky_note_hotkey(app);
+            setup_sticky_note_reminder_scheduler(app.handle().clone());
+            if let Err(err) = sticky_notes::ensure_daily_poetry_note(&app.handle()) {
+                log::warn!("初始化今日诗笺失败: {err}");
+            }
+            let poetry_app = app.handle().clone();
+            let poetry_client = state.client.clone();
+            tauri::async_runtime::spawn(async move {
+                match sticky_notes::refresh_daily_poetry_note(&poetry_app, &poetry_client, false)
+                    .await
+                {
+                    Ok(note) => {
+                        emit_sticky_notes_changed(&poetry_app, "poetry", Some(&note.id));
+                    }
+                    Err(err) => log::warn!("后台刷新今日诗笺失败: {err}"),
+                }
+            });
 
             let server_state = HttpState {
                 desktop: state.clone(),
@@ -328,6 +428,8 @@ pub fn run() {
             sticky_notes_get,
             sticky_notes_save,
             sticky_notes_delete,
+            sticky_notes_save_image,
+            sticky_notes_load_image,
             open_sticky_note_window,
             create_sticky_note_window,
             sticky_notes_import_markdown,
@@ -337,9 +439,13 @@ pub fn run() {
             sticky_notes_rename_category,
             sticky_notes_delete_category,
             sticky_notes_move_category,
-            open_sticky_note_tile_window,
             get_sticky_note_shortcut_config,
             set_sticky_note_shortcut_config,
+            sticky_notes_set_reminder,
+            sticky_notes_cancel_reminder,
+            sticky_notes_snooze_reminder,
+            sticky_notes_complete_reminder,
+            sticky_notes_refresh_daily_poetry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running TabKeep desktop");
@@ -394,7 +500,26 @@ fn sticky_notes_delete(app: tauri::AppHandle, id: String) -> Result<(), String> 
     sticky_notes::delete_note(&app, &id)?;
     close_sticky_note_windows_for_note(&app, &id);
     emit_sticky_notes_changed(&app, "delete", Some(&id));
+    refresh_sticky_reminder_tray_item(&app);
     Ok(())
+}
+
+#[tauri::command]
+fn sticky_notes_save_image(
+    app: tauri::AppHandle,
+    id: String,
+    data_url: String,
+) -> Result<sticky_notes::StickyNoteAsset, String> {
+    sticky_notes::save_image_asset(&app, &id, &data_url)
+}
+
+#[tauri::command]
+fn sticky_notes_load_image(
+    app: tauri::AppHandle,
+    id: String,
+    file_name: String,
+) -> Result<String, String> {
+    sticky_notes::load_image_asset(&app, &id, &file_name)
 }
 
 #[tauri::command]
@@ -436,10 +561,13 @@ fn sticky_notes_list_categories(app: tauri::AppHandle) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
-fn sticky_notes_create_category(app: tauri::AppHandle, name: String) -> Result<(), String> {
-    sticky_notes::create_category(&app, &name)?;
+fn sticky_notes_create_category(
+    app: tauri::AppHandle,
+    name: String,
+) -> Result<Vec<String>, String> {
+    let categories = sticky_notes::create_category(&app, &name)?;
     emit_sticky_notes_changed(&app, "category", None);
-    Ok(())
+    Ok(categories)
 }
 
 #[tauri::command]
@@ -472,13 +600,6 @@ fn sticky_notes_move_category(
 }
 
 #[tauri::command]
-async fn open_sticky_note_tile_window(app: tauri::AppHandle, id: String) -> Result<String, String> {
-    let note = sticky_notes::set_tile_pinned(&app, &id, true)?;
-    emit_sticky_notes_changed(&app, "save", Some(&note.id));
-    open_sticky_note_tile_window_for_note(&app, &note)
-}
-
-#[tauri::command]
 fn get_sticky_note_shortcut_config(
     app: tauri::AppHandle,
 ) -> Result<sticky_notes::StickyShortcutConfig, String> {
@@ -491,6 +612,64 @@ fn set_sticky_note_shortcut_config(
     config: sticky_notes::StickyShortcutConfig,
 ) -> Result<sticky_notes::StickyShortcutConfig, String> {
     sticky_notes::save_shortcut_config(&app, config)
+}
+
+#[tauri::command]
+fn sticky_notes_set_reminder(
+    app: tauri::AppHandle,
+    id: String,
+    due_at: String,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::set_reminder(&app, &id, &due_at)?;
+    emit_sticky_notes_changed(&app, "reminder", Some(&note.id));
+    refresh_sticky_reminder_tray_item(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn sticky_notes_cancel_reminder(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::cancel_reminder(&app, &id)?;
+    emit_sticky_notes_changed(&app, "reminder", Some(&note.id));
+    refresh_sticky_reminder_tray_item(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn sticky_notes_snooze_reminder(
+    app: tauri::AppHandle,
+    id: String,
+    minutes: i64,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::snooze_reminder(&app, &id, minutes)?;
+    emit_sticky_notes_changed(&app, "reminder", Some(&note.id));
+    refresh_sticky_reminder_tray_item(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+fn sticky_notes_complete_reminder(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::complete_reminder(&app, &id)?;
+    emit_sticky_notes_changed(&app, "reminder", Some(&note.id));
+    refresh_sticky_reminder_tray_item(&app);
+    Ok(note)
+}
+
+#[tauri::command]
+async fn sticky_notes_refresh_daily_poetry(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    force: Option<bool>,
+) -> Result<sticky_notes::StickyNote, String> {
+    let note = sticky_notes::refresh_daily_poetry_note(&app, &state.client, force.unwrap_or(false))
+        .await?;
+    emit_sticky_notes_changed(&app, "poetry", Some(&note.id));
+    Ok(note)
 }
 
 fn create_and_open_sticky_note(app: &tauri::AppHandle) -> Result<sticky_notes::StickyNote, String> {
@@ -589,68 +768,6 @@ fn open_sticky_note_window_for_note(
     Ok(label)
 }
 
-fn open_sticky_note_tile_window_for_note(
-    app: &tauri::AppHandle,
-    note: &sticky_notes::StickyNote,
-) -> Result<String, String> {
-    let label = format!("{STICKY_NOTE_TILE_LABEL_PREFIX}{}", note.id);
-    if let Some(window) = app.get_webview_window(&label) {
-        let _ = window.show();
-        let _ = window.set_always_on_top(true);
-        let _ = window.set_focus();
-        return Ok(label);
-    }
-
-    let width = note
-        .tile_bounds
-        .as_ref()
-        .map(|bounds| bounds.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH))
-        .unwrap_or(STICKY_NOTE_TILE_DEFAULT_WIDTH);
-    let height = note
-        .tile_bounds
-        .as_ref()
-        .map(|bounds| bounds.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT))
-        .unwrap_or(STICKY_NOTE_TILE_DEFAULT_HEIGHT);
-    let restored_bounds = note
-        .tile_bounds
-        .as_ref()
-        .and_then(|bounds| valid_sticky_window_bounds(app, bounds));
-
-    let mut builder = WebviewWindowBuilder::new(
-        app,
-        &label,
-        WebviewUrl::App(format!("index.html?view=sticky-note&noteId={}&mode=tile", note.id).into()),
-    )
-    .title(format!("TabKeep 磁贴 - {}", sticky_note_window_title(note)))
-    .inner_size(width as f64, height as f64)
-    .min_inner_size(
-        STICKY_NOTE_WINDOW_MIN_WIDTH as f64,
-        STICKY_NOTE_WINDOW_MIN_HEIGHT as f64,
-    )
-    .decorations(false)
-    .transparent(false)
-    .background_color(Color(255, 214, 232, 255))
-    .always_on_top(true)
-    .focused(true)
-    .resizable(true)
-    .visible(true);
-
-    if let Some(bounds) = &restored_bounds {
-        builder = builder.position(bounds.x as f64, bounds.y as f64);
-    } else {
-        builder = builder.center();
-    }
-
-    let window = builder
-        .build()
-        .map_err(|err| format!("打开便签磁贴失败: {err}"))?;
-    let _ = window.show();
-    let _ = window.set_focus();
-
-    attach_sticky_note_tile_bounds_sync(app, note.id.clone(), &window);
-    Ok(label)
-}
-
 fn close_legacy_sticky_note_windows(app: &tauri::AppHandle, note_id: &str) {
     let legacy_label = "sticky-note";
     let instance_prefix = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}--");
@@ -673,12 +790,10 @@ fn close_legacy_sticky_note_windows(app: &tauri::AppHandle, note_id: &str) {
 
 fn close_sticky_note_windows_for_note(app: &tauri::AppHandle, note_id: &str) {
     let label = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}");
-    let tile_label = format!("{STICKY_NOTE_TILE_LABEL_PREFIX}{note_id}");
     let instance_prefix = format!("{STICKY_NOTE_WINDOW_LABEL_PREFIX}{note_id}--");
     let broken_instance_prefix = format!("sticky-note__{note_id}__");
     for (window_label, window) in app.webview_windows() {
         if window_label == label
-            || window_label == tile_label
             || window_label.starts_with(&instance_prefix)
             || window_label.starts_with(&broken_instance_prefix)
         {
@@ -717,28 +832,6 @@ fn attach_sticky_note_bounds_sync(
     });
 }
 
-fn attach_sticky_note_tile_bounds_sync(
-    app: &tauri::AppHandle,
-    note_id: String,
-    window: &tauri::WebviewWindow,
-) {
-    let app = app.clone();
-    let window_for_event = window.clone();
-    window.on_window_event(move |event| {
-        if matches!(
-            event,
-            tauri::WindowEvent::Moved(_)
-                | tauri::WindowEvent::Resized(_)
-                | tauri::WindowEvent::CloseRequested { .. }
-        ) {
-            if let Err(err) = save_sticky_note_tile_window_bounds(&app, &note_id, &window_for_event)
-            {
-                log::warn!("保存便签磁贴位置失败: {err}");
-            }
-        }
-    });
-}
-
 fn save_sticky_note_window_bounds(
     app: &tauri::AppHandle,
     note_id: &str,
@@ -765,35 +858,6 @@ fn save_sticky_note_window_bounds(
         return Ok(());
     };
     sticky_notes::save_window_bounds(app, note_id, bounds)?;
-    Ok(())
-}
-
-fn save_sticky_note_tile_window_bounds(
-    app: &tauri::AppHandle,
-    note_id: &str,
-    window: &tauri::WebviewWindow,
-) -> Result<(), String> {
-    if window.is_minimized().unwrap_or(false) {
-        return Ok(());
-    }
-    let position = window
-        .outer_position()
-        .map_err(|err| format!("读取便签磁贴位置失败: {err}"))?;
-    let size = window
-        .inner_size()
-        .map_err(|err| format!("读取便签磁贴尺寸失败: {err}"))?;
-    let Some(bounds) = valid_sticky_window_bounds(
-        app,
-        &sticky_notes::StickyWindowBounds {
-            x: position.x,
-            y: position.y,
-            width: size.width.max(STICKY_NOTE_WINDOW_MIN_WIDTH),
-            height: size.height.max(STICKY_NOTE_WINDOW_MIN_HEIGHT),
-        },
-    ) else {
-        return Ok(());
-    };
-    sticky_notes::save_tile_bounds(app, note_id, bounds)?;
     Ok(())
 }
 
@@ -891,9 +955,14 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::tray::TrayIconBuilder;
 
     let new_sticky = MenuItem::with_id(app, "new-sticky-note", "新建便签", true, None::<&str>)?;
+    let reminders = MenuItem::with_id(app, "sticky-reminders", "查看提醒", true, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "打开 TabKeep", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&new_sticky, &show, &quit])?;
+    let menu = Menu::with_items(app, &[&new_sticky, &reminders, &show, &quit])?;
+
+    if let Ok(mut item) = app.state::<StickyReminderTrayItem>().0.lock() {
+        *item = Some(reminders);
+    }
 
     let mut builder = TrayIconBuilder::new()
         .tooltip("TabKeep")
@@ -903,6 +972,15 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "new-sticky-note" => {
                 if let Err(err) = create_and_open_sticky_note(app) {
                     log::warn!("托盘新建便签失败: {err}");
+                }
+            }
+            "sticky-reminders" => {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+                if let Err(err) = app.emit(SHOW_STICKY_REMINDERS_EVENT, ()) {
+                    log::warn!("打开便签提醒列表失败: {err}");
                 }
             }
             "show" => {
@@ -920,7 +998,153 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     builder.build(app)?;
+    refresh_sticky_reminder_tray_item(&app.handle());
     Ok(())
+}
+
+fn setup_sticky_note_reminder_scheduler(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        process_due_sticky_reminders(&app);
+        loop {
+            sleep(Duration::from_secs(STICKY_REMINDER_POLL_SECONDS)).await;
+            process_due_sticky_reminders(&app);
+        }
+    });
+}
+
+fn process_due_sticky_reminders(app: &tauri::AppHandle) {
+    let now = chrono::Utc::now();
+    let due = match sticky_notes::due_reminders(app, now) {
+        Ok(notes) => notes,
+        Err(err) => {
+            log::warn!("检查便签提醒失败: {err}");
+            return;
+        }
+    };
+    if due.is_empty() {
+        refresh_sticky_reminder_tray_item(app);
+        return;
+    }
+
+    if due.len() > MAX_INDIVIDUAL_OVERDUE_NOTIFICATIONS {
+        let body = format!("有 {} 条便签提醒已到期，打开 TabKeep 查看。", due.len());
+        let _ = show_sticky_notification(app, "便签提醒", &body);
+        for note in &due {
+            let _ = sticky_notes::mark_reminder_notified(app, &note.id, now);
+        }
+    } else {
+        for note in &due {
+            let title = sticky_note_window_title(note);
+            let body = if note.preview.trim().is_empty() {
+                "提醒时间到了".to_string()
+            } else {
+                note.preview.chars().take(90).collect()
+            };
+            let _ = show_sticky_notification(app, &title, &body);
+            let _ = sticky_notes::mark_reminder_notified(app, &note.id, now);
+        }
+    }
+
+    emit_sticky_notes_changed(app, "reminder-fired", None);
+    refresh_sticky_reminder_tray_item(app);
+}
+
+#[cfg(windows)]
+fn show_sticky_notification(app: &tauri::AppHandle, title: &str, body: &str) -> Result<(), String> {
+    use tauri_winrt_notification::{IconCrop, Toast};
+
+    let icon_path = sticky_notification_icon_path(app)?;
+    Toast::new(STICKY_NOTIFICATION_APP_ID)
+        .icon(&icon_path, IconCrop::Square, STICKY_NOTIFICATION_APP_NAME)
+        .title(title)
+        .text1(body)
+        .show()
+        .map_err(|err| {
+            let message = format!("显示便签提醒失败: {err}");
+            log::warn!("{message}");
+            message
+        })
+}
+
+#[cfg(not(windows))]
+fn show_sticky_notification(app: &tauri::AppHandle, title: &str, body: &str) -> Result<(), String> {
+    app.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show()
+        .map_err(|err| {
+            let message = format!("显示便签提醒失败: {err}");
+            log::warn!("{message}");
+            message
+        })
+}
+
+fn setup_sticky_notification_identity(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows_registry::CURRENT_USER;
+
+        let icon_path = sticky_notification_icon_path(app)?;
+        let key = CURRENT_USER
+            .create(format!(
+                r"SOFTWARE\Classes\AppUserModelId\{STICKY_NOTIFICATION_APP_ID}"
+            ))
+            .map_err(|err| format!("创建通知注册表项失败: {err}"))?;
+        key.set_string("DisplayName", STICKY_NOTIFICATION_APP_NAME)
+            .map_err(|err| format!("写入通知名称失败: {err}"))?;
+        key.set_string("IconBackgroundColor", "0")
+            .map_err(|err| format!("写入通知图标背景失败: {err}"))?;
+        key.set_hstring("IconUri", &icon_path.as_path().into())
+            .map_err(|err| format!("写入通知图标失败: {err}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn sticky_notification_icon_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let path = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|err| format!("获取通知图标目录失败: {err}"))?
+        .join(STICKY_NOTIFICATION_ICON_FILE);
+    if path.is_file() {
+        return Ok(path);
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("创建通知图标目录失败: {err}"))?;
+    }
+    let icon = app
+        .default_window_icon()
+        .ok_or_else(|| "应用图标不可用".to_string())?;
+    image::save_buffer_with_format(
+        &path,
+        icon.rgba(),
+        icon.width(),
+        icon.height(),
+        image::ColorType::Rgba8,
+        image::ImageFormat::Png,
+    )
+    .map_err(|err| format!("保存通知图标失败: {err}"))?;
+    Ok(path)
+}
+
+fn refresh_sticky_reminder_tray_item(app: &tauri::AppHandle) {
+    let count = sticky_notes::active_reminder_count(app).unwrap_or(0);
+    let text = if count == 0 {
+        "查看提醒".to_string()
+    } else {
+        format!("查看提醒（{count}）")
+    };
+    if let Some(state) = app.try_state::<StickyReminderTrayItem>() {
+        if let Ok(item) = state.0.lock() {
+            if let Some(item) = item.as_ref() {
+                if let Err(err) = item.set_text(text) {
+                    log::warn!("更新托盘提醒数量失败: {err}");
+                }
+            }
+        }
+    }
 }
 
 fn setup_sticky_note_hotkey(app: &tauri::App) {
@@ -1760,7 +1984,10 @@ async fn start_ocr_translate(
 }
 
 #[tauri::command]
-async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, String> {
+async fn debug_region_ocr(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<OcrDebugResponse, String> {
     let region_config =
         region::sync_from_box_window(&app).unwrap_or_else(|_| region::load_config(&app));
     let ocr_config = ocr::load_config(&app);
@@ -1775,32 +2002,27 @@ async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, Str
     let image_path = capture_result?;
     let original_dimensions = image::image_dimensions(&image_path).unwrap_or((0, 0));
 
-    let app_for_ocr = app.clone();
-    let config_for_ocr = ocr_config.clone();
-    let provider_for_ocr = provider.clone();
-    let path_for_ocr = image_path.clone();
-    let lang_for_ocr = source_lang.clone();
-    let debug = tauri::async_runtime::spawn_blocking(move || {
-        ocr::recognize_with_debug(
-            &app_for_ocr,
-            &config_for_ocr,
-            provider_for_ocr,
-            &path_for_ocr,
-            &lang_for_ocr,
-        )
-    })
+    let (debug, refinement) = recognize_region_image(
+        &app,
+        state.inner(),
+        &ocr_config,
+        &provider,
+        &source_lang,
+        &image_path,
+    )
     .await
-    .map_err(|err| format!("OCR 调试任务失败: {err}"))??;
+    .map_err(|err| format!("OCR 调试任务失败: {err}"))?;
 
     let preprocessed_path = debug.preprocessed_image_path.as_deref().map(PathBuf::from);
     let preprocessed_dimensions = preprocessed_path
         .as_deref()
         .and_then(|path| image::image_dimensions(path).ok());
-    let translated_regions = ocr::build_comic_text_regions(&debug.text_boxes, &source_lang);
 
     Ok(OcrDebugResponse {
         ok: true,
         provider,
+        ocr_engine: refinement.engine,
+        ocr_fallback_reason: refinement.fallback_reason,
         source_lang,
         original_image_path: image_path.to_string_lossy().replace("\\\\?\\", ""),
         original_image_data_url: ocr::image_data_url(&image_path),
@@ -1811,9 +2033,9 @@ async fn debug_region_ocr(app: tauri::AppHandle) -> Result<OcrDebugResponse, Str
         preprocessed_width: preprocessed_dimensions.map(|value| value.0),
         preprocessed_height: preprocessed_dimensions.map(|value| value.1),
         raw_text: debug.raw_text,
-        text: debug.text,
+        text: refinement.text,
         text_boxes: debug.text_boxes,
-        translated_regions,
+        translated_regions: refinement.regions,
         elapsed_ms: debug.elapsed_ms,
         config: ocr_config,
     })
@@ -1848,41 +2070,23 @@ async fn finish_screen_selection(
         }
     };
 
-    let app_for_ocr = app.clone();
-    let config_for_ocr = config.clone();
-    let provider_for_ocr = provider.clone();
-    let path_for_ocr = cut_path.clone();
-    let lang_for_ocr = source_lang.clone();
-    let recognition_result = tauri::async_runtime::spawn_blocking(move || {
-        ocr::recognize_with_debug(
-            &app_for_ocr,
-            &config_for_ocr,
-            provider_for_ocr,
-            &path_for_ocr,
-            &lang_for_ocr,
-        )
-    })
-    .await
-    .map_err(|err| format!("OCR 任务失败: {err}"))?;
-
-    let recognition = match recognition_result {
-        Ok(value) if !value.text.trim().is_empty() => value,
-        Ok(_) => {
-            let result = ocr::error_result("未识别到文字".to_string(), provider, Some(&cut_path));
-            let _ = show_ocr_result_window(&app, &desktop, &result);
-            let _ = pending.responder.send(result);
-            return Ok(());
-        }
-        Err(err) => {
-            let result = ocr::error_result(err, provider, Some(&cut_path));
-            let _ = show_ocr_result_window(&app, &desktop, &result);
-            let _ = pending.responder.send(result);
-            return Ok(());
-        }
-    };
-    let text = recognition.text.clone();
+    let (recognition, refinement) =
+        match recognize_region_image(&app, &desktop, &config, &provider, &source_lang, &cut_path)
+            .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                let result = ocr::error_result(err, provider, Some(&cut_path));
+                let _ = show_ocr_result_window(&app, &desktop, &result);
+                let _ = pending.responder.send(result);
+                return Ok(());
+            }
+        };
     let image_dimensions = image::image_dimensions(&cut_path).ok();
-    let regions = ocr::build_comic_text_regions(&recognition.text_boxes, &source_lang);
+    let text = refinement.text;
+    let regions = refinement.regions;
+    let ocr_engine = refinement.engine;
+    let ocr_fallback_reason = refinement.fallback_reason;
 
     record_desktop_usage(&app, &desktop, DesktopUsageKind::Ocr);
     let result = match pending.mode {
@@ -1901,6 +2105,7 @@ async fn finish_screen_selection(
             );
             progress.phase = Some("translate".to_string());
             progress.message = Some("OCR 完成,正在翻译...".to_string());
+            progress = ocr::with_ocr_engine(progress, &ocr_engine, ocr_fallback_reason.clone());
             let _ = show_ocr_result_window(&app, &desktop, &progress);
 
             let translation_result = if regions.is_empty() {
@@ -1942,6 +2147,7 @@ async fn finish_screen_selection(
             }
         }
     };
+    let result = ocr::with_ocr_engine(result, &ocr_engine, ocr_fallback_reason);
 
     let _ = show_ocr_result_window(&app, &desktop, &result);
     let _ = pending.responder.send(result);
@@ -2217,6 +2423,71 @@ async fn start_ocr_flow(
         .map_err(|_| "截图 OCR 流程已中断".to_string())
 }
 
+async fn recognize_region_image(
+    app: &tauri::AppHandle,
+    state: &DesktopState,
+    config: &ocr::OcrConfig,
+    provider: &ocr::OcrProvider,
+    source_lang: &str,
+    image_path: &std::path::Path,
+) -> Result<(ocr::OcrRecognitionDebug, OcrRegionRefinement), String> {
+    if ocr::should_use_comic_detector(config) {
+        let started = Instant::now();
+        let refinement = refine_regions_with_manga_ocr(
+            state,
+            config,
+            provider,
+            source_lang,
+            image_path,
+            String::new(),
+            Vec::new(),
+        )
+        .await;
+        if refinement.text.trim().is_empty() {
+            return Err(refinement
+                .fallback_reason
+                .clone()
+                .unwrap_or_else(|| "漫画模式未识别到文字".to_string()));
+        }
+        let recognition = ocr::OcrRecognitionDebug {
+            raw_text: refinement.text.clone(),
+            text: refinement.text.clone(),
+            text_boxes: Vec::new(),
+            preprocessed_image_path: None,
+            elapsed_ms: started.elapsed().as_millis(),
+        };
+        return Ok((recognition, refinement));
+    }
+
+    let app_for_ocr = app.clone();
+    let config_for_ocr = config.clone();
+    let provider_for_ocr = provider.clone();
+    let path_for_ocr = image_path.to_path_buf();
+    let lang_for_ocr = source_lang.to_string();
+    let recognition = tauri::async_runtime::spawn_blocking(move || {
+        ocr::recognize_with_debug(
+            &app_for_ocr,
+            &config_for_ocr,
+            provider_for_ocr,
+            &path_for_ocr,
+            &lang_for_ocr,
+        )
+    })
+    .await
+    .map_err(|err| format!("OCR 任务失败: {err}"))??;
+    if recognition.text.trim().is_empty() {
+        return Err("未识别到文字".to_string());
+    }
+    let regions = ocr::build_comic_text_regions(&recognition.text_boxes, source_lang);
+    let refinement = OcrRegionRefinement {
+        text: recognition.text.clone(),
+        regions,
+        engine: ocr::provider_engine_name(provider).to_string(),
+        fallback_reason: None,
+    };
+    Ok((recognition, refinement))
+}
+
 async fn run_region_flow(
     app: tauri::AppHandle,
     state: DesktopState,
@@ -2243,43 +2514,28 @@ async fn run_region_flow(
         }
     };
 
-    let app_for_ocr = app.clone();
-    let config_for_ocr = ocr_config.clone();
-    let provider_for_ocr = provider.clone();
-    let path_for_ocr = image_path.clone();
-    let lang_for_ocr = source_lang.clone();
-    let recognition_result = tauri::async_runtime::spawn_blocking(move || {
-        ocr::recognize_with_debug(
-            &app_for_ocr,
-            &config_for_ocr,
-            provider_for_ocr,
-            &path_for_ocr,
-            &lang_for_ocr,
-        )
-    })
+    let (recognition, refinement) = match recognize_region_image(
+        &app,
+        &state,
+        &ocr_config,
+        &provider,
+        &source_lang,
+        &image_path,
+    )
     .await
-    .map_err(|err| format!("区域 OCR 任务失败: {err}"))?;
-
-    let recognition = match recognition_result {
-        Ok(value) if !value.text.trim().is_empty() => value,
-        Ok(_) => {
-            let result = ocr::error_result_without_image(
-                "未识别到文字".to_string(),
-                provider,
-                Some(&image_path),
-            );
-            publish_region_result(&app, &state, &result);
-            return Ok(result);
-        }
+    {
+        Ok(value) => value,
         Err(err) => {
             let result = ocr::error_result_without_image(err, provider, Some(&image_path));
             publish_region_result(&app, &state, &result);
             return Ok(result);
         }
     };
-    let text = recognition.text.clone();
     let image_dimensions = image::image_dimensions(&image_path).ok();
-    let regions = ocr::build_comic_text_regions(&recognition.text_boxes, &source_lang);
+    let text = refinement.text;
+    let regions = refinement.regions;
+    let ocr_engine = refinement.engine;
+    let ocr_fallback_reason = refinement.fallback_reason;
 
     record_desktop_usage(&app, &state, DesktopUsageKind::Ocr);
     let mode_label = match mode {
@@ -2308,6 +2564,7 @@ async fn run_region_flow(
             );
             progress.phase = Some("translate".to_string());
             progress.message = Some("OCR 完成,正在翻译...".to_string());
+            progress = ocr::with_ocr_engine(progress, &ocr_engine, ocr_fallback_reason.clone());
             publish_region_result(&app, &state, &progress);
 
             let translation_result = if regions.is_empty() {
@@ -2355,6 +2612,7 @@ async fn run_region_flow(
             }
         }
     };
+    let result = ocr::with_ocr_engine(result, &ocr_engine, ocr_fallback_reason);
 
     if let Err(err) = ocr::save_region_debug_record(
         &app,
@@ -2371,6 +2629,378 @@ async fn run_region_flow(
 
     publish_region_result(&app, &state, &result);
     Ok(result)
+}
+
+async fn refine_regions_with_manga_ocr(
+    state: &DesktopState,
+    config: &ocr::OcrConfig,
+    provider: &ocr::OcrProvider,
+    source_lang: &str,
+    image_path: &std::path::Path,
+    fallback_text: String,
+    mut regions: Vec<ocr::ComicTextRegion>,
+) -> OcrRegionRefinement {
+    let fallback_engine = if ocr::should_use_comic_detector(config) {
+        "RT-DETR-v2 INT8 ONNX + MangaOCR".to_string()
+    } else {
+        ocr::provider_engine_name(provider).to_string()
+    };
+    if !ocr::should_use_comic_detector(config) {
+        return OcrRegionRefinement {
+            text: fallback_text,
+            regions,
+            engine: fallback_engine,
+            fallback_reason: None,
+        };
+    }
+    let paddle_regions = regions.clone();
+
+    let image_bytes = match fs::read(image_path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return manga_ocr_fallback(
+                fallback_text,
+                regions,
+                fallback_engine,
+                format!("读取截图失败: {err}"),
+            )
+        }
+    };
+    let image_base64 = general_purpose::STANDARD.encode(image_bytes);
+    let detector_source_lang = if matches!(source_lang, "auto" | "自动识别") {
+        "ja-JP"
+    } else {
+        source_lang
+    };
+    let (detector_engine, detector_fallback_reason) =
+        match detect_comic_regions(state, &image_base64, detector_source_lang).await {
+            Ok((detected_regions, engine)) if !detected_regions.is_empty() => {
+                regions = detected_regions;
+                (Some(engine), None)
+            }
+            Ok(_) => (None, Some("RT-DETR 未检测到漫画文字区域".to_string())),
+            Err(err) => (None, Some(format!("RT-DETR 区域检测不可用: {err}"))),
+        };
+    if regions.is_empty() {
+        return OcrRegionRefinement {
+            text: fallback_text,
+            regions,
+            engine: fallback_engine,
+            fallback_reason: detector_fallback_reason
+                .or_else(|| Some("未提供可供 MangaOCR 重识别的区域".to_string())),
+        };
+    }
+
+    if !ocr::should_use_manga_ocr(config, source_lang, &fallback_text) {
+        if detector_engine.is_some() {
+            populate_detected_regions_from_ocr(&mut regions, &paddle_regions, source_lang);
+            regions.retain(|region| !region.source_text.trim().is_empty());
+            if regions.is_empty() {
+                return OcrRegionRefinement {
+                    text: fallback_text,
+                    regions: paddle_regions,
+                    engine: fallback_engine,
+                    fallback_reason: Some(
+                        "RT-DETR 区域未能与 OCR 文本对齐，已回退原始区域".to_string(),
+                    ),
+                };
+            }
+            let detector = detector_engine.unwrap_or_else(|| "RT-DETR-v2 INT8 ONNX".to_string());
+            return OcrRegionRefinement {
+                text: ocr::join_region_source_text(&regions),
+                regions,
+                engine: format!("{detector} + {fallback_engine}"),
+                fallback_reason: detector_fallback_reason,
+            };
+        }
+        return OcrRegionRefinement {
+            text: fallback_text,
+            regions,
+            engine: fallback_engine,
+            fallback_reason: detector_fallback_reason,
+        };
+    }
+
+    let payload = MangaOcrRequest {
+        image_base64,
+        regions: regions
+            .iter()
+            .map(|region| MangaOcrRegionRequest {
+                id: region.id.clone(),
+                x: region.text_bounds.x,
+                y: region.text_bounds.y,
+                width: region.text_bounds.width,
+                height: region.text_bounds.height,
+            })
+            .collect(),
+    };
+    let mut request = state
+        .client
+        .post(format!("{BACKEND_URL}/ocr/manga"))
+        .timeout(Duration::from_secs(300))
+        .json(&payload);
+    if let Some(token) = get_cached_token(state) {
+        request = request.header("X-TabKeep-Token", token);
+    }
+
+    let response = match request.send().await {
+        Ok(response) => response,
+        Err(err) => {
+            return manga_ocr_fallback(
+                fallback_text,
+                paddle_regions,
+                fallback_engine,
+                format!("MangaOCR 服务不可用: {err}"),
+            )
+        }
+    };
+    let status = response.status();
+    let payload = match response.json::<MangaOcrResponse>().await {
+        Ok(payload) => payload,
+        Err(err) => {
+            return manga_ocr_fallback(
+                fallback_text,
+                paddle_regions,
+                fallback_engine,
+                format!("MangaOCR 响应无效（HTTP {}）: {err}", status.as_u16()),
+            )
+        }
+    };
+    if !status.is_success() || !payload.ok {
+        return manga_ocr_fallback(
+            fallback_text,
+            paddle_regions,
+            fallback_engine,
+            payload
+                .error
+                .unwrap_or_else(|| format!("MangaOCR 请求失败（HTTP {}）", status.as_u16())),
+        );
+    }
+
+    let updated = apply_manga_ocr_results(&mut regions, &payload.regions);
+    if updated == 0 {
+        return manga_ocr_fallback(
+            fallback_text,
+            paddle_regions,
+            fallback_engine,
+            "MangaOCR 未返回有效文字".to_string(),
+        );
+    }
+    let missing = regions.len().saturating_sub(updated);
+    if detector_engine.is_some() {
+        regions.retain(|region| !region.source_text.trim().is_empty());
+    }
+    let manga_fallback_reason =
+        (missing > 0).then(|| format!("MangaOCR 有 {missing} 个区域未返回文字"));
+    let fallback_reason = match (detector_fallback_reason, manga_fallback_reason) {
+        (Some(detector), Some(manga)) => Some(format!("{detector}; {manga}")),
+        (Some(detector), None) => Some(detector),
+        (None, Some(manga)) => Some(manga),
+        (None, None) => None,
+    };
+    let manga_engine = if payload.engine.trim().is_empty() {
+        "MangaOCR".to_string()
+    } else {
+        payload.engine
+    };
+    let engine = detector_engine
+        .map(|detector| format!("{detector} + {manga_engine}"))
+        .unwrap_or(manga_engine);
+    OcrRegionRefinement {
+        text: ocr::join_region_source_text(&regions),
+        regions,
+        engine,
+        fallback_reason,
+    }
+}
+
+fn apply_manga_ocr_results(
+    regions: &mut [ocr::ComicTextRegion],
+    recognized: &[MangaOcrRegionResponse],
+) -> usize {
+    let mut updated = 0;
+    for region in regions {
+        let Some(item) = recognized
+            .iter()
+            .find(|item| item.id == region.id && !item.text.trim().is_empty())
+        else {
+            continue;
+        };
+        region.source_text = item.text.trim().to_string();
+        updated += 1;
+    }
+    updated
+}
+
+async fn detect_comic_regions(
+    state: &DesktopState,
+    image_base64: &str,
+    source_lang: &str,
+) -> Result<(Vec<ocr::ComicTextRegion>, String), String> {
+    let payload = ComicDetectionRequest {
+        image_base64: image_base64.to_string(),
+        source_lang: source_lang.to_string(),
+    };
+    let mut request = state
+        .client
+        .post(format!("{BACKEND_URL}/ocr/comic/detect"))
+        .timeout(Duration::from_secs(300))
+        .json(&payload);
+    if let Some(token) = get_cached_token(state) {
+        request = request.header("X-TabKeep-Token", token);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|err| format!("检测服务不可用: {err}"))?;
+    let status = response.status();
+    let payload = response
+        .json::<ComicDetectionResponse>()
+        .await
+        .map_err(|err| format!("检测响应无效（HTTP {}）: {err}", status.as_u16()))?;
+    if !status.is_success() || !payload.ok {
+        return Err(payload
+            .error
+            .unwrap_or_else(|| format!("检测请求失败（HTTP {}）", status.as_u16())));
+    }
+    let regions = payload
+        .regions
+        .into_iter()
+        .map(|region| ocr::ComicTextRegion {
+            id: region.id,
+            text_bounds: region.text_bounds,
+            bubble_bounds: region.bubble_bounds,
+            source_text: String::new(),
+            translated_text: None,
+            direction: region.direction,
+            reading_order: region.reading_order,
+            confidence: Some(region.confidence),
+            line_boxes: Vec::new(),
+        })
+        .collect();
+    Ok((regions, payload.engine))
+}
+
+fn populate_detected_regions_from_ocr(
+    detected_regions: &mut [ocr::ComicTextRegion],
+    ocr_regions: &[ocr::ComicTextRegion],
+    source_lang: &str,
+) {
+    let mut candidates = Vec::new();
+    for region in ocr_regions {
+        if region.line_boxes.is_empty() {
+            if !region.source_text.trim().is_empty() {
+                candidates.push((
+                    region.text_bounds,
+                    region.source_text.trim().to_string(),
+                    region.confidence,
+                ));
+            }
+            continue;
+        }
+        for line in &region.line_boxes {
+            if line.text.trim().is_empty() {
+                continue;
+            }
+            candidates.push((
+                ocr::OcrBounds {
+                    x: line.x,
+                    y: line.y,
+                    width: line.width,
+                    height: line.height,
+                },
+                line.text.trim().to_string(),
+                line.score,
+            ));
+        }
+    }
+
+    for region in detected_regions {
+        let mut matches = candidates
+            .iter()
+            .filter(|(bounds, _, _)| bounds_belong_to_region(bounds, &region.text_bounds))
+            .collect::<Vec<_>>();
+        matches.sort_by(|first, second| match region.direction {
+            ocr::ComicTextDirection::Horizontal => first
+                .0
+                .y
+                .partial_cmp(&second.0.y)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    first
+                        .0
+                        .x
+                        .partial_cmp(&second.0.x)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+            ocr::ComicTextDirection::Vertical => second
+                .0
+                .x
+                .partial_cmp(&first.0.x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    first
+                        .0
+                        .y
+                        .partial_cmp(&second.0.y)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                }),
+        });
+        let separator = if matches!(
+            source_lang,
+            "zh" | "zh-CN" | "zh-TW" | "ja" | "ja-JP" | "ko" | "ko-KR"
+        ) {
+            ""
+        } else {
+            " "
+        };
+        region.source_text = matches
+            .iter()
+            .map(|(_, text, _)| text.as_str())
+            .collect::<Vec<_>>()
+            .join(separator);
+        region.confidence = {
+            let scores = matches
+                .iter()
+                .filter_map(|(_, _, score)| *score)
+                .collect::<Vec<_>>();
+            (!scores.is_empty()).then(|| scores.iter().sum::<f32>() / scores.len() as f32)
+        };
+    }
+}
+
+fn bounds_belong_to_region(candidate: &ocr::OcrBounds, region: &ocr::OcrBounds) -> bool {
+    let center_x = candidate.x + candidate.width / 2.0;
+    let center_y = candidate.y + candidate.height / 2.0;
+    let center_inside = center_x >= region.x
+        && center_x <= region.x + region.width
+        && center_y >= region.y
+        && center_y <= region.y + region.height;
+    if center_inside {
+        return true;
+    }
+    let intersection_width =
+        (candidate.x + candidate.width).min(region.x + region.width) - candidate.x.max(region.x);
+    let intersection_height =
+        (candidate.y + candidate.height).min(region.y + region.height) - candidate.y.max(region.y);
+    let intersection = intersection_width.max(0.0) * intersection_height.max(0.0);
+    let candidate_area = candidate.width.max(0.0) * candidate.height.max(0.0);
+    candidate_area > 0.0 && intersection / candidate_area >= 0.15
+}
+
+fn manga_ocr_fallback(
+    text: String,
+    regions: Vec<ocr::ComicTextRegion>,
+    engine: String,
+    reason: String,
+) -> OcrRegionRefinement {
+    log::warn!("MangaOCR 回退到 {engine}: {reason}");
+    OcrRegionRefinement {
+        text,
+        regions,
+        engine,
+        fallback_reason: Some(reason),
+    }
 }
 
 async fn trigger_selection_translate_flow(
@@ -3083,6 +3713,63 @@ mod region_translation_tests {
         assert!(regions
             .iter()
             .all(|region| region.translated_text.is_none()));
+    }
+
+    #[test]
+    fn applies_manga_ocr_text_by_stable_region_id() {
+        let mut regions = vec![region("region_01"), region("region_02")];
+        let recognized = vec![
+            MangaOcrRegionResponse {
+                id: "region_02".to_string(),
+                text: " 二つ目 ".to_string(),
+            },
+            MangaOcrRegionResponse {
+                id: "region_01".to_string(),
+                text: "一つ目".to_string(),
+            },
+        ];
+
+        let updated = apply_manga_ocr_results(&mut regions, &recognized);
+
+        assert_eq!(updated, 2);
+        assert_eq!(regions[0].source_text, "一つ目");
+        assert_eq!(regions[1].source_text, "二つ目");
+    }
+
+    #[test]
+    fn maps_multiple_ocr_lines_into_one_detected_comic_region() {
+        let mut detected = vec![region("region_01")];
+        detected[0].source_text.clear();
+        detected[0].text_bounds = ocr::OcrBounds {
+            x: 10.0,
+            y: 10.0,
+            width: 180.0,
+            height: 100.0,
+        };
+        let mut paddle = region("paddle");
+        paddle.line_boxes = vec![
+            ocr::OcrTextBox {
+                text: "I wonder if".to_string(),
+                score: Some(0.9),
+                x: 30.0,
+                y: 30.0,
+                width: 100.0,
+                height: 20.0,
+            },
+            ocr::OcrTextBox {
+                text: "there are rumors".to_string(),
+                score: Some(0.8),
+                x: 25.0,
+                y: 58.0,
+                width: 130.0,
+                height: 20.0,
+            },
+        ];
+
+        populate_detected_regions_from_ocr(&mut detected, &[paddle], "en-US");
+
+        assert_eq!(detected[0].source_text, "I wonder if there are rumors");
+        assert_eq!(detected[0].confidence, Some(0.85));
     }
 }
 

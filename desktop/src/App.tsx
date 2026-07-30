@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react"
 import {
   ChartNetwork,
   Database,
+  KeyRound,
   Languages,
   LayoutDashboard,
   PlugZap,
@@ -40,6 +41,7 @@ import { Button } from "./components/primitives"
 import { errorMessage } from "./lib/errors"
 import { KnowledgeGraphSection } from "./sections/KnowledgeGraphSection"
 import { KnowledgeSection } from "./sections/KnowledgeSection"
+import { ConnectionDebugSection } from "./sections/ConnectionDebugSection"
 import { OcrDebugSection } from "./sections/OcrDebugSection"
 import {
   CaptureOverlay,
@@ -63,6 +65,7 @@ type Section =
   | "knowledge"
   | "graph"
   | "settings"
+  | "connectionDebug"
   | "vectorDebug"
   | "ocrDebug"
 const importMetaEnv = (import.meta as ImportMeta & {
@@ -93,6 +96,7 @@ function DesktopApp() {
   const [tabCategories, setTabCategories] = useState<TabCategory[]>([])
   const [noteAdapter, setNoteAdapter] = useState<NoteAdapterConfig>(DEFAULT_NOTE_ADAPTER)
   const [tokenInput, setTokenInput] = useState("")
+  const [stickyReminderFocusKey, setStickyReminderFocusKey] = useState(0)
 
   const refreshAll = async () => {
     setRefreshing(true)
@@ -132,6 +136,22 @@ function DesktopApp() {
 
   useEffect(() => {
     refreshAll()
+  }, [])
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    listen("show-sticky-reminders", () => {
+      setSection("stickyNotes")
+      setStickyReminderFocusKey((current) => current + 1)
+    }).then((value) => {
+      if (disposed) value()
+      else unlisten = value
+    })
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
   }, [])
 
   useEffect(() => {
@@ -204,6 +224,7 @@ function DesktopApp() {
     { id: "settings", label: "设置", icon: Settings2 },
   ]
   const debugNavItems: { id: Section; label: string; icon: LucideIcon }[] = [
+    { id: "connectionDebug", label: "连接调试", icon: KeyRound },
     { id: "vectorDebug", label: "向量库", icon: Database },
   ]
   if (SHOW_OCR_DEBUG) {
@@ -291,15 +312,13 @@ function DesktopApp() {
             backendReady={backendReady}
             desktopStatus={desktopStatus}
             connectionError={connectionError}
-            tokenInput={tokenInput}
-            setTokenInput={setTokenInput}
-            onSaveToken={saveToken}
-            onClearToken={clearToken}
             onRefresh={refreshAll}
             refreshing={refreshing}
           />
         )}
-        {section === "stickyNotes" && <StickyNotesSection />}
+        {section === "stickyNotes" && (
+          <StickyNotesSection reminderFocusKey={stickyReminderFocusKey} />
+        )}
         {section === "translate" && <TranslateSection />}
         {section === "knowledge" && <KnowledgeSection />}
         {section === "graph" && <KnowledgeGraphSection noteAdapter={noteAdapter} />}
@@ -312,6 +331,17 @@ function DesktopApp() {
             setModelConfig={setModelConfig}
             noteAdapter={noteAdapter}
             setNoteAdapter={setNoteAdapter}
+          />
+        )}
+        {section === "connectionDebug" && (
+          <ConnectionDebugSection
+            desktopStatus={desktopStatus}
+            backendReady={backendReady}
+            connectionError={connectionError}
+            tokenInput={tokenInput}
+            setTokenInput={setTokenInput}
+            onSaveToken={saveToken}
+            onClearToken={clearToken}
           />
         )}
         {section === "vectorDebug" && <VectorDebugSection />}
