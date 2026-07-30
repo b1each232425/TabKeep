@@ -18,6 +18,8 @@ export function EvalCaseListPanel({
   limit,
   minScore,
   evaluateAnswer,
+  evaluateRagas,
+  ragasReadyCount,
   answerLimit,
   running,
   saving,
@@ -25,6 +27,7 @@ export function EvalCaseListPanel({
   onLimitChange,
   onMinScoreChange,
   onEvaluateAnswerChange,
+  onEvaluateRagasChange,
   onAnswerLimitChange,
   onRunEval,
   onEditCase,
@@ -37,6 +40,8 @@ export function EvalCaseListPanel({
   limit: string
   minScore: string
   evaluateAnswer: boolean
+  evaluateRagas: boolean
+  ragasReadyCount: number
   answerLimit: string
   running: boolean
   saving: boolean
@@ -44,6 +49,7 @@ export function EvalCaseListPanel({
   onLimitChange: (value: string) => void
   onMinScoreChange: (value: string) => void
   onEvaluateAnswerChange: (value: boolean) => void
+  onEvaluateRagasChange: (value: boolean) => void
   onAnswerLimitChange: (value: string) => void
   onRunEval: () => void
   onEditCase: (item: KnowledgeEvalCase) => void
@@ -58,7 +64,7 @@ export function EvalCaseListPanel({
             {cases.length} 条 · 检索 {retrievalReadyCount} · 答案 {answerReadyCount}
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-[120px_92px_92px_108px_auto_auto]">
+        <div className="grid gap-2 sm:grid-cols-[120px_92px_92px_108px_92px_auto_auto]">
           <select
             className="tk-select"
             value={searchMode}
@@ -104,6 +110,25 @@ export function EvalCaseListPanel({
             />
             答案评估
           </label>
+          <label
+            className={`inline-flex h-11 items-center gap-2 rounded-md border border-border px-3 text-sm ${
+              evaluateAnswer && ragasReadyCount > 0
+                ? "bg-white/75 text-slate-700"
+                : "bg-slate-50 text-muted-foreground"
+            }`}
+            title={
+              ragasReadyCount > 0
+                ? "使用 Ragas 评估生成答案和检索上下文"
+                : "Ragas 需要配置预期答案"
+            }>
+            <input
+              type="checkbox"
+              checked={evaluateRagas}
+              disabled={!evaluateAnswer || ragasReadyCount === 0}
+              onChange={(event) => onEvaluateRagasChange(event.target.checked)}
+            />
+            Ragas
+          </label>
           <input
             className="tk-input"
             type="number"
@@ -124,7 +149,7 @@ export function EvalCaseListPanel({
       <div className="tk-panel-body">
         {answerReadyCount === 0 && (
           <div className="mb-3 rounded-md border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-800">
-            当前没有答案评估用例；只会显示 Recall/MRR/Top1。填写预期答案、答案关键词或应拒答后，才会出现答案通过率、上下文支撑和拒答指标。
+            当前没有答案评估用例；只会显示 Recall/Precision/MRR/Top1。填写预期答案、答案关键词或应拒答后，才会出现答案通过率、上下文支撑和拒答指标。
           </div>
         )}
         {answerReadyCount > 0 && !evaluateAnswer && (
@@ -135,6 +160,11 @@ export function EvalCaseListPanel({
         {answerReadyCount > 0 && evaluateAnswer && (
           <div className="mb-3 rounded-md border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-800">
             答案评估会调用问答模型；本次最多评估 {safePositiveInt(answerLimit, 30)} 条，默认优先跑拒答、困难问法和自然问法。
+          </div>
+        )}
+        {evaluateRagas && (
+          <div className="mb-3 rounded-md border border-violet-100 bg-violet-50/70 px-3 py-2 text-xs leading-5 text-violet-800">
+            Ragas 会对 {ragasReadyCount} 条含预期答案的用例进行抽样评审，并复用本地缓存。每条用例会产生额外模型调用。
           </div>
         )}
         {cases.length === 0 ? (
@@ -155,6 +185,11 @@ export function EvalCaseListPanel({
                       {item.expectedTitle && <span className="tk-badge">标题</span>}
                       {item.expectedDocumentId && <span className="tk-badge">文档 ID</span>}
                       {item.expectedParagraphId && <span className="tk-badge">段落 ID</span>}
+                      {(item.additionalRelevantTargets?.length ?? 0) > 0 && (
+                        <span className="tk-badge">
+                          相关结果 {1 + item.additionalRelevantTargets.length}
+                        </span>
+                      )}
                       {item.expectedAnswer && <span className="tk-badge">答案</span>}
                       {item.answerKeywords && <span className="tk-badge">关键词</span>}
                       {item.shouldRefuse && <span className="tk-badge tk-badge-warning">拒答</span>}

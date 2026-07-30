@@ -38,8 +38,9 @@ export function EvalResultPanel({
         </div>
       </div>
       <div className="tk-panel-body space-y-3">
-        <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
           <Metric title={`Recall@${result.limit}`} value={formatPercent(result.recallAtK)} />
+          <Metric title={`Precision@${result.limit}`} value={formatPercent(result.precisionAtK)} />
           <Metric title="MRR" value={formatScore(result.mrr)} />
           <Metric title="Top1 命中率" value={formatPercent(result.top1Accuracy)} />
           <Metric title="检索命中" value={`${result.hitCount}/${retrievalEvaluatedCount(result)}`} />
@@ -64,6 +65,7 @@ export function EvalResultPanel({
         ) : (
           <AnswerEvalEmptyState result={result} />
         )}
+        {result.ragasRequested && <RagasSummary result={result} />}
         <RankDistribution result={result} />
         <TypeSummaryPanel result={result} />
         <BadCasePanel result={result} onStatus={onStatus} />
@@ -88,6 +90,10 @@ export function EvalResultPanel({
                   </span>
                   <span className="tk-badge">{formatCaseType(item.case.caseType)}</span>
                   <span className="tk-badge">RR {formatScore(item.reciprocalRank)}</span>
+                  <span className="tk-badge">
+                    P@{result.limit} {formatPercent(item.precisionAtK)}
+                  </span>
+                  <span className="tk-badge">相关 {item.relevantHitCount}</span>
                   {issueType !== "ok" && (
                     <span className="tk-badge tk-badge-warning">{formatIssueType(issueType)}</span>
                   )}
@@ -143,10 +149,14 @@ function TypeSummaryPanel({ result }: { result: KnowledgeEvalRunResponse }) {
               <span className="tk-badge tk-badge-success">{formatCaseType(summary.caseType)}</span>
               <span className="text-xs text-muted-foreground">{summary.hitCount}/{summary.total}</span>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+            <div className="mt-3 grid grid-cols-4 gap-3 text-xs">
               <div>
                 <p className="text-muted-foreground">R@{result.limit}</p>
                 <p className="mt-1 font-semibold text-slate-950">{formatPercent(summary.recallAtK)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">P@{result.limit}</p>
+                <p className="mt-1 font-semibold text-slate-950">{formatPercent(summary.precisionAtK)}</p>
               </div>
               <div>
                 <p className="text-muted-foreground">Top1</p>
@@ -171,6 +181,31 @@ function AnswerEvalEmptyState({ result }: { result: KnowledgeEvalRunResponse }) 
       {eligible > 0
         ? `本次没有运行答案评估；已有 ${eligible} 条答案型用例，下次运行前请勾选“答案评估”。`
         : "本次没有答案评估结果；当前用例没有配置预期答案、答案关键词或应拒答条件。"}
+    </div>
+  )
+}
+
+function RagasSummary({ result }: { result: KnowledgeEvalRunResponse }) {
+  return (
+    <div className="rounded-md border border-violet-100 bg-violet-50/55 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-violet-900">Ragas 生成质量</p>
+        <span className={`tk-badge ${result.ragasFailed > 0 ? "tk-badge-warning" : "tk-badge-success"}`}>
+          {result.ragasEvaluated}/{result.ragasEligible} 已评估
+          {result.ragasFailed > 0 ? ` · ${result.ragasFailed} 失败` : ""}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <Metric title="Faithfulness" value={formatScore(result.averageRagasFaithfulness)} />
+        <Metric title="Factual Correctness" value={formatScore(result.averageRagasFactualCorrectness)} />
+        <Metric title="Context Precision" value={formatScore(result.averageRagasContextPrecision)} />
+        <Metric title="Answer Relevancy" value={formatScore(result.averageRagasAnswerRelevance)} />
+      </div>
+      {result.ragasEvaluated === 0 && (
+        <p className="mt-3 text-xs leading-5 text-violet-800">
+          没有得到 Ragas 分数，请展开用例查看依赖、模型兼容或超时信息。
+        </p>
+      )}
     </div>
   )
 }
@@ -244,6 +279,24 @@ function AnswerEvalBox({
         <span className="tk-badge">关键词 {formatPercent(item.answerKeywordCoverage)}</span>
         <span className="tk-badge">支撑 {formatPercent(item.answerFaithfulness)}</span>
         <span className="tk-badge">相关 {formatPercent(item.answerRelevance)}</span>
+        {item.ragasEvaluated && (
+          <>
+            <span className="tk-badge tk-badge-success">
+              Ragas Faith {formatScore(item.ragasFaithfulness)}
+            </span>
+            <span className="tk-badge tk-badge-success">
+              Factual {formatScore(item.ragasFactualCorrectness)}
+            </span>
+            <span className="tk-badge tk-badge-success">
+              Context P {formatScore(item.ragasContextPrecision)}
+            </span>
+            {item.ragasAnswerRelevance !== null && item.ragasAnswerRelevance !== undefined && (
+              <span className="tk-badge tk-badge-success">
+                Relevancy {formatScore(item.ragasAnswerRelevance)}
+              </span>
+            )}
+          </>
+        )}
       </div>
       {item.answerIssueMessage && (
         <p className="mt-2 text-xs leading-5 text-slate-700">{item.answerIssueMessage}</p>
@@ -252,6 +305,9 @@ function AnswerEvalBox({
         <p className="mt-1 text-xs leading-5 text-amber-800">
           缺少关键词：{item.missingAnswerKeywords.slice(0, 6).join("、")}
         </p>
+      )}
+      {item.ragasError && (
+        <p className="mt-1 text-xs leading-5 text-violet-800">Ragas：{item.ragasError}</p>
       )}
       {!compact && item.answer && (
         <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-xs leading-5 text-slate-600">

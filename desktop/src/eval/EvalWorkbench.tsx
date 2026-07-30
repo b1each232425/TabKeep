@@ -46,6 +46,7 @@ export default function EvalWorkbench() {
   const [searchMode, setSearchMode] = useState<KnowledgeSearchMode>("hybrid")
   const [minScore, setMinScore] = useState("0")
   const [evaluateAnswer, setEvaluateAnswer] = useState(false)
+  const [evaluateRagas, setEvaluateRagas] = useState(false)
   const [answerLimit, setAnswerLimit] = useState("30")
   const [result, setResult] = useState<KnowledgeEvalRunResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -54,6 +55,10 @@ export default function EvalWorkbench() {
   const [status, setStatus] = useState<string | null>(null)
   const retrievalReadyCount = useMemo(() => cases.filter(isRetrievalReadyCase).length, [cases])
   const answerReadyCount = useMemo(() => cases.filter(isAnswerReadyCase).length, [cases])
+  const ragasReadyCount = useMemo(
+    () => cases.filter((item) => Boolean(!item.shouldRefuse && item.expectedAnswer.trim())).length,
+    [cases],
+  )
 
   const statusTone = useMemo<"success" | "warning" | "neutral">(() => {
     if (!status) return "neutral"
@@ -96,6 +101,12 @@ export default function EvalWorkbench() {
       setEvaluateAnswer(false)
     }
   }, [answerReadyCount, evaluateAnswer])
+
+  useEffect(() => {
+    if ((!evaluateAnswer || ragasReadyCount === 0) && evaluateRagas) {
+      setEvaluateRagas(false)
+    }
+  }, [evaluateAnswer, evaluateRagas, ragasReadyCount])
 
   const saveConnection = async () => {
     setBrowserApiBaseUrl(apiBaseUrl)
@@ -142,6 +153,7 @@ export default function EvalWorkbench() {
       expectedTitle: item.expectedTitle,
       expectedDocumentId: item.expectedDocumentId,
       expectedParagraphId: item.expectedParagraphId,
+      additionalRelevantTargets: item.additionalRelevantTargets ?? [],
       expectedAnswer: item.expectedAnswer ?? "",
       answerKeywords: item.answerKeywords ?? "",
       shouldRefuse: Boolean(item.shouldRefuse),
@@ -185,6 +197,7 @@ export default function EvalWorkbench() {
         searchMode,
         minScore: Number.isFinite(parsedMinScore) && parsedMinScore > 0 ? parsedMinScore : 0,
         evaluateAnswer,
+        evaluateRagas,
         answerLimit:
           evaluateAnswer && Number.isFinite(parsedAnswerLimit) && parsedAnswerLimit > 0
             ? parsedAnswerLimit
@@ -217,8 +230,14 @@ export default function EvalWorkbench() {
               答案 {answerReadyCount}
             </span>
             {result && <span className="tk-badge">Recall {formatPercent(result.recallAtK)}</span>}
+            {result && <span className="tk-badge">Precision {formatPercent(result.precisionAtK)}</span>}
             {result && <span className="tk-badge">MRR {formatScore(result.mrr)}</span>}
             {result && <span className="tk-badge">{formatAnswerRunBadge(result)}</span>}
+            {result?.ragasRequested && (
+              <span className={`tk-badge ${result.ragasFailed > 0 ? "tk-badge-warning" : "tk-badge-success"}`}>
+                Ragas {result.ragasEvaluated}/{result.ragasEligible}
+              </span>
+            )}
             <Button variant="secondary" onClick={refresh} disabled={loading}>
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               刷新
@@ -254,13 +273,19 @@ export default function EvalWorkbench() {
             limit={limit}
             minScore={minScore}
             evaluateAnswer={evaluateAnswer}
+            evaluateRagas={evaluateRagas}
+            ragasReadyCount={ragasReadyCount}
             answerLimit={answerLimit}
             running={running}
             saving={saving}
             onSearchModeChange={setSearchMode}
             onLimitChange={setLimit}
             onMinScoreChange={setMinScore}
-            onEvaluateAnswerChange={setEvaluateAnswer}
+            onEvaluateAnswerChange={(value) => {
+              setEvaluateAnswer(value)
+              if (!value) setEvaluateRagas(false)
+            }}
+            onEvaluateRagasChange={setEvaluateRagas}
             onAnswerLimitChange={setAnswerLimit}
             onRunEval={runEval}
             onEditCase={editCase}

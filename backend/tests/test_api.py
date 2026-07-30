@@ -18,6 +18,8 @@ from schemas.knowledge import (
     DEFAULT_EMBEDDING_MODEL,
     KnowledgeCitation,
     KnowledgeEvalCase,
+    KnowledgeHitTestItem,
+    KnowledgeHitTestResponse,
 )
 from services.knowledge import db, vector_store
 from services.knowledge.evaluation import (
@@ -458,6 +460,76 @@ class ApiTestCase(unittest.TestCase):
         self.assertTrue(data["results"][0]["hits"][0]["relevant"])
         self.assertIn("text", data["results"][0]["hits"][0]["matchedExpectations"])
 
+    def test_knowledge_eval_calculates_precision_with_multiple_relevant_targets(self) -> None:
+        self.initialize_config()
+        created = self.client.post(
+            "/knowledge/eval/cases",
+            json={
+                "question": "哪些资料解释了混合检索？",
+                "caseType": "natural",
+                "expectedDocumentId": "doc-primary",
+                "additionalRelevantTargets": [
+                    {
+                        "documentId": "doc-secondary",
+                        "title": "补充资料",
+                    }
+                ],
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        case = created.json()
+        self.assertEqual(len(case["additionalRelevantTargets"]), 1)
+        self.assertEqual(case["additionalRelevantTargets"][0]["documentId"], "doc-secondary")
+
+        items = [
+            KnowledgeHitTestItem(
+                documentId=document_id,
+                paragraphId=f"paragraph-{rank}",
+                chunkId=f"chunk-{rank}",
+                title=title,
+                sourceType="markdown",
+                path=f"{document_id}.md",
+                content=f"{title}正文",
+                rank=rank,
+                matchedBy=["fts"],
+            )
+            for rank, document_id, title in [
+                (1, "doc-primary", "主要资料"),
+                (2, "doc-noise-a", "无关资料 A"),
+                (3, "doc-secondary", "补充资料"),
+                (4, "doc-noise-b", "无关资料 B"),
+            ]
+        ]
+
+        async def fake_hit_test(*_args: object, **_kwargs: object) -> KnowledgeHitTestResponse:
+            return KnowledgeHitTestResponse(
+                ok=True,
+                query="哪些资料解释了混合检索？",
+                searchMode="hybrid",
+                sourceMode="hybrid",
+                items=items,
+            )
+
+        with patch("services.knowledge.evaluation.hit_test_knowledge", side_effect=fake_hit_test):
+            result = self.client.post(
+                "/knowledge/eval/run",
+                json={"caseIds": [case["id"]], "limit": 4, "searchMode": "hybrid"},
+                headers=self.headers,
+            )
+
+        self.assertEqual(result.status_code, 200, result.text)
+        data = result.json()
+        self.assertEqual(data["recallAtK"], 1)
+        self.assertEqual(data["precisionAtK"], 0.5)
+        self.assertEqual(data["typeSummaries"][0]["precisionAtK"], 0.5)
+        evaluated = data["results"][0]
+        self.assertEqual(evaluated["relevantHitCount"], 2)
+        self.assertEqual(evaluated["precisionAtK"], 0.5)
+        self.assertEqual(evaluated["hits"][0]["matchedTargetIndexes"], [0])
+        self.assertEqual(evaluated["hits"][2]["matchedTargetIndexes"], [1])
+        self.assertFalse(evaluated["hits"][1]["relevant"])
+
     def test_knowledge_eval_answer_keywords_accept_aliases(self) -> None:
         answer = (
             "当来源片段不足时，系统应明确说没有足够依据。"
@@ -607,6 +679,75 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(data["answerLimit"], 1)
         self.assertEqual(data["answerEvaluated"], 1)
         self.assertEqual(calls, 1)
+
+    def test_knowledge_eval_runs_ragas_metrics_when_requested(self) -> None:
+        self.initialize_config()
+        db.upsert_document(
+            source_type="markdown",
+            title="Ragas 评估记录",
+            content="# Ragas 评估记录\n\nRagasTarget 使用标准化指标评估生成答案。",
+            path="ragas-eval.md",
+        )
+        created = self.client.post(
+            "/knowledge/eval/cases",
+            json={
+                "question": "RagasTarget",
+                "expectedText": "RagasTarget 使用标准化指标",
+                "expectedPath": "ragas-eval.md",
+                "expectedAnswer": "RagasTarget 使用标准化指标评估生成答案。",
+                "answerKeywords": "RagasTarget, 标准化指标",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        case = created.json()
+
+        async def fake_chat_completion(_config, _messages):
+            return "RagasTarget 使用标准化指标评估生成答案。"
+
+        async def fake_ragas_evaluation(**kwargs):
+            self.assertIn("RagasTarget", kwargs["question"])
+            self.assertTrue(kwargs["contexts"])
+            self.assertIn("标准化指标", kwargs["reference"])
+            return {
+                "ragasEvaluated": True,
+                "ragasFaithfulness": 0.91,
+                "ragasFactualCorrectness": 0.82,
+                "ragasContextPrecision": 0.73,
+                "ragasAnswerRelevance": 0.88,
+                "ragasError": None,
+            }
+
+        with (
+            patch("services.knowledge.evaluation.chat_completion", side_effect=fake_chat_completion),
+            patch(
+                "services.knowledge.evaluation.evaluate_ragas_answer",
+                side_effect=fake_ragas_evaluation,
+            ),
+        ):
+            response = self.client.post(
+                "/knowledge/eval/run",
+                json={
+                    "caseIds": [case["id"]],
+                    "limit": 5,
+                    "searchMode": "fts",
+                    "evaluateAnswer": True,
+                    "evaluateRagas": True,
+                },
+                headers=self.headers,
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertTrue(data["ragasRequested"])
+        self.assertEqual(data["ragasEligible"], 1)
+        self.assertEqual(data["ragasEvaluated"], 1)
+        self.assertEqual(data["ragasFailed"], 0)
+        self.assertEqual(data["averageRagasFaithfulness"], 0.91)
+        self.assertEqual(data["averageRagasFactualCorrectness"], 0.82)
+        self.assertEqual(data["averageRagasContextPrecision"], 0.73)
+        self.assertEqual(data["averageRagasAnswerRelevance"], 0.88)
+        self.assertTrue(data["results"][0]["ragasEvaluated"])
 
     def test_knowledge_eval_supports_refusal_only_cases(self) -> None:
         self.initialize_config()

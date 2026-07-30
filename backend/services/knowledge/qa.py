@@ -57,14 +57,8 @@ async def ask_knowledge(req: KnowledgeAskRequest) -> KnowledgeAskResponse:
 
 def build_rag_messages(question: str, citations: list[KnowledgeCitation]) -> list[dict[str, str]]:
     source_blocks: list[str] = []
-    used = 0
-    for index, item in enumerate(citations, start=1):
-        content = item.content.strip()
-        remaining = MAX_CONTEXT_CHARS - used
-        if remaining <= 0:
-            break
-        clipped = content[:remaining]
-        used += len(clipped)
+    contexts = rag_contexts(citations)
+    for index, (item, clipped) in enumerate(zip(citations, contexts, strict=False), start=1):
         location = item.url or item.path or item.documentId
         source_blocks.append(
             f"[来源 {index}]\n标题: {item.title}\n位置: {location}\n内容:\n{clipped}"
@@ -84,6 +78,19 @@ def build_rag_messages(question: str, citations: list[KnowledgeCitation]) -> lis
             "content": f"问题:\n{question}\n\n可用来源:\n\n" + "\n\n".join(source_blocks),
         },
     ]
+
+
+def rag_contexts(citations: list[KnowledgeCitation]) -> list[str]:
+    contexts: list[str] = []
+    used = 0
+    for item in citations:
+        remaining = MAX_CONTEXT_CHARS - used
+        if remaining <= 0:
+            break
+        clipped = item.content.strip()[:remaining]
+        contexts.append(clipped)
+        used += len(clipped)
+    return contexts
 
 
 def clean_llm_output(raw: str) -> str:

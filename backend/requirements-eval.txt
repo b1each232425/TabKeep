@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# RAG evaluation is development-only and is intentionally excluded from the
+# production backend bundle.
+ragas==0.4.3
+# Ragas 0.4.3 still imports a module removed in langchain-community 0.4.2.
+langchain-community==0.4.1

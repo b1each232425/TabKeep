@@ -13,6 +13,7 @@ export const EMPTY_EVAL_CASE: KnowledgeEvalCaseRequest = {
   expectedTitle: "",
   expectedDocumentId: "",
   expectedParagraphId: "",
+  additionalRelevantTargets: [],
   expectedAnswer: "",
   answerKeywords: "",
   shouldRefuse: false,
@@ -32,7 +33,16 @@ export function isRetrievalReadyCase(item: KnowledgeEvalCaseRequest): boolean {
       item.expectedPath.trim() ||
       item.expectedTitle.trim() ||
       item.expectedDocumentId.trim() ||
-      item.expectedParagraphId.trim(),
+      item.expectedParagraphId.trim() ||
+      (item.additionalRelevantTargets ?? []).some((target) =>
+        Boolean(
+          target.text.trim() ||
+            target.path.trim() ||
+            target.title.trim() ||
+            target.documentId.trim() ||
+            target.paragraphId.trim(),
+        ),
+      ),
   )
 }
 
@@ -52,7 +62,10 @@ export function formatEvalStatus(result: KnowledgeEvalRunResponse): string {
       : (result.answerEligible ?? 0) > 0
         ? `，答案评估未运行（${result.answerEligible} 条可评估）`
         : "，答案评估 0 条可评估"
-  return `RAG 评估完成：${retrieval}${answer}，Recall@${result.limit} ${formatPercent(result.recallAtK)}，Top1 ${formatPercent(result.top1Accuracy)}，MRR ${formatScore(result.mrr)}`
+  const ragas = result.ragasRequested
+    ? `，Ragas ${result.ragasEvaluated}/${result.ragasEligible}${result.ragasFailed > 0 ? `（失败 ${result.ragasFailed}）` : ""}`
+    : ""
+  return `RAG 评估完成：${retrieval}${answer}${ragas}，Recall@${result.limit} ${formatPercent(result.recallAtK)}，Precision@${result.limit} ${formatPercent(result.precisionAtK)}，Top1 ${formatPercent(result.top1Accuracy)}，MRR ${formatScore(result.mrr)}`
 }
 
 export function retrievalEvaluatedCount(result: KnowledgeEvalRunResponse): number {

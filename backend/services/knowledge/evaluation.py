@@ -11,6 +11,7 @@ from schemas.knowledge import (
     KnowledgeEvalCaseResult,
     KnowledgeEvalDeleteResponse,
     KnowledgeEvalHit,
+    KnowledgeEvalRelevantTarget,
     KnowledgeEvalRankBucket,
     KnowledgeEvalRunRequest,
     KnowledgeEvalRunResponse,
@@ -18,7 +19,8 @@ from schemas.knowledge import (
 )
 from services import storage
 from services.knowledge import db
-from services.knowledge.qa import build_rag_messages, clean_llm_output
+from services.knowledge.qa import build_rag_messages, clean_llm_output, rag_contexts
+from services.knowledge.ragas_evaluation import evaluate_ragas_answer
 from services.knowledge.retrieval import hit_test_knowledge, normalize_search_mode
 from services.llm import chat_completion
 
@@ -83,6 +85,8 @@ DEFAULT_ANSWER_EVAL_LIMIT = 30
 DEFAULT_ANSWER_TIMEOUT_SECONDS = 45
 MAX_ANSWER_EVAL_LIMIT = 260
 MAX_ANSWER_TIMEOUT_SECONDS = 180
+DEFAULT_RAGAS_TIMEOUT_SECONDS = 120
+MAX_RAGAS_TIMEOUT_SECONDS = 300
 
 
 def list_eval_cases() -> list[KnowledgeEvalCase]:
@@ -104,6 +108,7 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
     min_score = max(0, float(req.minScore or 0))
     answer_limit = normalized_answer_limit(req.answerLimit)
     answer_timeout = normalized_answer_timeout(req.answerTimeoutSeconds)
+    ragas_timeout = normalized_ragas_timeout(req.ragasTimeoutSeconds)
     answer_eval_ids = selected_answer_eval_case_ids(cases, answer_limit) if req.evaluateAnswer else set()
     results: list[KnowledgeEvalCaseResult] = []
     source_modes: dict[str, int] = {}
@@ -134,11 +139,27 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
                 )
                 continue
 
+            case_targets = relevant_targets(case)
             first_rank: int | None = None
             eval_hits: list[KnowledgeEvalHit] = []
             for item in search_result.items:
-                matches = matched_expectations(case, item)
-                relevant = is_relevant(case, matches)
+                target_matches = [
+                    (index, target_matched_expectations(target, item))
+                    for index, target in enumerate(case_targets)
+                ]
+                matches = sorted(
+                    {
+                        expectation
+                        for _, expectations in target_matches
+                        for expectation in expectations
+                    }
+                )
+                matched_target_indexes = [
+                    index
+                    for index, expectations in target_matches
+                    if target_is_relevant(case_targets[index], expectations)
+                ]
+                relevant = bool(matched_target_indexes)
                 if relevant and first_rank is None:
                     first_rank = item.rank
                 eval_hits.append(
@@ -146,23 +167,32 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
                         **item.model_dump(),
                         relevant=relevant,
                         matchedExpectations=matches,
+                        matchedTargetIndexes=matched_target_indexes,
                     )
                 )
             if not has_expectation(case):
-                issue_type, issue_message = "not_evaluated", "未配置检索预期；此用例不参与 Recall/MRR。"
+                issue_type, issue_message = (
+                    "not_evaluated",
+                    "未配置检索预期；此用例不参与 Recall/Precision/MRR。",
+                )
             else:
                 issue_type, issue_message = explain_case_result(first_rank, eval_hits)
+            relevant_hit_count = sum(1 for hit in eval_hits if hit.relevant and hit.rank <= limit)
             result = KnowledgeEvalCaseResult(
                 case=case,
                 ok=True,
                 rank=first_rank,
                 reciprocalRank=round(1 / first_rank, 6) if first_rank else 0,
+                relevantHitCount=relevant_hit_count,
+                precisionAtK=round(relevant_hit_count / limit, 6),
                 hits=eval_hits,
                 issueType=issue_type,
                 issueMessage=issue_message,
             )
             if req.evaluateAnswer and case.id in answer_eval_ids:
                 apply_answer_eval(result, await evaluate_answer(case, eval_hits, limit, answer_timeout))
+                if req.evaluateRagas and should_evaluate_ragas(case):
+                    await apply_ragas_eval(result, case, eval_hits, limit, ragas_timeout)
             results.append(result)
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
@@ -188,6 +218,8 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
     answer_pass_count = sum(1 for result in answer_results if result.answerOk)
     refusal_results = [result for result in answer_results if result.case.shouldRefuse]
     refusal_pass_count = sum(1 for result in refusal_results if result.refusalOk)
+    ragas_results = [result for result in results if result.ragasEvaluated]
+    ragas_failed_count = sum(1 for result in results if result.ragasError)
     return KnowledgeEvalRunResponse(
         ok=True,
         total=len(cases),
@@ -195,6 +227,7 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
         retrievalEvaluated=retrieval_evaluated,
         hitCount=hit_count,
         recallAtK=round(hit_count / retrieval_evaluated, 6) if retrieval_evaluated else 0,
+        precisionAtK=average_result_field(retrieval_results, "precisionAtK"),
         mrr=round(mrr, 6),
         top1Accuracy=round(top1_count / retrieval_evaluated, 6) if retrieval_evaluated else 0,
         answerEligible=answer_eligible_count,
@@ -208,6 +241,26 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
         averageAnswerScore=average_result_field(answer_results, "answerScore"),
         averageFaithfulness=average_result_field(answer_results, "answerFaithfulness"),
         averageAnswerRelevance=average_result_field(answer_results, "answerRelevance"),
+        ragasRequested=bool(req.evaluateAnswer and req.evaluateRagas),
+        ragasEligible=sum(1 for case in cases if should_evaluate_ragas(case)),
+        ragasEvaluated=len(ragas_results),
+        ragasFailed=ragas_failed_count,
+        averageRagasFaithfulness=average_optional_result_field(
+            ragas_results,
+            "ragasFaithfulness",
+        ),
+        averageRagasFactualCorrectness=average_optional_result_field(
+            ragas_results,
+            "ragasFactualCorrectness",
+        ),
+        averageRagasContextPrecision=average_optional_result_field(
+            ragas_results,
+            "ragasContextPrecision",
+        ),
+        averageRagasAnswerRelevance=average_optional_result_field(
+            ragas_results,
+            "ragasAnswerRelevance",
+        ),
         rankDistribution=rank_distribution(retrieval_results),
         typeSummaries=type_summaries(results),
         limit=limit,
@@ -215,6 +268,34 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
         sourceModes=source_modes,
         results=results,
     )
+
+
+async def apply_ragas_eval(
+    result: KnowledgeEvalCaseResult,
+    case: KnowledgeEvalCase,
+    hits: list[KnowledgeEvalHit],
+    limit: int,
+    timeout_seconds: int,
+) -> None:
+    if not result.answer.strip():
+        result.ragasError = "答案未成功生成，Ragas 未运行。"
+        return
+
+    model_config = storage.get_model_config()
+    if not model_config or not model_config.model or not model_config.baseURL or not model_config.apiKey:
+        result.ragasError = "modelConfig 不完整，Ragas 未运行。"
+        return
+
+    values = await evaluate_ragas_answer(
+        question=case.question,
+        response=result.answer,
+        contexts=rag_contexts(hits[:limit]),
+        reference=case.expectedAnswer,
+        model_config=model_config,
+        embedding_config=storage.get_knowledge_config().embedding,
+        timeout_seconds=timeout_seconds,
+    )
+    apply_answer_eval(result, values)
 
 
 async def evaluate_answer(
@@ -344,6 +425,10 @@ def should_evaluate_answer(case: KnowledgeEvalCase) -> bool:
     return bool(case.shouldRefuse or case.expectedAnswer.strip() or case.answerKeywords.strip())
 
 
+def should_evaluate_ragas(case: KnowledgeEvalCase) -> bool:
+    return bool(not case.shouldRefuse and case.expectedAnswer.strip())
+
+
 def normalized_answer_limit(value: int | None) -> int:
     raw = value if value is not None else DEFAULT_ANSWER_EVAL_LIMIT
     return max(1, min(int(raw or DEFAULT_ANSWER_EVAL_LIMIT), MAX_ANSWER_EVAL_LIMIT))
@@ -352,6 +437,11 @@ def normalized_answer_limit(value: int | None) -> int:
 def normalized_answer_timeout(value: int | None) -> int:
     raw = value if value is not None else DEFAULT_ANSWER_TIMEOUT_SECONDS
     return max(5, min(int(raw or DEFAULT_ANSWER_TIMEOUT_SECONDS), MAX_ANSWER_TIMEOUT_SECONDS))
+
+
+def normalized_ragas_timeout(value: int | None) -> int:
+    raw = value if value is not None else DEFAULT_RAGAS_TIMEOUT_SECONDS
+    return max(10, min(int(raw or DEFAULT_RAGAS_TIMEOUT_SECONDS), MAX_RAGAS_TIMEOUT_SECONDS))
 
 
 def selected_answer_eval_case_ids(cases: list[KnowledgeEvalCase], answer_limit: int) -> set[str]:
@@ -453,6 +543,20 @@ def average_result_field(results: list[KnowledgeEvalCaseResult], field: str) -> 
     return round(sum(float(getattr(result, field) or 0) for result in results) / len(results), 6)
 
 
+def average_optional_result_field(
+    results: list[KnowledgeEvalCaseResult],
+    field: str,
+) -> float | None:
+    values = [
+        float(value)
+        for result in results
+        if (value := getattr(result, field)) is not None
+    ]
+    if not values:
+        return None
+    return round(sum(values) / len(values), 6)
+
+
 def explain_case_result(
     rank: int | None,
     hits: list[KnowledgeEvalHit],
@@ -507,6 +611,7 @@ def type_summaries(results: list[KnowledgeEvalCaseResult]) -> list[KnowledgeEval
                 total=total,
                 hitCount=hit_count,
                 recallAtK=round(hit_count / total, 6) if total else 0,
+                precisionAtK=average_result_field(items, "precisionAtK"),
                 mrr=round(mrr, 6),
                 top1Accuracy=round(top1_count / total, 6) if total else 0,
                 rankDistribution=rank_distribution(items),
@@ -525,61 +630,99 @@ def rank_distribution(results: list[KnowledgeEvalCaseResult]) -> list[KnowledgeE
 
 
 def is_relevant(case: KnowledgeEvalCase, matches: list[str]) -> bool:
-    if not has_expectation(case):
-        return False
+    return any(target_is_relevant(target, matches) for target in relevant_targets(case))
+
+
+def target_is_relevant(target: KnowledgeEvalRelevantTarget, matches: list[str]) -> bool:
     match_set = set(matches)
-    id_expectations = {
-        key
-        for key, value in {
-            "documentId": case.expectedDocumentId,
-            "paragraphId": case.expectedParagraphId,
-        }.items()
-        if value.strip()
-    }
-    if id_expectations:
-        return bool(id_expectations & match_set)
-    if case.expectedText.strip() and "text" in match_set:
+    if target.paragraphId.strip():
+        return "paragraphId" in match_set
+    if target.documentId.strip():
+        return "documentId" in match_set
+    if target.text.strip() and "text" in match_set:
         return True
 
     weak_expectations = {
         key
         for key, value in {
-            "path": case.expectedPath,
-            "title": case.expectedTitle,
+            "path": target.path,
+            "title": target.title,
         }.items()
         if value.strip()
     }
-    if case.expectedText.strip():
+    if target.text.strip():
         return len(weak_expectations) >= 2 and weak_expectations.issubset(match_set)
     return bool(weak_expectations and weak_expectations.issubset(match_set))
 
 
 def has_expectation(case: KnowledgeEvalCase) -> bool:
-    return any(
-        value.strip()
-        for value in (
-            case.expectedDocumentId,
-            case.expectedParagraphId,
-            case.expectedPath,
-            case.expectedTitle,
-            case.expectedText,
-        )
-    )
+    return bool(relevant_targets(case))
 
 
 def matched_expectations(case: KnowledgeEvalCase, item: KnowledgeCitation) -> list[str]:
+    return sorted(
+        {
+            expectation
+            for _, expectations in matched_relevant_targets(case, item)
+            for expectation in expectations
+        }
+    )
+
+
+def matched_relevant_targets(
+    case: KnowledgeEvalCase,
+    item: KnowledgeCitation,
+) -> list[tuple[int, list[str]]]:
+    return [
+        (index, target_matched_expectations(target, item))
+        for index, target in enumerate(relevant_targets(case))
+    ]
+
+
+def target_matched_expectations(
+    target: KnowledgeEvalRelevantTarget,
+    item: KnowledgeCitation,
+) -> list[str]:
     matches: list[str] = []
-    if case.expectedDocumentId.strip() and item.documentId == case.expectedDocumentId.strip():
+    if target.documentId.strip() and item.documentId == target.documentId.strip():
         matches.append("documentId")
-    if case.expectedParagraphId.strip() and (item.paragraphId or "") == case.expectedParagraphId.strip():
+    if target.paragraphId.strip() and (item.paragraphId or "") == target.paragraphId.strip():
         matches.append("paragraphId")
-    if contains_metadata(case.expectedPath, item.path, item.url):
+    if contains_metadata(target.path, item.path, item.url):
         matches.append("path")
-    if contains_metadata(case.expectedTitle, item.title, item.paragraphTitle):
+    if contains_metadata(target.title, item.title, item.paragraphTitle):
         matches.append("title")
-    if contains_text(case.expectedText, item.content, item.matchedContent):
+    if contains_text(target.text, item.content, item.matchedContent):
         matches.append("text")
     return matches
+
+
+def relevant_targets(case: KnowledgeEvalCase) -> list[KnowledgeEvalRelevantTarget]:
+    candidates = [
+        KnowledgeEvalRelevantTarget(
+            text=case.expectedText,
+            path=case.expectedPath,
+            title=case.expectedTitle,
+            documentId=case.expectedDocumentId,
+            paragraphId=case.expectedParagraphId,
+        ),
+        *case.additionalRelevantTargets,
+    ]
+    targets: list[KnowledgeEvalRelevantTarget] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for target in candidates:
+        signature = (
+            target.text.strip(),
+            target.path.strip(),
+            target.title.strip(),
+            target.documentId.strip(),
+            target.paragraphId.strip(),
+        )
+        if not any(signature) or signature in seen:
+            continue
+        seen.add(signature)
+        targets.append(target)
+    return targets
 
 
 def contains_metadata(expected: str, *values: str | None) -> bool:

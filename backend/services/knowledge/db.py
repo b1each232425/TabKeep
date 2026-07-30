@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -13,6 +14,7 @@ from schemas.knowledge import (
     KnowledgeCitation,
     KnowledgeEvalCase,
     KnowledgeEvalCaseRequest,
+    KnowledgeEvalRelevantTarget,
     KnowledgeMessage,
     KnowledgeSession,
     KnowledgeStats,
@@ -222,6 +224,7 @@ def init_db() -> None:
                 expected_title TEXT NOT NULL DEFAULT '',
                 expected_document_id TEXT NOT NULL DEFAULT '',
                 expected_paragraph_id TEXT NOT NULL DEFAULT '',
+                additional_relevant_targets_json TEXT NOT NULL DEFAULT '[]',
                 expected_answer TEXT NOT NULL DEFAULT '',
                 answer_keywords TEXT NOT NULL DEFAULT '',
                 should_refuse INTEGER NOT NULL DEFAULT 0,
@@ -263,6 +266,12 @@ def init_db() -> None:
         _ensure_column(conn, "documents", "embedding_status", "TEXT NOT NULL DEFAULT 'disabled'")
         _ensure_column(conn, "documents", "last_error", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "documents", "last_seen_at", "TEXT")
+        _ensure_column(
+            conn,
+            "rag_eval_cases",
+            "additional_relevant_targets_json",
+            "TEXT NOT NULL DEFAULT '[]'",
+        )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_path ON documents(source_type, path)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_key ON documents(source_type, source_key)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_paragraphs_document ON paragraphs(document_id)")
@@ -1092,8 +1101,8 @@ def list_eval_cases() -> list[KnowledgeEvalCase]:
         rows = conn.execute(
             """
             SELECT id, question, case_type, expected_text, expected_path, expected_title,
-                   expected_document_id, expected_paragraph_id, expected_answer, answer_keywords,
-                   should_refuse, note, created_at, updated_at
+                   expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
+                   expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
             FROM rag_eval_cases
             ORDER BY updated_at DESC
             """
@@ -1111,8 +1120,8 @@ def get_eval_cases(case_ids: list[str]) -> list[KnowledgeEvalCase]:
         rows = conn.execute(
             f"""
             SELECT id, question, case_type, expected_text, expected_path, expected_title,
-                   expected_document_id, expected_paragraph_id, expected_answer, answer_keywords,
-                   should_refuse, note, created_at, updated_at
+                   expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
+                   expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
             FROM rag_eval_cases
             WHERE id IN ({placeholders})
             """,
@@ -1137,10 +1146,10 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
             """
             INSERT INTO rag_eval_cases (
                 id, question, case_type, expected_text, expected_path, expected_title,
-                expected_document_id, expected_paragraph_id, expected_answer, answer_keywords,
-                should_refuse, note, created_at, updated_at
+                expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
+                expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 question = excluded.question,
                 case_type = excluded.case_type,
@@ -1149,6 +1158,7 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
                 expected_title = excluded.expected_title,
                 expected_document_id = excluded.expected_document_id,
                 expected_paragraph_id = excluded.expected_paragraph_id,
+                additional_relevant_targets_json = excluded.additional_relevant_targets_json,
                 expected_answer = excluded.expected_answer,
                 answer_keywords = excluded.answer_keywords,
                 should_refuse = excluded.should_refuse,
@@ -1164,6 +1174,7 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
                 req.expectedTitle.strip(),
                 req.expectedDocumentId.strip(),
                 req.expectedParagraphId.strip(),
+                serialize_eval_relevant_targets(req.additionalRelevantTargets),
                 req.expectedAnswer.strip(),
                 req.answerKeywords.strip(),
                 1 if req.shouldRefuse else 0,
@@ -1175,8 +1186,8 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
         row = conn.execute(
             """
             SELECT id, question, case_type, expected_text, expected_path, expected_title,
-                   expected_document_id, expected_paragraph_id, expected_answer, answer_keywords,
-                   should_refuse, note, created_at, updated_at
+                   expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
+                   expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
             FROM rag_eval_cases
             WHERE id = ?
             """,
@@ -1262,6 +1273,9 @@ def row_to_eval_case(row: sqlite3.Row) -> KnowledgeEvalCase:
         expectedTitle=row["expected_title"],
         expectedDocumentId=row["expected_document_id"],
         expectedParagraphId=row["expected_paragraph_id"],
+        additionalRelevantTargets=parse_eval_relevant_targets(
+            row_value(row, "additional_relevant_targets_json", "[]")
+        ),
         expectedAnswer=row_value(row, "expected_answer", ""),
         answerKeywords=row_value(row, "answer_keywords", ""),
         shouldRefuse=bool(row_value(row, "should_refuse", 0)),
@@ -1269,6 +1283,59 @@ def row_to_eval_case(row: sqlite3.Row) -> KnowledgeEvalCase:
         createdAt=row["created_at"],
         updatedAt=row["updated_at"],
     )
+
+
+def serialize_eval_relevant_targets(targets: list[KnowledgeEvalRelevantTarget]) -> str:
+    cleaned = [
+        {
+            "text": target.text.strip(),
+            "path": target.path.strip(),
+            "title": target.title.strip(),
+            "documentId": target.documentId.strip(),
+            "paragraphId": target.paragraphId.strip(),
+        }
+        for target in targets
+        if any(
+            value.strip()
+            for value in (
+                target.text,
+                target.path,
+                target.title,
+                target.documentId,
+                target.paragraphId,
+            )
+        )
+    ]
+    return json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"))
+
+
+def parse_eval_relevant_targets(value: str | None) -> list[KnowledgeEvalRelevantTarget]:
+    try:
+        payload = json.loads(value or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, list):
+        return []
+    targets: list[KnowledgeEvalRelevantTarget] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            target = KnowledgeEvalRelevantTarget.model_validate(item)
+        except (TypeError, ValueError):
+            continue
+        if any(
+            field.strip()
+            for field in (
+                target.text,
+                target.path,
+                target.title,
+                target.documentId,
+                target.paragraphId,
+            )
+        ):
+            targets.append(target)
+    return targets
 
 
 def row_to_document_index_status(row: sqlite3.Row) -> DocumentIndexStatus:

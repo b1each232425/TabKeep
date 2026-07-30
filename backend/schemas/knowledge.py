@@ -254,6 +254,14 @@ class KnowledgeHitTestResponse(BaseModel):
     error: str | None = None
 
 
+class KnowledgeEvalRelevantTarget(BaseModel):
+    text: str = ""
+    path: str = ""
+    title: str = ""
+    documentId: str = ""
+    paragraphId: str = ""
+
+
 class KnowledgeEvalCaseRequest(BaseModel):
     question: str
     caseType: str = "keyword"
@@ -262,6 +270,7 @@ class KnowledgeEvalCaseRequest(BaseModel):
     expectedTitle: str = ""
     expectedDocumentId: str = ""
     expectedParagraphId: str = ""
+    additionalRelevantTargets: list[KnowledgeEvalRelevantTarget] = []
     expectedAnswer: str = ""
     answerKeywords: str = ""
     shouldRefuse: bool = False
@@ -277,6 +286,7 @@ class KnowledgeEvalCase(BaseModel):
     expectedTitle: str = ""
     expectedDocumentId: str = ""
     expectedParagraphId: str = ""
+    additionalRelevantTargets: list[KnowledgeEvalRelevantTarget] = []
     expectedAnswer: str = ""
     answerKeywords: str = ""
     shouldRefuse: bool = False
@@ -297,13 +307,16 @@ class KnowledgeEvalRunRequest(BaseModel):
     searchMode: str = "hybrid"
     minScore: float = 0
     evaluateAnswer: bool = False
+    evaluateRagas: bool = False
     answerLimit: int = 30
     answerTimeoutSeconds: int = 45
+    ragasTimeoutSeconds: int = 120
 
 
 class KnowledgeEvalHit(KnowledgeHitTestItem):
     relevant: bool = False
     matchedExpectations: list[str] = []
+    matchedTargetIndexes: list[int] = []
 
 
 class KnowledgeEvalCaseResult(BaseModel):
@@ -311,6 +324,8 @@ class KnowledgeEvalCaseResult(BaseModel):
     ok: bool
     rank: int | None = None
     reciprocalRank: float = 0
+    relevantHitCount: int = 0
+    precisionAtK: float = 0
     hits: list[KnowledgeEvalHit] = []
     issueType: str = "ok"
     issueMessage: str = ""
@@ -321,6 +336,12 @@ class KnowledgeEvalCaseResult(BaseModel):
     answerKeywordCoverage: float = 0
     answerFaithfulness: float = 0
     answerRelevance: float = 0
+    ragasEvaluated: bool = False
+    ragasFaithfulness: float | None = None
+    ragasFactualCorrectness: float | None = None
+    ragasContextPrecision: float | None = None
+    ragasAnswerRelevance: float | None = None
+    ragasError: str | None = None
     refusalOk: bool | None = None
     answerIssueType: str = "not_evaluated"
     answerIssueMessage: str = ""
@@ -339,6 +360,7 @@ class KnowledgeEvalTypeSummary(BaseModel):
     total: int = 0
     hitCount: int = 0
     recallAtK: float = 0
+    precisionAtK: float = 0
     mrr: float = 0
     top1Accuracy: float = 0
     rankDistribution: list[KnowledgeEvalRankBucket] = []
@@ -351,6 +373,7 @@ class KnowledgeEvalRunResponse(BaseModel):
     retrievalEvaluated: int = 0
     hitCount: int = 0
     recallAtK: float = 0
+    precisionAtK: float = 0
     mrr: float = 0
     top1Accuracy: float = 0
     answerEligible: int = 0
@@ -364,6 +387,14 @@ class KnowledgeEvalRunResponse(BaseModel):
     averageAnswerScore: float = 0
     averageFaithfulness: float = 0
     averageAnswerRelevance: float = 0
+    ragasRequested: bool = False
+    ragasEligible: int = 0
+    ragasEvaluated: int = 0
+    ragasFailed: int = 0
+    averageRagasFaithfulness: float | None = None
+    averageRagasFactualCorrectness: float | None = None
+    averageRagasContextPrecision: float | None = None
+    averageRagasAnswerRelevance: float | None = None
     rankDistribution: list[KnowledgeEvalRankBucket] = []
     typeSummaries: list[KnowledgeEvalTypeSummary] = []
     limit: int = 8

@@ -1,6 +1,6 @@
-import { X } from "lucide-react"
+import { Plus, Trash2, X } from "lucide-react"
 
-import type { KnowledgeEvalCaseRequest } from "../../types"
+import type { KnowledgeEvalCaseRequest, KnowledgeEvalRelevantTarget } from "../../types"
 import { CASE_TYPE_OPTIONS } from "../evalModel"
 import { Button, Checkbox, TextField } from "./EvalControls"
 
@@ -57,7 +57,7 @@ export function EvalCaseEditor({
           </select>
         </label>
         <label className="tk-field">
-          <span className="tk-label">预期命中文本</span>
+          <span className="tk-label">主要命中文本</span>
           <textarea
             className="tk-textarea min-h-24"
             value={draft.expectedText}
@@ -90,6 +90,108 @@ export function EvalCaseEditor({
             onChange={(value) => onDraftChange({ ...draft, expectedParagraphId: value })}
             placeholder="可选"
           />
+        </div>
+        <div className="rounded-md border border-border bg-slate-50/70 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">其他相关结果</p>
+              <p className="text-xs text-muted-foreground">用于计算 Top K 中有多少结果真正相关</p>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                onDraftChange({
+                  ...draft,
+                  additionalRelevantTargets: [
+                    ...draft.additionalRelevantTargets,
+                    emptyRelevantTarget(),
+                  ],
+                })
+              }>
+              <Plus className="h-4 w-4" />
+              添加
+            </Button>
+          </div>
+          {draft.additionalRelevantTargets.length > 0 && (
+            <div className="mt-3 grid gap-3">
+              {draft.additionalRelevantTargets.map((target, index) => (
+                <div key={index} className="rounded-md border border-border bg-white/80 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-slate-600">相关结果 {index + 2}</span>
+                    <button
+                      type="button"
+                      className="tk-icon-button"
+                      title="删除相关结果"
+                      aria-label={`删除相关结果 ${index + 2}`}
+                      onClick={() =>
+                        onDraftChange({
+                          ...draft,
+                          additionalRelevantTargets: draft.additionalRelevantTargets.filter(
+                            (_, targetIndex) => targetIndex !== index,
+                          ),
+                        })
+                      }>
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <label className="tk-field">
+                    <span className="tk-label">命中文本</span>
+                    <textarea
+                      className="tk-textarea min-h-16"
+                      value={target.text}
+                      onChange={(event) =>
+                        onDraftChange(
+                          updateRelevantTarget(draft, index, {
+                            ...target,
+                            text: event.target.value,
+                          }),
+                        )
+                      }
+                      placeholder="可选，填入该结果中的稳定原文"
+                    />
+                  </label>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <TextField
+                      label="路径"
+                      value={target.path}
+                      onChange={(value) =>
+                        onDraftChange(updateRelevantTarget(draft, index, { ...target, path: value }))
+                      }
+                      placeholder="可选"
+                    />
+                    <TextField
+                      label="标题"
+                      value={target.title}
+                      onChange={(value) =>
+                        onDraftChange(updateRelevantTarget(draft, index, { ...target, title: value }))
+                      }
+                      placeholder="可选"
+                    />
+                    <TextField
+                      label="Document ID"
+                      value={target.documentId}
+                      onChange={(value) =>
+                        onDraftChange(
+                          updateRelevantTarget(draft, index, { ...target, documentId: value }),
+                        )
+                      }
+                      placeholder="可选"
+                    />
+                    <TextField
+                      label="Paragraph ID"
+                      value={target.paragraphId}
+                      onChange={(value) =>
+                        onDraftChange(
+                          updateRelevantTarget(draft, index, { ...target, paragraphId: value }),
+                        )
+                      }
+                      placeholder="可选"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <label className="tk-field">
           <span className="tk-label">预期答案</span>
@@ -131,4 +233,27 @@ export function EvalCaseEditor({
       </div>
     </section>
   )
+}
+
+function emptyRelevantTarget(): KnowledgeEvalRelevantTarget {
+  return {
+    text: "",
+    path: "",
+    title: "",
+    documentId: "",
+    paragraphId: "",
+  }
+}
+
+function updateRelevantTarget(
+  draft: KnowledgeEvalCaseRequest,
+  index: number,
+  target: KnowledgeEvalRelevantTarget,
+): KnowledgeEvalCaseRequest {
+  return {
+    ...draft,
+    additionalRelevantTargets: draft.additionalRelevantTargets.map((item, targetIndex) =>
+      targetIndex === index ? target : item,
+    ),
+  }
 }
