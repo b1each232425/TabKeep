@@ -19,6 +19,7 @@ const CUT_SCREENSHOT_FILE: &str = "tabkeep_screenshot_cut.png";
 const PREPROCESSED_OCR_FILE: &str = "tabkeep_ocr_preprocessed.png";
 const OCR_DEBUG_RECORDS_FILE: &str = "ocr-debug-records.json";
 const OCR_DEBUG_RECORD_LIMIT: usize = 20;
+const MAX_PADDLE_PREPROCESS_EDGE: u32 = 1600;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -79,6 +80,11 @@ pub struct OcrConfig {
     pub text_merge_lines: bool,
     #[serde(rename = "textLayoutMode", default)]
     pub text_layout_mode: OcrTextLayoutMode,
+}
+
+struct PreprocessedOcrImage {
+    path: PathBuf,
+    scale: f32,
 }
 
 impl Default for OcrConfig {
@@ -149,6 +155,10 @@ pub struct OcrFlowResult {
     pub ok: bool,
     pub text: String,
     pub provider: OcrProvider,
+    #[serde(rename = "ocrEngine")]
+    pub ocr_engine: String,
+    #[serde(rename = "ocrFallbackReason")]
+    pub ocr_fallback_reason: Option<String>,
     #[serde(rename = "imagePath")]
     pub image_path: String,
     #[serde(rename = "imageDataUrl")]
@@ -243,6 +253,10 @@ pub struct OcrDebugRecord {
     #[serde(rename = "targetLang")]
     pub target_lang: String,
     pub provider: OcrProvider,
+    #[serde(rename = "ocrEngine", default)]
+    pub ocr_engine: String,
+    #[serde(rename = "ocrFallbackReason", default)]
+    pub ocr_fallback_reason: Option<String>,
     #[serde(rename = "imagePath")]
     pub image_path: String,
     #[serde(rename = "preprocessedImagePath")]
@@ -348,12 +362,15 @@ pub fn recognize_with_debug(
     lang: &str,
 ) -> Result<OcrRecognitionDebug, String> {
     let started = Instant::now();
-    let preprocessed_path = if config.preprocess_enabled {
+    let preprocessed = if config.preprocess_enabled {
         Some(preprocess_image(app, config, image_path)?)
     } else {
         None
     };
-    let ocr_image_path = preprocessed_path.as_deref().unwrap_or(image_path);
+    let ocr_image_path = preprocessed
+        .as_ref()
+        .map(|image| image.path.as_path())
+        .unwrap_or(image_path);
     let raw_result = match provider {
         OcrProvider::WindowsOcr => OcrRawResult {
             text: recognize_windows(ocr_image_path, lang)?,
@@ -361,11 +378,7 @@ pub fn recognize_with_debug(
         },
         OcrProvider::PaddleocrJson => recognize_paddle(config, ocr_image_path, lang)?,
     };
-    let scale = if preprocessed_path.is_some() {
-        config.preprocess_scale.clamp(1, 4) as f32
-    } else {
-        1.0
-    };
+    let scale = preprocessed.as_ref().map_or(1.0, |image| image.scale);
     let mut text_boxes = normalize_ocr_boxes(raw_result.boxes, lang, scale);
     if config.text_layout_mode == OcrTextLayoutMode::Manga {
         sort_boxes_for_manga(&mut text_boxes);
@@ -384,7 +397,9 @@ pub fn recognize_with_debug(
         raw_text,
         text,
         text_boxes,
-        preprocessed_image_path: preprocessed_path.as_deref().map(path_to_string),
+        preprocessed_image_path: preprocessed
+            .as_ref()
+            .map(|image| path_to_string(&image.path)),
         elapsed_ms: started.elapsed().as_millis(),
     })
 }
@@ -416,10 +431,12 @@ pub fn save_region_debug_record(
         source_lang: source_lang.to_string(),
         target_lang: target_lang.to_string(),
         provider,
+        ocr_engine: result.ocr_engine.clone(),
+        ocr_fallback_reason: result.ocr_fallback_reason.clone(),
         image_path: path_to_string(image_path),
         preprocessed_image_path: recognition.preprocessed_image_path.clone(),
         raw_text: recognition.raw_text.clone(),
-        text: recognition.text.clone(),
+        text: result.text.clone(),
         text_boxes: recognition.text_boxes.clone(),
         translated_regions: result.translated_regions.clone(),
         translated_text: result.translated_text.clone(),
@@ -449,6 +466,8 @@ pub fn success_result(
     OcrFlowResult {
         ok: true,
         text,
+        ocr_engine: provider_engine_name(&provider).to_string(),
+        ocr_fallback_reason: None,
         provider,
         image_path: path_to_string(image_path),
         image_data_url: image_data_url(image_path),
@@ -474,6 +493,8 @@ pub fn success_result_without_image(
     OcrFlowResult {
         ok: true,
         text,
+        ocr_engine: provider_engine_name(&provider).to_string(),
+        ocr_fallback_reason: None,
         provider,
         image_path: path_to_string(image_path),
         image_data_url: None,
@@ -500,6 +521,41 @@ pub fn with_comic_layout(
     result.image_width = image_dimensions.map(|value| value.0);
     result.image_height = image_dimensions.map(|value| value.1);
     result
+}
+
+pub fn with_ocr_engine(
+    mut result: OcrFlowResult,
+    engine: &str,
+    fallback_reason: Option<String>,
+) -> OcrFlowResult {
+    result.ocr_engine = engine.to_string();
+    result.ocr_fallback_reason = fallback_reason;
+    result
+}
+
+pub fn should_use_comic_detector(config: &OcrConfig) -> bool {
+    config.text_layout_mode == OcrTextLayoutMode::Manga
+}
+
+pub fn should_use_manga_ocr(config: &OcrConfig, source_lang: &str, text: &str) -> bool {
+    let _ = (source_lang, text);
+    should_use_comic_detector(config)
+}
+
+pub fn join_region_source_text(regions: &[ComicTextRegion]) -> String {
+    regions
+        .iter()
+        .map(|region| region.source_text.trim())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn provider_engine_name(provider: &OcrProvider) -> &'static str {
+    match provider {
+        OcrProvider::WindowsOcr => "Windows OCR",
+        OcrProvider::PaddleocrJson => "PaddleOCR-json",
+    }
 }
 
 pub fn build_comic_text_regions(
@@ -769,6 +825,8 @@ pub fn error_result(
     OcrFlowResult {
         ok: false,
         text: String::new(),
+        ocr_engine: provider_engine_name(&provider).to_string(),
+        ocr_fallback_reason: None,
         provider,
         image_path: image_path.map(path_to_string).unwrap_or_default(),
         image_data_url: image_path.and_then(image_data_url),
@@ -792,6 +850,8 @@ pub fn error_result_without_image(
     OcrFlowResult {
         ok: false,
         text: String::new(),
+        ocr_engine: provider_engine_name(&provider).to_string(),
+        ocr_fallback_reason: None,
         provider,
         image_path: image_path.map(path_to_string).unwrap_or_default(),
         image_data_url: None,
@@ -876,12 +936,14 @@ fn preprocess_image(
     app: &AppHandle,
     config: &OcrConfig,
     image_path: &Path,
-) -> Result<PathBuf, String> {
+) -> Result<PreprocessedOcrImage, String> {
     let mut image = image::open(image_path).map_err(|err| format!("读取 OCR 图片失败: {err}"))?;
-    let scale = config.preprocess_scale.clamp(1, 4);
-    if scale > 1 {
-        let width = image.width().saturating_mul(scale).max(1);
-        let height = image.height().saturating_mul(scale).max(1);
+    let (width, height, scale) = bounded_preprocess_dimensions(
+        image.width(),
+        image.height(),
+        config.preprocess_scale.clamp(1, 4),
+    );
+    if width != image.width() || height != image.height() {
         image = image.resize_exact(width, height, FilterType::CatmullRom);
     }
     if config.preprocess_grayscale {
@@ -902,7 +964,21 @@ fn preprocess_image(
     image
         .save(&path)
         .map_err(|err| format!("保存 OCR 预处理图片失败: {err}"))?;
-    Ok(path)
+    Ok(PreprocessedOcrImage { path, scale })
+}
+
+fn bounded_preprocess_dimensions(width: u32, height: u32, requested_scale: u32) -> (u32, u32, f32) {
+    let width = width.max(1);
+    let height = height.max(1);
+    let requested_scale = requested_scale.clamp(1, 4) as f32;
+    let max_edge = width.max(height) as f32;
+    let scale = requested_scale
+        .min(MAX_PADDLE_PREPROCESS_EDGE as f32 / max_edge)
+        .max(1.0 / max_edge);
+    let output_width = ((width as f32 * scale).round() as u32).max(1);
+    let output_height = ((height as f32 * scale).round() as u32).max(1);
+    let actual_scale = output_width as f32 / width as f32;
+    (output_width, output_height, actual_scale)
 }
 
 fn threshold_image(image: DynamicImage) -> DynamicImage {
@@ -934,9 +1010,8 @@ fn recognize_paddle(
     if !config.paddle_models_path.trim().is_empty() {
         command.arg(format!("-models_path={}", config.paddle_models_path.trim()));
     }
-    if let Some(config_path) = paddle_config_path_for_lang(config, lang) {
-        command.arg(format!("-config_path={}", config_path.display()));
-    }
+    let config_path = paddle_config_path_for_lang(config, lang, &exe)?;
+    command.arg(format!("-config_path={}", config_path.display()));
 
     let output = command
         .output()
@@ -944,26 +1019,47 @@ fn recognize_paddle(
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     if !output.status.success() {
-        return Err(if stderr.trim().is_empty() {
-            format!("PaddleOCR-json 退出失败: {}", output.status)
-        } else {
-            stderr
-        });
+        return Err(compact_paddle_error(
+            &stdout,
+            &stderr,
+            &format!("PaddleOCR-json 退出失败: {}", output.status),
+        ));
     }
 
-    parse_paddle_output(&stdout, config.paddle_min_score)
+    parse_paddle_output(&stdout, config.paddle_min_score).map_err(|err| {
+        let detail = compact_paddle_error(&stdout, &stderr, "");
+        if detail.is_empty() || detail == err {
+            err
+        } else {
+            format!("{err}: {detail}")
+        }
+    })
 }
 
-fn paddle_config_path_for_lang(config: &OcrConfig, lang: &str) -> Option<PathBuf> {
+fn paddle_config_path_for_lang(
+    config: &OcrConfig,
+    lang: &str,
+    exe_path: &Path,
+) -> Result<PathBuf, String> {
     let manual = config.paddle_config_path.trim();
     if !manual.is_empty() {
-        return Some(PathBuf::from(manual));
+        let path = PathBuf::from(manual);
+        return if path.is_file() {
+            Ok(path)
+        } else {
+            Err(format!("PaddleOCR 配置文件不存在: {}", path.display()))
+        };
     }
 
     let models_path = config.paddle_models_path.trim();
-    if models_path.is_empty() {
-        return None;
-    }
+    let models_path = if models_path.is_empty() {
+        exe_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("models")
+    } else {
+        PathBuf::from(models_path)
+    };
 
     let config_file = match lang {
         "ja-JP" | "ja" | "日本語" | "日语" => "config_japan.txt",
@@ -971,10 +1067,68 @@ fn paddle_config_path_for_lang(config: &OcrConfig, lang: &str) -> Option<PathBuf
         "zh-CN" | "zh-Hans" | "简体中文" | "中文" => "config_chinese.txt",
         "en-US" | "en" | "English" | "英语" => "config_en.txt",
         "ko-KR" | "ko" | "한국어" | "韩语" => "config_korean.txt",
-        _ => return None,
+        // PaddleOCR-json does not auto-select recognition models. Its Chinese
+        // model is the broadest bundled fallback and also recognizes Latin text.
+        "auto" | "自动识别" => "config_chinese.txt",
+        _ => "config_chinese.txt",
     };
-    let path = PathBuf::from(models_path).join(config_file);
-    path.exists().then_some(path)
+    let path = models_path.join(config_file);
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "未找到 PaddleOCR {} 模型配置: {}",
+            lang,
+            path.display()
+        ))
+    }
+}
+
+fn compact_paddle_error(stdout: &str, stderr: &str, fallback: &str) -> String {
+    let messages = stdout
+        .lines()
+        .chain(stderr.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| !line.chars().all(|value| value == '-'))
+        .filter(|line| !line.contains("fused 0 elementwise_"))
+        .filter(|line| !line.contains(" activation"))
+        .filter(|line| !line.starts_with("PaddleOCR-json v"))
+        .filter(|line| !line.starts_with("OCR single image mode"))
+        .filter(|line| !line.starts_with("OCR init completed"))
+        .filter(|line| !line.starts_with("Load config from"))
+        .filter(|line| *line != "C++ Traceback (most recent call last):")
+        .filter(|line| *line != "Error Message Summary:")
+        .filter(|line| *line != "Not support stack backtrace yet.")
+        .map(|line| {
+            line.trim_start_matches('\u{1b}')
+                .trim_start_matches("e[37m")
+                .trim_end_matches("e[0m")
+                .trim()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    let mut actionable = messages
+        .iter()
+        .filter(|line| {
+            let lower = line.to_lowercase();
+            lower.contains("error")
+                || lower.contains("fail")
+                || lower.contains("does not exist")
+                || lower.contains("not found")
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if actionable.is_empty() {
+        actionable = messages;
+    }
+    actionable.dedup();
+    actionable.truncate(3);
+    if actionable.is_empty() {
+        fallback.to_string()
+    } else {
+        actionable.join("；")
+    }
 }
 
 fn parse_paddle_output(stdout: &str, min_score: f32) -> Result<OcrRawResult, String> {
@@ -1539,6 +1693,93 @@ mod tests {
         assert_eq!(regions[0].source_text, "右");
         assert_eq!(regions[1].source_text, "左");
         assert_eq!(regions[0].direction, ComicTextDirection::Vertical);
+    }
+
+    #[test]
+    fn manga_ocr_dispatch_follows_explicit_manga_mode() {
+        let mut config = OcrConfig {
+            text_layout_mode: OcrTextLayoutMode::Manga,
+            ..OcrConfig::default()
+        };
+
+        assert!(should_use_manga_ocr(&config, "ja-JP", "ignored"));
+        assert!(should_use_manga_ocr(&config, "auto", ""));
+        assert!(should_use_manga_ocr(&config, "en-US", "ignored"));
+
+        config.text_layout_mode = OcrTextLayoutMode::Auto;
+        assert!(!should_use_manga_ocr(&config, "ja-JP", "ignored"));
+    }
+
+    #[test]
+    fn paddle_auto_language_uses_bundled_chinese_config() {
+        let root =
+            std::env::temp_dir().join(format!("tabkeep-paddle-config-{}", std::process::id()));
+        let models = root.join("models");
+        fs::create_dir_all(&models).expect("create test models directory");
+        fs::write(models.join("config_chinese.txt"), "# test").expect("write test config");
+
+        let config = OcrConfig::default();
+        let resolved =
+            paddle_config_path_for_lang(&config, "auto", &root.join("PaddleOCR-json.exe"))
+                .expect("resolve auto config");
+
+        assert_eq!(resolved, models.join("config_chinese.txt"));
+        fs::remove_dir_all(root).expect("remove test directory");
+    }
+
+    #[test]
+    fn paddle_manual_config_reports_missing_file_before_launch() {
+        let config = OcrConfig {
+            paddle_config_path: "Z:\\missing\\config_japan.txt".to_string(),
+            ..OcrConfig::default()
+        };
+
+        let error = paddle_config_path_for_lang(&config, "ja-JP", Path::new("PaddleOCR-json.exe"))
+            .expect_err("missing config should fail");
+
+        assert!(error.contains("PaddleOCR 配置文件不存在"));
+    }
+
+    #[test]
+    fn paddle_error_output_hides_fusion_noise() {
+        let error = compact_paddle_error(
+            "config_path [] does not exist.\ne[37m--- fused 0 elementwise_add with relu activatione[0m",
+            "",
+            "fallback",
+        );
+
+        assert_eq!(error, "config_path [] does not exist.");
+    }
+
+    #[test]
+    fn paddle_error_output_keeps_resource_exhaustion_reason() {
+        let error = compact_paddle_error(
+            "",
+            "--------------------------------------\nC++ Traceback (most recent call last):\n\
+             ResourceExhaustedError: Fail to alloc memory of 524288000 size.\n\
+             e[37m--- fused 0 elementwise_add with relu activatione[0m",
+            "fallback",
+        );
+
+        assert!(error.contains("ResourceExhaustedError"));
+        assert!(!error.contains("elementwise_add"));
+    }
+
+    #[test]
+    fn preprocess_scale_is_bounded_for_large_manga_pages() {
+        let (width, height, scale) = bounded_preprocess_dimensions(1380, 992, 2);
+
+        assert_eq!(width, 1600);
+        assert_eq!(height, 1150);
+        assert!((scale - 1.1594).abs() < 0.001);
+    }
+
+    #[test]
+    fn preprocess_can_downscale_oversized_regions() {
+        let (width, height, scale) = bounded_preprocess_dimensions(3200, 2400, 1);
+
+        assert_eq!((width, height), (1600, 1200));
+        assert_eq!(scale, 0.5);
     }
 
     #[test]

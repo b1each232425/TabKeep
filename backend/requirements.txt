@@ -4,3 +4,7 @@ loguru
 openai
 httpx
 lancedb
+manga-ocr==0.1.14
+transformers<5
+numpy>=1.26
+onnxruntime>=1.22,<2

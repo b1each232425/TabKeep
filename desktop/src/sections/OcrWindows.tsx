@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { MouseEvent } from "react"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
-import { Clipboard, Copy, Keyboard, Languages, MousePointer2, Move, X } from "lucide-react"
+import { BookOpen, Clipboard, Copy, Keyboard, Languages, MousePointer2, Move, X } from "lucide-react"
 
 import {
   DEFAULT_REGION_BOX_CONFIG,
@@ -11,12 +11,20 @@ import {
   finishScreenSelection,
   getLatestOcrResult,
   getLatestSelectionTranslateResult,
+  getOcrConfig,
   getRegionBoxConfig,
   runRegionTranslate,
+  setOcrConfig,
   setRegionBoxConfig,
   setRegionBoxPassthrough,
 } from "../api"
-import type { ComicTextRegion, OcrFlowResult, RegionBoxConfig, SelectionTranslateResult } from "../types"
+import type {
+  ComicTextRegion,
+  OcrConfig,
+  OcrFlowResult,
+  RegionBoxConfig,
+  SelectionTranslateResult,
+} from "../types"
 import { Button, Notice } from "../components/primitives"
 import { errorMessage } from "../lib/errors"
 import { formatTranslationForPanel } from "../lib/ocr"
@@ -476,9 +484,11 @@ function clamp(value: number, min: number, max: number) {
 export function RegionPanelWindow() {
   const [result, setResult] = useState<OcrFlowResult | null>(null)
   const [config, setConfig] = useState<RegionBoxConfig>(DEFAULT_REGION_BOX_CONFIG)
+  const [mangaMode, setMangaMode] = useState(false)
   const [busy, setBusy] = useState<"translate" | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const configRef = useRef(config)
+  const ocrConfigRef = useRef<OcrConfig | null>(null)
   const languageOptions = ["auto", "简体中文", "English", "日本語", "한국어", "Français", "Deutsch"]
 
   useEffect(() => {
@@ -548,6 +558,12 @@ export function RegionPanelWindow() {
       configRef.current = value
       setConfig(value)
     })
+    getOcrConfig()
+      .then((value) => {
+        ocrConfigRef.current = value
+        setMangaMode(value.textLayoutMode === "manga")
+      })
+      .catch((err) => setNotice(errorMessage(err)))
     currentWindow.onMoved(syncPanelGeometry).then((value) => {
       unlistenMoved = value
     })
@@ -612,6 +628,23 @@ export function RegionPanelWindow() {
       configRef.current = next
       setConfig(next)
       setNotice(next.passThrough ? "内容区域已穿透，按钮仍可使用" : "已回到编辑模式")
+    } catch (err) {
+      setNotice(errorMessage(err))
+    }
+  }
+
+  const toggleMangaMode = async () => {
+    try {
+      const current = ocrConfigRef.current ?? await getOcrConfig()
+      const enabled = current.textLayoutMode !== "manga"
+      const next: OcrConfig = {
+        ...current,
+        textLayoutMode: enabled ? "manga" : "auto",
+      }
+      await setOcrConfig(next)
+      ocrConfigRef.current = next
+      setMangaMode(enabled)
+      setNotice(enabled ? "已开启漫画模式" : "已关闭漫画模式")
     } catch (err) {
       setNotice(errorMessage(err))
     }
@@ -733,6 +766,15 @@ export function RegionPanelWindow() {
           <option value="inline">区域内</option>
           <option value="panel">面板</option>
         </select>
+        <Button
+          className="h-8"
+          variant={mangaMode ? "primary" : "ghost"}
+          onClick={toggleMangaMode}
+          aria-pressed={mangaMode}
+          title={mangaMode ? "关闭漫画模式" : "开启漫画模式"}>
+          <BookOpen className="h-4 w-4" />
+          漫画
+        </Button>
         <Button className="h-8" onClick={runTranslate} disabled={busy !== null}>
           <Languages className={`h-4 w-4 ${busy === "translate" ? "animate-pulse" : ""}`} />
           {busy === "translate" ? "翻译中" : "翻译"}

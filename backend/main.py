@@ -20,6 +20,7 @@ from routers.tabs import router as tabs_router      # /tabs  —— 标签页同
 from routers.classify import router as classify_router  # /config + /classify —— 配置 + LLM 分类
 from routers.notes import router as notes_router    # /notes/* —— 笔记集成 + 摘要
 from routers.knowledge import router as knowledge_router  # /knowledge/* —— 本地知识库 + RAG
+from routers.ocr import router as ocr_router          # /ocr/* —— 本地 OCR 模型
 
 # 跨域 + 启动钩子
 from services import storage
@@ -55,6 +56,7 @@ app.include_router(tabs_router)
 app.include_router(classify_router)
 app.include_router(notes_router)
 app.include_router(knowledge_router)
+app.include_router(ocr_router)
 
 
 # ─────────────────────────────────────────────────────────────

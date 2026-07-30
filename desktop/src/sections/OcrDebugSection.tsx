@@ -121,10 +121,16 @@ export function OcrDebugSection() {
                 <span className="tk-badge">预处理 {preprocessedSize}</span>
                 {result && <span className="tk-badge">文本框 {result.textBoxes.length}</span>}
                 {result && <span className="tk-badge">文本区域 {result.translatedRegions.length}</span>}
+                {result && <span className="tk-badge">{result.ocrEngine}</span>}
                 {result && <span className="tk-badge">耗时 {result.elapsedMs} ms</span>}
               </div>
             </div>
             <div className="tk-panel-body">
+              {result?.ocrFallbackReason && (
+                <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  MangaOCR 回退：{result.ocrFallbackReason}
+                </div>
+              )}
               <div className="tk-ocr-debug-images">
                 <DebugImagePreview
                   title="原始区域"
@@ -336,12 +342,19 @@ function DebugRecordCard({ record }: { record: OcrDebugRecord }) {
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="tk-badge">{record.mode === "translate" ? "翻译" : "识别"}</span>
         <span className="tk-badge">{record.sourceLang} → {record.targetLang}</span>
-        <span className="tk-badge">{record.provider === "paddleocr_json" ? "PaddleOCR-json" : "Windows OCR"}</span>
+        <span className="tk-badge">
+          {record.ocrEngine || (record.provider === "paddleocr_json" ? "PaddleOCR-json" : "Windows OCR")}
+        </span>
         <span className="tk-badge">文本框 {record.textBoxes?.length ?? 0}</span>
         <span className="tk-badge">文本区域 {record.translatedRegions?.length ?? 0}</span>
         <span className="tk-badge">{record.elapsedMs} ms</span>
         <span className="ml-auto text-xs text-muted-foreground">{time}</span>
       </div>
+      {record.ocrFallbackReason && (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          MangaOCR 回退：{record.ocrFallbackReason}
+        </div>
+      )}
       <div className="grid gap-3 lg:grid-cols-2">
         <DebugTextBlock title="OCR 后处理文本" value={record.text} />
         <DebugTextBlock title="翻译结果" value={record.translatedText ?? record.error ?? ""} />
