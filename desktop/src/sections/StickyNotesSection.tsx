@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog"
 import { listen } from "@tauri-apps/api/event"
 import {
+  Bell,
   Check,
   FileDown,
   FileUp,
   FolderPlus,
   Maximize2,
-  PanelTop,
   Pencil,
   Plus,
+  Quote,
+  RefreshCw,
   Search,
   StickyNote as StickyNoteIcon,
   Trash2,
@@ -27,30 +29,38 @@ import {
   listStickyNotes,
   moveStickyNoteCategory,
   openStickyNoteWindow,
-  openStickyNoteTileWindow,
+  refreshDailyPoetryStickyNote,
   renameStickyNoteCategory,
 } from "../api"
-import { Button, Notice } from "../components/primitives"
+import { Button, ConfirmDialog, Notice } from "../components/primitives"
 import type { StickyNote } from "../types"
 import { StickyNoteEditor } from "./stickyNotes/StickyNoteEditor"
 import {
   formatStickyNoteTime,
+  formatStickyReminderTime,
   searchableStickyText,
   stickyNotePreview,
+  stickyReminderIsOverdue,
   stickyNoteTitle,
 } from "./stickyNotes/stickyNoteModel"
 
-export function StickyNotesSection() {
+const REMINDER_FILTER = "__reminders__"
+
+export function StickyNotesSection({ reminderFocusKey = 0 }: { reminderFocusKey?: number }) {
   const [notes, setNotes] = useState<StickyNote[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [query, setQuery] = useState("")
   const [categories, setCategories] = useState<string[]>([])
   const [activeCategory, setActiveCategory] = useState("all")
   const [newCategory, setNewCategory] = useState("")
+  const [categoryCreating, setCategoryCreating] = useState(false)
+  const [categoryError, setCategoryError] = useState("")
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState("")
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState("")
+  const [deleteCandidate, setDeleteCandidate] = useState<StickyNote | null>(null)
+  const [poetryRefreshing, setPoetryRefreshing] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -74,6 +84,10 @@ export function StickyNotesSection() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  useEffect(() => {
+    if (reminderFocusKey > 0) setActiveCategory(REMINDER_FILTER)
+  }, [reminderFocusKey])
 
   useEffect(() => {
     let disposed = false
@@ -102,6 +116,9 @@ export function StickyNotesSection() {
     return notes.filter((note) => {
       const categoryMatched =
         activeCategory === "all" ||
+        (activeCategory === REMINDER_FILTER
+          ? Boolean(note.reminder && note.reminder.status !== "completed")
+          : false) ||
         (activeCategory === "" ? !note.category : note.category === activeCategory)
       if (!categoryMatched) return false
       return !needle || searchableStickyText(note).includes(needle)
@@ -127,15 +144,21 @@ export function StickyNotesSection() {
 
   const addCategory = async () => {
     const name = newCategory.trim()
-    if (!name) return
+    if (!name || categoryCreating) return
+    setCategoryCreating(true)
+    setCategoryError("")
     try {
-      await createStickyNoteCategory(name)
+      const updatedCategories = await createStickyNoteCategory(name)
+      setCategories(updatedCategories)
       setNewCategory("")
       setActiveCategory(name)
       setStatus("分类已创建")
-      await refresh()
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setCategoryError(message)
+      setStatus(message)
+    } finally {
+      setCategoryCreating(false)
     }
   }
 
@@ -183,6 +206,10 @@ export function StickyNotesSection() {
   }
 
   const deleteNote = async (note: StickyNote, options: { rethrow?: boolean } = {}) => {
+    if (note.systemKind === "dailyPoetry") {
+      setStatus("今日诗笺会一直陪着你，不能删除")
+      return
+    }
     try {
       await deleteStickyNote(note.id)
       setNotes((current) => {
@@ -207,13 +234,18 @@ export function StickyNotesSection() {
     }
   }
 
-  const openNoteTileWindow = async (note: StickyNote) => {
+  const refreshPoetry = async () => {
+    if (poetryRefreshing) return
+    setPoetryRefreshing(true)
     try {
-      await openStickyNoteTileWindow(note.id)
-      setStatus("已固定到桌面")
-      await refresh()
+      const updated = await refreshDailyPoetryStickyNote(true)
+      updateNote(updated)
+      setSelectedId(updated.id)
+      setStatus("已换一句")
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err))
+      setStatus(`暂时没有取到新诗，仍为你保留原句：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setPoetryRefreshing(false)
     }
   }
 
@@ -247,7 +279,7 @@ export function StickyNotesSection() {
       if (!path) return
 
       await exportStickyNoteMarkdown(selectedNote.id, path)
-      setStatus("便签已导出为 Markdown")
+      setStatus("便签及图片附件已导出")
     } catch (err) {
       setStatus(err instanceof Error ? err.message : String(err))
     }
@@ -282,17 +314,33 @@ export function StickyNotesSection() {
             />
           </div>
           <div className="tk-sticky-category-panel">
-            <div className="tk-sticky-category-actions">
+            <form
+              className="tk-sticky-category-actions"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void addCategory()
+              }}>
               <input
                 value={newCategory}
-                onChange={(event) => setNewCategory(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && addCategory()}
+                onChange={(event) => {
+                  setNewCategory(event.target.value)
+                  if (categoryError) setCategoryError("")
+                }}
                 placeholder="新分类"
+                aria-label="新分类名称"
               />
-              <button className="tk-icon-button" type="button" title="新建分类" onClick={addCategory}>
-                <FolderPlus className="h-4 w-4" />
+              <button
+                className="tk-icon-button"
+                type="submit"
+                title="新建分类"
+                aria-label="新建分类"
+                disabled={!newCategory.trim() || categoryCreating}>
+                {categoryCreating
+                  ? <RefreshCw className="h-4 w-4 animate-spin" />
+                  : <FolderPlus className="h-4 w-4" />}
               </button>
-            </div>
+            </form>
+            {categoryError && <p className="tk-sticky-category-error">{categoryError}</p>}
             <div className="tk-sticky-category-flow">
               <button
                 type="button"
@@ -307,6 +355,15 @@ export function StickyNotesSection() {
                 onClick={() => setActiveCategory("")}>
                 未分类
                 <span>{notes.filter((note) => !note.category).length}</span>
+              </button>
+              <button
+                type="button"
+                className={`tk-sticky-category-item ${activeCategory === REMINDER_FILTER ? "tk-sticky-category-item-active" : ""}`}
+                onClick={() => setActiveCategory(REMINDER_FILTER)}>
+                提醒
+                <span>
+                  {notes.filter((note) => note.reminder && note.reminder.status !== "completed").length}
+                </span>
               </button>
               {categories.map((category) => (
                 <div key={category} className="tk-sticky-category-row">
@@ -351,18 +408,29 @@ export function StickyNotesSection() {
             {filteredNotes.map((note) => (
               <button
                 key={note.id}
-                className={`tk-sticky-list-item ${selectedNote?.id === note.id ? "tk-sticky-list-item-active" : ""}`}
+                className={`tk-sticky-list-item ${note.reminder && note.reminder.status !== "completed" ? "tk-sticky-list-item-with-reminder" : ""} ${selectedNote?.id === note.id ? "tk-sticky-list-item-active" : ""}`}
                 type="button"
                 onClick={() => setSelectedId(note.id)}>
                 <span className="tk-sticky-list-color" />
                 <span className="min-w-0 flex-1">
                   <span className="tk-sticky-list-title">
-                    {note.pinned && <StickyNoteIcon className="h-3.5 w-3.5 text-emerald-500" />}
+                    {note.systemKind === "dailyPoetry"
+                      ? <Quote className="h-3.5 w-3.5 text-emerald-600" />
+                      : note.pinned && <StickyNoteIcon className="h-3.5 w-3.5 text-emerald-500" />}
                     {stickyNoteTitle(note)}
                   </span>
                   <span className="tk-sticky-list-preview">{stickyNotePreview(note.content)}</span>
                 </span>
                 {note.category && <span className="tk-sticky-list-category">{note.category}</span>}
+                {note.reminder && note.reminder.status !== "completed" && (
+                  <span
+                    className={`tk-sticky-list-reminder ${stickyReminderIsOverdue(note.reminder) ? "tk-sticky-list-reminder-overdue" : ""}`}>
+                    <Bell className="h-3 w-3" />
+                    {stickyReminderIsOverdue(note.reminder)
+                      ? "已到期"
+                      : formatStickyReminderTime(note.reminder.dueAt)}
+                  </span>
+                )}
                 <span className="tk-sticky-list-time">{formatStickyNoteTime(note.updatedAt)}</span>
               </button>
             ))}
@@ -389,40 +457,47 @@ export function StickyNotesSection() {
               <div className="tk-sticky-main-header">
                 <div>
                   <h2 className="tk-panel-title">{stickyNoteTitle(selectedNote)}</h2>
-                  <select
-                    className="tk-sticky-main-category-select"
-                    value={selectedNote.category}
-                    onChange={(event) => moveSelectedCategory(selectedNote, event.target.value)}>
-                    <option value="">未分类</option>
-                    {categories.map((category) => (
-                      <option key={category} value={category}>
-                        {category}
-                      </option>
-                    ))}
-                  </select>
+                  {selectedNote.systemKind !== "dailyPoetry" && (
+                    <select
+                      className="tk-sticky-main-category-select"
+                      value={selectedNote.category}
+                      onChange={(event) => moveSelectedCategory(selectedNote, event.target.value)}>
+                      <option value="">未分类</option>
+                      {categories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div className="tk-sticky-main-actions">
+                  {selectedNote.systemKind === "dailyPoetry" && (
+                    <Button variant="secondary" onClick={refreshPoetry} disabled={poetryRefreshing}>
+                      <RefreshCw className={`h-4 w-4 ${poetryRefreshing ? "animate-spin" : ""}`} />
+                      {poetryRefreshing ? "正在寻诗" : "换一句"}
+                    </Button>
+                  )}
                   <Button variant="secondary" onClick={() => openNoteWindow(selectedNote)}>
                     <Maximize2 className="h-4 w-4" />
                     小窗
                   </Button>
-                  <Button variant="secondary" onClick={() => openNoteTileWindow(selectedNote)}>
-                    <PanelTop className="h-4 w-4" />
-                    固定
-                  </Button>
-                  <Button variant="ghost" onClick={() => deleteNote(selectedNote)}>
-                    <Trash2 className="h-4 w-4" />
-                    删除
-                  </Button>
+                  {selectedNote.systemKind !== "dailyPoetry" && (
+                    <Button variant="ghost" onClick={() => setDeleteCandidate(selectedNote)}>
+                      <Trash2 className="h-4 w-4" />
+                      删除
+                    </Button>
+                  )}
                 </div>
               </div>
               <StickyNoteEditor
                 note={selectedNote}
                 categories={categories}
                 onSaved={updateNote}
-                onDelete={(note) => deleteNote(note, { rethrow: true })}
+                onDelete={selectedNote.systemKind === "dailyPoetry"
+                  ? undefined
+                  : (note) => deleteNote(note, { rethrow: true })}
                 onOpenWindow={openNoteWindow}
-                onOpenTile={openNoteTileWindow}
               />
             </>
           ) : (
@@ -437,12 +512,29 @@ export function StickyNotesSection() {
           )}
         </main>
       </section>
+      <ConfirmDialog
+        open={Boolean(deleteCandidate)}
+        title="删除便签？"
+        description={
+          <>
+            「{deleteCandidate ? stickyNoteTitle(deleteCandidate) : ""}」删除后无法恢复，请确认是否继续。
+          </>
+        }
+        confirmLabel="删除"
+        onCancel={() => setDeleteCandidate(null)}
+        onConfirm={() => {
+          const note = deleteCandidate
+          setDeleteCandidate(null)
+          if (note) void deleteNote(note)
+        }}
+      />
     </div>
   )
 }
 
 function sortNotes(notes: StickyNote[]): StickyNote[] {
   return [...notes].sort((left, right) => {
+    if (left.systemKind !== right.systemKind) return left.systemKind === "dailyPoetry" ? -1 : 1
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1
     return right.updatedAt.localeCompare(left.updatedAt)
   })

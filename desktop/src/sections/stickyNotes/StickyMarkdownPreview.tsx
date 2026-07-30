@@ -1,139 +1,133 @@
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
+import { Check, Copy } from "lucide-react"
+import Markdown, { defaultUrlTransform, type Components } from "react-markdown"
+import remarkGfm from "remark-gfm"
+
+import { loadStickyNoteImage } from "../../api/stickyNotes"
 
 interface StickyMarkdownPreviewProps {
   content: string
+  noteId: string
 }
 
-type CodeBlock = {
-  kind: "code"
-  text: string
-}
+const imageCache = new Map<string, Promise<string>>()
 
-type TextBlock = {
-  kind: "text"
-  text: string
-}
-
-type Block = CodeBlock | TextBlock
-
-export function StickyMarkdownPreview({ content }: StickyMarkdownPreviewProps) {
-  const blocks = splitBlocks(content)
-  if (blocks.length === 0) {
+export function StickyMarkdownPreview({ content, noteId }: StickyMarkdownPreviewProps) {
+  if (!content.trim()) {
     return <div className="tk-sticky-markdown-empty">暂无预览内容</div>
+  }
+
+  const components: Components = {
+    pre: ({ children }) => <StickyCodeBlock>{children}</StickyCodeBlock>,
+    a: ({ href, children }) => (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    ),
+    img: ({ src, alt }) => <StickyMarkdownImage noteId={noteId} src={src} alt={alt} />,
+    input: (props) => <input {...props} disabled />,
   }
 
   return (
     <div className="tk-sticky-markdown-preview">
-      {blocks.map((block, index) =>
-        block.kind === "code" ? (
-          <pre key={index}>
-            <code>{block.text}</code>
-          </pre>
-        ) : (
-          renderTextBlock(block.text, index)
-        ),
-      )}
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        components={components}
+        urlTransform={(url) =>
+          url.startsWith("sticky-asset://") ? url : defaultUrlTransform(url)
+        }>
+        {content}
+      </Markdown>
     </div>
   )
 }
 
-function splitBlocks(content: string): Block[] {
-  const lines = content.replace(/\r\n/g, "\n").split("\n")
-  const blocks: Block[] = []
-  let paragraph: string[] = []
-  let code: string[] | null = null
+function StickyCodeBlock({ children }: { children?: ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const text = extractText(children).replace(/\n$/, "")
 
-  const flushParagraph = () => {
-    const text = paragraph.join("\n").trim()
-    if (text) blocks.push({ kind: "text", text })
-    paragraph = []
-  }
-
-  for (const line of lines) {
-    if (line.trim().startsWith("```")) {
-      if (code) {
-        blocks.push({ kind: "code", text: code.join("\n") })
-        code = null
-      } else {
-        flushParagraph()
-        code = []
-      }
-      continue
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1400)
+    } catch {
+      setCopied(false)
     }
-    if (code) {
-      code.push(line)
-      continue
-    }
-    if (!line.trim()) {
-      flushParagraph()
-      continue
-    }
-    paragraph.push(line)
-  }
-  if (code) blocks.push({ kind: "code", text: code.join("\n") })
-  flushParagraph()
-  return blocks
-}
-
-function renderTextBlock(text: string, key: number): ReactNode {
-  const firstLine = text.split("\n")[0]?.trim() ?? ""
-  const heading = /^(#{1,4})\s+(.+)$/.exec(firstLine)
-  if (heading) {
-    const level = heading[1].length
-    const children = renderInline(heading[2])
-    if (level === 1) return <h1 key={key}>{children}</h1>
-    if (level === 2) return <h2 key={key}>{children}</h2>
-    if (level === 3) return <h3 key={key}>{children}</h3>
-    return <h4 key={key}>{children}</h4>
-  }
-
-  const lines = text.split("\n")
-  if (lines.every((line) => /^\s*[-*+]\s+/.test(line))) {
-    return (
-      <ul key={key}>
-        {lines.map((line, index) => (
-          <li key={index}>{renderInline(line.replace(/^\s*[-*+]\s+/, ""))}</li>
-        ))}
-      </ul>
-    )
-  }
-  if (lines.every((line) => /^\s*\d+\.\s+/.test(line))) {
-    return (
-      <ol key={key}>
-        {lines.map((line, index) => (
-          <li key={index}>{renderInline(line.replace(/^\s*\d+\.\s+/, ""))}</li>
-        ))}
-      </ol>
-    )
-  }
-  if (lines.every((line) => /^\s*>\s?/.test(line))) {
-    return (
-      <blockquote key={key}>
-        {lines.map((line, index) => (
-          <p key={index}>{renderInline(line.replace(/^\s*>\s?/, ""))}</p>
-        ))}
-      </blockquote>
-    )
   }
 
   return (
-    <p key={key}>
-      {lines.map((line, index) => (
-        <span key={index}>
-          {index > 0 && <br />}
-          {renderInline(line)}
-        </span>
-      ))}
-    </p>
+    <div className="tk-sticky-code-block">
+      <pre>{children}</pre>
+      <button
+        type="button"
+        className="tk-sticky-code-copy"
+        title="复制代码"
+        aria-label="复制代码"
+        onClick={() => void copy()}>
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
   )
 }
 
-function renderInline(text: string): ReactNode[] {
-  const parts = text.split(/(`[^`]+`)/g)
-  return parts.map((part, index) => {
-    if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={index}>{part.slice(1, -1)}</code>
+function StickyMarkdownImage({
+  noteId,
+  src,
+  alt,
+}: {
+  noteId: string
+  src?: string
+  alt?: string
+}) {
+  const [resolvedSrc, setResolvedSrc] = useState(() =>
+    src?.startsWith("sticky-asset://") ? "" : src ?? "",
+  )
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+    if (!src?.startsWith("sticky-asset://")) {
+      setResolvedSrc(src ?? "")
+      return
     }
-    return <span key={index}>{part}</span>
-  })
+
+    const fileName = src.slice("sticky-asset://".length)
+    const cacheKey = `${noteId}:${fileName}`
+    let request = imageCache.get(cacheKey)
+    if (!request) {
+      request = loadStickyNoteImage(noteId, fileName)
+      imageCache.set(cacheKey, request)
+    }
+    let active = true
+    void request
+      .then((dataUrl) => {
+        if (active) setResolvedSrc(dataUrl)
+      })
+      .catch(() => {
+        imageCache.delete(cacheKey)
+        if (active) setFailed(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [noteId, src])
+
+  if (failed) {
+    return <span className="tk-sticky-image-error">图片无法显示</span>
+  }
+  if (!resolvedSrc) {
+    return <span className="tk-sticky-image-loading">正在加载图片</span>
+  }
+  return <img src={resolvedSrc} alt={alt ?? ""} loading="lazy" />
+}
+
+function extractText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (!node || typeof node === "boolean") return ""
+  if (Array.isArray(node)) return node.map(extractText).join("")
+  if (typeof node === "object" && "props" in node) {
+    return extractText((node as { props?: { children?: ReactNode } }).props?.children)
+  }
+  return ""
 }

@@ -2,6 +2,11 @@ import { invoke } from "@tauri-apps/api/core"
 
 import type { StickyNote, StickyNoteDraft, StickyShortcutConfig } from "../types"
 
+export interface StickyNoteAsset {
+  fileName: string
+  markdownUrl: string
+}
+
 export async function listStickyNotes(): Promise<StickyNote[]> {
   return invoke<StickyNote[]>("sticky_notes_list")
 }
@@ -16,6 +21,14 @@ export async function saveStickyNote(draft: StickyNoteDraft): Promise<StickyNote
 
 export async function deleteStickyNote(id: string): Promise<void> {
   await invoke("sticky_notes_delete", { id })
+}
+
+export async function saveStickyNoteImage(id: string, dataUrl: string): Promise<StickyNoteAsset> {
+  return invoke<StickyNoteAsset>("sticky_notes_save_image", { id, dataUrl })
+}
+
+export async function loadStickyNoteImage(id: string, fileName: string): Promise<string> {
+  return invoke<string>("sticky_notes_load_image", { id, fileName })
 }
 
 export async function openStickyNoteWindow(id: string): Promise<string> {
@@ -38,8 +51,8 @@ export async function listStickyNoteCategories(): Promise<string[]> {
   return invoke<string[]>("sticky_notes_list_categories")
 }
 
-export async function createStickyNoteCategory(name: string): Promise<void> {
-  await invoke("sticky_notes_create_category", { name })
+export async function createStickyNoteCategory(name: string): Promise<string[]> {
+  return invoke<string[]>("sticky_notes_create_category", { name })
 }
 
 export async function renameStickyNoteCategory(oldName: string, newName: string): Promise<void> {
@@ -54,14 +67,30 @@ export async function moveStickyNoteCategory(id: string, category: string): Prom
   return invoke<StickyNote>("sticky_notes_move_category", { id, category })
 }
 
-export async function openStickyNoteTileWindow(id: string): Promise<string> {
-  return invoke<string>("open_sticky_note_tile_window", { id })
-}
-
 export async function getStickyNoteShortcutConfig(): Promise<StickyShortcutConfig> {
   return invoke<StickyShortcutConfig>("get_sticky_note_shortcut_config")
 }
 
 export async function setStickyNoteShortcutConfig(config: StickyShortcutConfig): Promise<StickyShortcutConfig> {
   return invoke<StickyShortcutConfig>("set_sticky_note_shortcut_config", { config })
+}
+
+export async function setStickyNoteReminder(id: string, dueAt: string): Promise<StickyNote> {
+  return invoke<StickyNote>("sticky_notes_set_reminder", { id, dueAt })
+}
+
+export async function cancelStickyNoteReminder(id: string): Promise<StickyNote> {
+  return invoke<StickyNote>("sticky_notes_cancel_reminder", { id })
+}
+
+export async function snoozeStickyNoteReminder(id: string, minutes: number): Promise<StickyNote> {
+  return invoke<StickyNote>("sticky_notes_snooze_reminder", { id, minutes })
+}
+
+export async function completeStickyNoteReminder(id: string): Promise<StickyNote> {
+  return invoke<StickyNote>("sticky_notes_complete_reminder", { id })
+}
+
+export async function refreshDailyPoetryStickyNote(force = true): Promise<StickyNote> {
+  return invoke<StickyNote>("sticky_notes_refresh_daily_poetry", { force })
 }

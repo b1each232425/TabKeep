@@ -16,8 +16,6 @@ type StickyNotesChangedPayload = {
 
 export function StickyNoteWindow() {
   const noteId = getStickyNoteId()
-  const mode = new URLSearchParams(window.location.search).get("mode")
-  const tileMode = mode === "tile"
   const [note, setNote] = useState<StickyNote | null>(null)
   const [categories, setCategories] = useState<string[]>([])
   const [error, setError] = useState("")
@@ -94,9 +92,8 @@ export function StickyNoteWindow() {
 
   useEffect(() => {
     if (!note) return
-    const prefix = tileMode ? "TabKeep 磁贴" : "TabKeep 便签"
-    void getCurrentWindow().setTitle(`${prefix} - ${stickyWindowTitle(note)}`)
-  }, [note, tileMode])
+    void getCurrentWindow().setTitle(`TabKeep 便签 - ${stickyWindowTitle(note)}`)
+  }, [note])
 
   const flushAndDestroyWindow = useCallback(async () => {
     if (closing.current) return
@@ -211,12 +208,12 @@ export function StickyNoteWindow() {
 
   return (
     <div
-      className={`tk-sticky-window-shell ${tileMode ? "tk-sticky-window-shell-tile" : "tk-sticky-window-shell-note"}`}
+      className="tk-sticky-window-shell tk-sticky-window-shell-note"
       style={{ ["--sticky-note-color" as string]: DEFAULT_STICKY_NOTE_COLOR }}>
       <div className="tk-sticky-window-titlebar" onMouseDown={startDrag}>
         <div className="tk-sticky-window-title">
           <span className="tk-sticky-window-title-mark" />
-          <span>{tileMode ? "便签磁贴" : "便签"}</span>
+          <span>便签</span>
           {note && <span className="tk-sticky-window-title-name">{note.title.trim() || "未命名"}</span>}
         </div>
         <div className="tk-sticky-window-controls">
@@ -243,13 +240,9 @@ export function StickyNoteWindow() {
           <StickyNoteEditor
             note={note}
             compact
-            tile={tileMode}
             categories={categories}
             onSaved={setNote}
-            onDelete={deleteNote}
-            onCloseTile={() => {
-              void getCurrentWindow().close()
-            }}
+            onDelete={note.systemKind === "dailyPoetry" ? undefined : deleteNote}
           />
           {error && <p className="tk-sticky-error px-3 pb-2" role="alert">{error}</p>}
         </>

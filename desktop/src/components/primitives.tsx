@@ -1,4 +1,6 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react"
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from "react"
+import { createPortal } from "react-dom"
+import { AlertTriangle } from "lucide-react"
 
 export function StatusCard({
   title,
@@ -76,6 +78,96 @@ export function Button({
         ? "tk-ghost-button"
         : "tk-primary-button"
   return <button className={`${base} ${className}`} {...props} />
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "确认",
+  cancelLabel = "取消",
+  busy = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean
+  title: string
+  description: ReactNode
+  confirmLabel?: string
+  cancelLabel?: string
+  busy?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const cancelButton = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const frame = window.requestAnimationFrame(() => cancelButton.current?.focus())
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || busy) return
+      event.preventDefault()
+      onCancel()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener("keydown", handleKeyDown)
+      previousFocus?.focus()
+    }
+  }, [busy, onCancel, open])
+
+  if (!open) return null
+
+  return createPortal(
+    <div
+      className="tk-confirm-dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busy) onCancel()
+      }}>
+      <section
+        className="tk-confirm-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}>
+        <div className="tk-confirm-dialog-body">
+          <span className="tk-confirm-dialog-icon" aria-hidden="true">
+            <AlertTriangle className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 id={titleId} className="tk-confirm-dialog-title">
+              {title}
+            </h2>
+            <div id={descriptionId} className="tk-confirm-dialog-description">
+              {description}
+            </div>
+          </div>
+        </div>
+        <div className="tk-confirm-dialog-actions">
+          <button
+            ref={cancelButton}
+            className="tk-confirm-dialog-cancel"
+            type="button"
+            disabled={busy}
+            onClick={onCancel}>
+            {cancelLabel}
+          </button>
+          <button
+            className="tk-confirm-dialog-confirm"
+            type="button"
+            disabled={busy}
+            onClick={onConfirm}>
+            {busy ? "正在处理..." : confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
 }
 
 export function Checkbox({

@@ -103,6 +103,8 @@ export interface BackendConfigResponse {
 
 export interface StickyNote {
   id: string
+  revision: number
+  systemKind?: "dailyPoetry" | null
   title: string
   content: string
   color: string
@@ -111,24 +113,31 @@ export interface StickyNote {
   preview: string
   wordCount: number
   viewMode: StickyNoteViewMode
-  tilePinned: boolean
+  reminder?: StickyReminder | null
   createdAt: string
   updatedAt: string
   windowBounds?: StickyWindowBounds | null
-  tileBounds?: StickyWindowBounds | null
 }
+
+export interface StickyReminder {
+  dueAt: string
+  status: StickyReminderStatus
+  lastNotifiedAt?: string | null
+  completedAt?: string | null
+}
+
+export type StickyReminderStatus = "scheduled" | "notified" | "completed"
 
 export interface StickyNoteDraft {
   id?: string
+  revision?: number
   title: string
   content: string
   color?: string
   pinned?: boolean
   category?: string
   viewMode?: StickyNoteViewMode
-  tilePinned?: boolean
   windowBounds?: StickyWindowBounds | null
-  tileBounds?: StickyWindowBounds | null
 }
 
 export interface StickyWindowBounds {
@@ -378,6 +387,14 @@ export interface KnowledgeHitTestResponse {
 // RAG evaluation
 // -----------------------------------------------------------------------------
 
+export interface KnowledgeEvalRelevantTarget {
+  text: string
+  path: string
+  title: string
+  documentId: string
+  paragraphId: string
+}
+
 export interface KnowledgeEvalCaseRequest {
   question: string
   caseType: "keyword" | "natural" | "challenge" | "negative" | string
@@ -386,6 +403,7 @@ export interface KnowledgeEvalCaseRequest {
   expectedTitle: string
   expectedDocumentId: string
   expectedParagraphId: string
+  additionalRelevantTargets: KnowledgeEvalRelevantTarget[]
   expectedAnswer: string
   answerKeywords: string
   shouldRefuse: boolean
@@ -410,13 +428,16 @@ export interface KnowledgeEvalRunRequest {
   searchMode?: KnowledgeSearchMode
   minScore?: number
   evaluateAnswer?: boolean
+  evaluateRagas?: boolean
   answerLimit?: number
   answerTimeoutSeconds?: number
+  ragasTimeoutSeconds?: number
 }
 
 export interface KnowledgeEvalHit extends KnowledgeHitTestItem {
   relevant: boolean
   matchedExpectations: string[]
+  matchedTargetIndexes: number[]
 }
 
 export interface KnowledgeEvalCaseResult {
@@ -424,6 +445,8 @@ export interface KnowledgeEvalCaseResult {
   ok: boolean
   rank?: number | null
   reciprocalRank: number
+  relevantHitCount: number
+  precisionAtK: number
   hits: KnowledgeEvalHit[]
   issueType: "ok" | "late_hit" | "missed" | "no_results" | "error" | string
   issueMessage: string
@@ -434,6 +457,12 @@ export interface KnowledgeEvalCaseResult {
   answerKeywordCoverage: number
   answerFaithfulness: number
   answerRelevance: number
+  ragasEvaluated: boolean
+  ragasFaithfulness?: number | null
+  ragasFactualCorrectness?: number | null
+  ragasContextPrecision?: number | null
+  ragasAnswerRelevance?: number | null
+  ragasError?: string | null
   refusalOk?: boolean | null
   answerIssueType: string
   answerIssueMessage: string
@@ -452,6 +481,7 @@ export interface KnowledgeEvalTypeSummary {
   total: number
   hitCount: number
   recallAtK: number
+  precisionAtK: number
   mrr: number
   top1Accuracy: number
   rankDistribution: KnowledgeEvalRankBucket[]
@@ -464,6 +494,7 @@ export interface KnowledgeEvalRunResponse {
   retrievalEvaluated: number
   hitCount: number
   recallAtK: number
+  precisionAtK: number
   mrr: number
   top1Accuracy: number
   answerEligible: number
@@ -477,6 +508,14 @@ export interface KnowledgeEvalRunResponse {
   averageAnswerScore: number
   averageFaithfulness: number
   averageAnswerRelevance: number
+  ragasRequested: boolean
+  ragasEligible: number
+  ragasEvaluated: number
+  ragasFailed: number
+  averageRagasFaithfulness?: number | null
+  averageRagasFactualCorrectness?: number | null
+  averageRagasContextPrecision?: number | null
+  averageRagasAnswerRelevance?: number | null
   rankDistribution: KnowledgeEvalRankBucket[]
   typeSummaries: KnowledgeEvalTypeSummary[]
   limit: number
@@ -815,6 +854,8 @@ export interface OcrFlowResult {
   ok: boolean
   text: string
   provider: OcrProvider
+  ocrEngine: string
+  ocrFallbackReason?: string | null
   imagePath: string
   imageDataUrl?: string | null
   translatedText?: string | null
@@ -831,6 +872,8 @@ export interface OcrFlowResult {
 export interface OcrDebugResult {
   ok: boolean
   provider: OcrProvider
+  ocrEngine: string
+  ocrFallbackReason?: string | null
   sourceLang: string
   originalImagePath: string
   originalImageDataUrl?: string | null
@@ -855,6 +898,8 @@ export interface OcrDebugRecord {
   sourceLang: string
   targetLang: string
   provider: OcrProvider
+  ocrEngine?: string
+  ocrFallbackReason?: string | null
   imagePath: string
   preprocessedImagePath?: string | null
   rawText: string

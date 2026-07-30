@@ -463,6 +463,93 @@
     @apply shrink-0;
   }
 
+  .tk-confirm-dialog-backdrop {
+    @apply fixed inset-0 z-[240] grid place-items-center p-4 backdrop-blur-[3px];
+    background: hsl(var(--tk-graphite) / 0.58);
+    animation: tk-confirm-backdrop-in 140ms ease-out;
+  }
+
+  .tk-confirm-dialog {
+    @apply relative w-full max-w-[25rem] overflow-hidden rounded-lg border border-emerald-100/80 text-slate-900 shadow-[0_24px_70px_rgb(15_23_42/0.34)] ring-1 ring-white/70;
+    background: rgb(249 252 250);
+    animation: tk-confirm-dialog-in 160ms ease-out;
+  }
+
+  .tk-confirm-dialog::before {
+    content: "";
+    @apply absolute inset-x-0 top-0 h-1;
+    background: linear-gradient(
+      90deg,
+      hsl(var(--tk-green)),
+      hsl(var(--tk-mint)) 54%,
+      hsl(var(--tk-amber))
+    );
+  }
+
+  .tk-confirm-dialog-body {
+    @apply flex items-start gap-3 px-4 pb-4 pt-5;
+  }
+
+  .tk-confirm-dialog-icon {
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-[hsl(var(--tk-mint))] ring-1 ring-emerald-100;
+    box-shadow: 0 8px 20px rgb(16 185 129 / 0.1);
+  }
+
+  .tk-confirm-dialog-title {
+    @apply m-0 text-base font-semibold leading-6 text-[hsl(var(--tk-graphite))];
+  }
+
+  .tk-confirm-dialog-description {
+    @apply mt-1 break-words text-sm leading-6 text-slate-600;
+  }
+
+  .tk-confirm-dialog-actions {
+    @apply flex items-center justify-end gap-2 border-t border-emerald-100/70 px-4 py-3;
+    background: rgb(239 247 243 / 0.72);
+  }
+
+  .tk-confirm-dialog-cancel,
+  .tk-confirm-dialog-confirm {
+    @apply inline-flex h-8 min-w-[4.5rem] items-center justify-center rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .tk-confirm-dialog-cancel {
+    @apply border border-emerald-100 bg-white text-slate-700 shadow-sm focus-visible:ring-emerald-200;
+  }
+
+  .tk-confirm-dialog-cancel:hover:not(:disabled) {
+    @apply border-emerald-200 bg-emerald-50 text-[hsl(var(--tk-graphite))];
+  }
+
+  .tk-confirm-dialog-confirm {
+    @apply bg-[hsl(var(--tk-coral))] text-white shadow-sm focus-visible:ring-orange-200;
+    box-shadow: 0 6px 16px hsl(var(--tk-coral) / 0.2);
+  }
+
+  .tk-confirm-dialog-confirm:hover:not(:disabled) {
+    filter: brightness(0.92);
+  }
+
+  @keyframes tk-confirm-backdrop-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes tk-confirm-dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   .tk-icon-button {
     @apply inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-45;
   }
@@ -1084,6 +1171,10 @@
     @apply min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100;
   }
 
+  .tk-sticky-category-error {
+    @apply text-xs leading-5 text-rose-700;
+  }
+
   .tk-sticky-category-row input {
     @apply h-7 w-28 flex-none rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-800 shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100;
   }
@@ -1101,8 +1192,16 @@
     box-shadow: 0 0 16px rgb(244 114 182 / 0.28);
   }
 
+  .tk-sticky-category-item-active:hover {
+    @apply bg-rose-600 text-white;
+  }
+
   .tk-sticky-category-item-active span {
     @apply bg-white/15 text-white ring-white/20;
+  }
+
+  .tk-sticky-category-item-active:hover span {
+    @apply bg-white/20 text-white ring-white/30;
   }
 
   .tk-sticky-list-item {
@@ -1127,6 +1226,10 @@
     color: rgb(219 39 119);
   }
 
+  .tk-sticky-list-item-with-reminder {
+    @apply pb-8;
+  }
+
   .tk-sticky-list-color {
     @apply mt-1 h-3.5 w-3.5 shrink-0 rounded-full border border-white shadow-sm ring-1 ring-rose-200;
     background: radial-gradient(circle at 35% 30%, #fff 0 16%, #ffd6e8 28%, #f472b6 100%);
@@ -1146,6 +1249,14 @@
 
   .tk-sticky-list-category {
     @apply max-w-16 shrink-0 truncate rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600 ring-1 ring-slate-200;
+  }
+
+  .tk-sticky-list-reminder {
+    @apply absolute bottom-2.5 right-3 inline-flex items-center gap-1 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 ring-1 ring-rose-100;
+  }
+
+  .tk-sticky-list-reminder-overdue {
+    @apply bg-amber-50 text-amber-700 ring-amber-200;
   }
 
   .tk-sticky-import-export {
@@ -1390,74 +1501,6 @@
     @apply text-xl;
   }
 
-  .tk-sticky-editor-tile {
-    @apply rounded-none border-0 p-3 pt-11 shadow-none ring-0;
-    background:
-      radial-gradient(circle at 88% 6%, rgb(255 255 255 / 0.86), transparent 22%),
-      radial-gradient(circle at 15% 102%, rgb(244 114 182 / 0.14), transparent 34%),
-      linear-gradient(155deg, rgb(255 248 251 / 0.84), rgb(255 222 237 / 0.72) 56%, rgb(253 186 216 / 0.6)),
-      repeating-linear-gradient(180deg, transparent 0 31px, rgb(190 24 93 / 0.052) 31px 32px),
-      var(--sticky-note-color);
-  }
-
-  .tk-sticky-editor-tile::before {
-    @apply hidden;
-  }
-
-  .tk-sticky-editor-tile::after {
-    opacity: 0.28;
-    background-position:
-      right -52px top 28px,
-      left -38px bottom 18px,
-      right 12px bottom 18px;
-    background-size:
-      148px auto,
-      70px auto,
-      44px auto;
-  }
-
-  .tk-sticky-editor-tile .tk-sticky-editor-toolbar {
-    @apply absolute right-3 top-3 z-30 mb-0 w-auto border-rose-100/50 bg-white/[0.46] p-1.5 shadow-sm backdrop-blur;
-    max-width: calc(100% - 1.5rem);
-  }
-
-  .tk-sticky-editor-tile .tk-sticky-toolbar-meta {
-    @apply hidden;
-  }
-
-  .tk-sticky-editor-tile .tk-sticky-toolbar-actions {
-    @apply gap-1;
-  }
-
-  .tk-sticky-editor-tile .tk-icon-button {
-    @apply h-7 w-7 bg-white/[0.62];
-  }
-
-  .tk-sticky-editor-tile .tk-sticky-title-input {
-    @apply h-10 px-3 text-base;
-  }
-
-  .tk-sticky-editor-tile .tk-sticky-content-input,
-  .tk-sticky-editor-tile .tk-sticky-markdown-preview {
-    @apply px-3 pb-3 pt-2;
-  }
-
-  .tk-sticky-editor-tile .tk-sticky-editor-footer {
-    @apply mt-2 text-[11px] text-rose-900/45;
-  }
-
-  .tk-sticky-editor-tile[data-save-state="dirty"] {
-    box-shadow: inset 0 0 0 1px rgb(244 114 182 / 0.32), inset 0 0 30px rgb(244 114 182 / 0.1);
-  }
-
-  .tk-sticky-editor-tile[data-save-state="saving"] {
-    box-shadow: inset 0 0 0 2px rgb(251 113 133 / 0.36), inset 0 0 38px rgb(244 114 182 / 0.14);
-  }
-
-  .tk-sticky-editor-tile[data-save-state="error"] {
-    box-shadow: inset 0 0 0 2px rgb(244 63 94 / 0.52), inset 0 0 38px rgb(244 63 94 / 0.14);
-  }
-
   .tk-sticky-editor-toolbar {
     @apply relative z-10 mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2 rounded-md border border-rose-200/55 bg-white/[0.54] p-2 shadow-sm backdrop-blur;
     box-shadow:
@@ -1469,8 +1512,78 @@
     @apply flex min-w-0 flex-1 flex-wrap items-center gap-2;
   }
 
+  .tk-sticky-system-label {
+    @apply inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-200/80 bg-emerald-50/80 px-3 text-sm font-semibold text-emerald-800;
+  }
+
   .tk-sticky-toolbar-actions {
     @apply flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5;
+  }
+
+  .tk-sticky-reminder-panel {
+    @apply absolute right-4 top-[4.4rem] z-40 w-[min(22rem,calc(100%-2rem))] rounded-lg border border-rose-200 bg-white/95 p-3 shadow-xl backdrop-blur-md;
+    box-shadow:
+      0 20px 48px rgb(190 24 93 / 0.18),
+      0 0 28px rgb(251 207 232 / 0.38);
+  }
+
+  .tk-sticky-reminder-heading {
+    @apply mb-3 flex items-center justify-between gap-3;
+  }
+
+  .tk-sticky-reminder-heading > div {
+    @apply flex min-w-0 flex-col;
+  }
+
+  .tk-sticky-reminder-heading strong {
+    @apply text-sm font-semibold text-slate-900;
+  }
+
+  .tk-sticky-reminder-heading span {
+    @apply truncate text-xs text-slate-500;
+  }
+
+  .tk-sticky-reminder-presets {
+    @apply grid grid-cols-2 gap-2;
+  }
+
+  .tk-sticky-reminder-presets button,
+  .tk-sticky-reminder-custom button,
+  .tk-sticky-reminder-actions button {
+    @apply inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md border border-rose-100 bg-rose-50/60 px-2.5 text-xs font-medium text-slate-700 transition hover:border-rose-200 hover:bg-rose-100/70 hover:text-rose-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300;
+  }
+
+  .tk-sticky-reminder-custom {
+    @apply mt-2 flex items-center gap-2;
+  }
+
+  .tk-sticky-reminder-custom input {
+    @apply h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100;
+  }
+
+  .tk-sticky-reminder-custom button {
+    @apply shrink-0 bg-rose-500 px-3 text-white hover:bg-rose-600 hover:text-white;
+  }
+
+  .tk-sticky-reminder-actions {
+    @apply mt-3 flex flex-wrap items-center gap-2 border-t border-rose-100 pt-3;
+  }
+
+  .tk-sticky-format-toolbar {
+    @apply relative z-10 mb-1 flex min-h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-rose-200/45 px-3 pb-2;
+    scrollbar-width: none;
+  }
+
+  .tk-sticky-format-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tk-sticky-format-button {
+    @apply inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-slate-500 transition hover:border-rose-200/70 hover:bg-white/60 hover:text-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .tk-sticky-image-status {
+    @apply ml-auto shrink-0 px-1 text-[11px] font-medium text-rose-700/75;
   }
 
   .tk-icon-button {
@@ -1528,7 +1641,7 @@
   }
 
   .tk-sticky-editor-content {
-    @apply grid min-h-0 flex-1 gap-0;
+    @apply relative grid min-h-0 flex-1 gap-0;
   }
 
   .tk-sticky-view-edit,
@@ -1560,6 +1673,18 @@
     @apply mb-3;
   }
 
+  .tk-sticky-markdown-preview a {
+    @apply font-medium text-rose-700 underline decoration-rose-300 underline-offset-2 hover:text-rose-900;
+  }
+
+  .tk-sticky-markdown-preview strong {
+    @apply font-semibold text-slate-950;
+  }
+
+  .tk-sticky-markdown-preview em {
+    @apply text-slate-700;
+  }
+
   .tk-sticky-markdown-preview ul,
   .tk-sticky-markdown-preview ol {
     @apply mb-3 space-y-1 pl-5;
@@ -1577,8 +1702,28 @@
     @apply mb-3 border-l-4 border-slate-300 bg-white/70 py-1 pl-3 text-slate-700;
   }
 
-  .tk-sticky-markdown-preview pre {
-    @apply mb-3 overflow-auto rounded-md bg-slate-900 p-3 text-xs leading-6 text-slate-100;
+  .tk-sticky-editor[data-system-kind="dailyPoetry"] .tk-sticky-markdown-preview {
+    @apply flex flex-col justify-center px-7 text-center;
+  }
+
+  .tk-sticky-editor[data-system-kind="dailyPoetry"] .tk-sticky-markdown-preview blockquote {
+    @apply mx-auto mb-5 max-w-3xl border-0 bg-transparent p-0 text-xl font-semibold leading-10 text-slate-900;
+  }
+
+  .tk-sticky-markdown-preview hr {
+    @apply my-5 border-0 border-t border-rose-200/75;
+  }
+
+  .tk-sticky-code-block {
+    @apply relative mb-3 overflow-hidden rounded-md border border-slate-700/20 bg-slate-900;
+  }
+
+  .tk-sticky-code-block pre {
+    @apply m-0 overflow-auto p-3 pr-10 text-xs leading-6 text-slate-100;
+  }
+
+  .tk-sticky-code-copy {
+    @apply absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/10 text-slate-300 opacity-80 transition hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300;
   }
 
   .tk-sticky-markdown-preview code {
@@ -1589,6 +1734,47 @@
     @apply bg-transparent p-0 text-slate-100;
   }
 
+  .tk-sticky-markdown-preview table {
+    @apply mb-4 w-full border-collapse overflow-hidden text-left text-xs;
+  }
+
+  .tk-sticky-markdown-preview th {
+    @apply border border-rose-200/70 bg-white/65 px-2.5 py-2 font-semibold text-slate-800;
+  }
+
+  .tk-sticky-markdown-preview td {
+    @apply border border-rose-200/60 bg-white/35 px-2.5 py-2 align-top;
+  }
+
+  .tk-sticky-markdown-preview .contains-task-list {
+    @apply list-none pl-0;
+  }
+
+  .tk-sticky-markdown-preview .task-list-item {
+    @apply flex items-start gap-2;
+  }
+
+  .tk-sticky-markdown-preview .task-list-item input {
+    @apply mt-1.5 h-3.5 w-3.5 accent-rose-500;
+  }
+
+  .tk-sticky-markdown-preview img {
+    @apply my-3 block max-h-[520px] max-w-full rounded-md border border-white/70 object-contain shadow-sm;
+  }
+
+  .tk-sticky-image-loading,
+  .tk-sticky-image-error {
+    @apply my-3 inline-flex min-h-16 min-w-40 items-center justify-center rounded-md border border-dashed border-rose-200/80 bg-white/40 px-4 text-xs text-slate-500;
+  }
+
+  .tk-sticky-image-error {
+    @apply text-rose-700;
+  }
+
+  .tk-sticky-image-drop-hint {
+    @apply pointer-events-none absolute inset-3 z-30 flex items-center justify-center rounded-lg border-2 border-dashed border-rose-400 bg-white/80 text-sm font-semibold text-rose-700 shadow-lg backdrop-blur;
+  }
+
   .tk-sticky-markdown-empty {
     @apply flex min-h-0 flex-1 items-center justify-center rounded-md border border-dashed border-rose-200/60 bg-white/25 text-sm text-slate-400;
   }
@@ -1597,8 +1783,24 @@
     @apply relative z-10 mt-3 flex shrink-0 items-center justify-between gap-3 text-xs font-medium text-slate-500;
   }
 
+  .tk-sticky-footer-meta {
+    @apply flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1;
+  }
+
+  .tk-sticky-footer-meta > span {
+    @apply inline-flex items-center gap-1;
+  }
+
+  .tk-sticky-reminder-overdue {
+    @apply text-amber-700;
+  }
+
   .tk-sticky-error {
-    @apply mt-2 shrink-0 rounded-md border border-rose-100 bg-rose-50 px-2 py-1.5 text-xs text-rose-700;
+    @apply mt-2 flex shrink-0 items-center justify-between gap-3 rounded-md border border-rose-100 bg-rose-50 px-2 py-1.5 text-xs text-rose-700;
+  }
+
+  .tk-sticky-error button {
+    @apply shrink-0 font-medium text-rose-800 underline underline-offset-2 hover:text-rose-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400;
   }
 
   .tk-sticky-empty {
@@ -1656,26 +1858,6 @@
     box-shadow:
       0 1px 0 rgb(255 255 255 / 0.62),
       0 10px 22px rgb(190 24 93 / 0.055);
-  }
-
-  .tk-sticky-window-shell-tile .tk-sticky-window-titlebar {
-    @apply h-8 border-rose-100/40 bg-white/[0.3] text-slate-500;
-    box-shadow:
-      0 1px 0 rgb(255 255 255 / 0.45),
-      0 8px 18px rgb(190 24 93 / 0.03);
-  }
-
-  .tk-sticky-window-shell-tile .tk-sticky-window-title > span:nth-child(2) {
-    display: none;
-  }
-
-  .tk-sticky-window-shell-tile .tk-sticky-window-title-mark {
-    @apply bg-white/80;
-    box-shadow: 0 0 10px rgb(244 114 182 / 0.28);
-  }
-
-  .tk-sticky-window-shell-tile .tk-sticky-window-controls button {
-    @apply h-6 w-6 border-white/45 bg-white/[0.42] text-slate-500 hover:bg-white/70;
   }
 
   .tk-sticky-window-titlebar::before {
