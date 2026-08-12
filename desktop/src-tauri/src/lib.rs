@@ -20,12 +20,17 @@ use serde_json::{json, Value};
 use tauri::{window::Color, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 #[cfg(not(windows))]
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::{
+    process::{CommandChild, CommandEvent},
+    ShellExt,
+};
 use tokio::{
     sync::oneshot,
     time::{sleep, Duration},
 };
 use tower_http::cors::{Any, CorsLayer};
 
+mod backend_migration;
 mod ocr;
 mod region;
 mod selection;
@@ -51,6 +56,9 @@ const STICKY_NOTIFICATION_ICON_FILE: &str = "notification-icon.png";
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
 const STICKY_NOTE_TOGGLE_HOTKEY_ID: i32 = 0x544f;
 const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
+const BACKEND_SIDECAR_NAME: &str = "tabkeep-backend";
+const BACKEND_READY_ATTEMPTS: usize = 360;
+const BACKEND_READY_INTERVAL_MS: u64 = 500;
 
 #[derive(Clone)]
 struct DesktopState {
@@ -73,6 +81,9 @@ struct HttpState {
 
 #[derive(Default)]
 struct StickyReminderTrayItem(Mutex<Option<tauri::menu::MenuItem<tauri::Wry>>>);
+
+#[derive(Default)]
+struct BackendSidecar(Mutex<Option<CommandChild>>);
 
 #[derive(Debug, Clone)]
 enum OcrFlowMode {
@@ -340,6 +351,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(log::LevelFilter::Info)
@@ -352,8 +364,29 @@ pub fn run() {
                 .build(),
         )
         .manage(state.clone())
+        .manage(BackendSidecar::default())
         .manage(StickyReminderTrayItem::default())
         .setup(move |app| {
+            if !cfg!(debug_assertions) {
+                let backend_app = app.handle().clone();
+                let health_client = state.client.clone();
+                tauri::async_runtime::spawn(async move {
+                    let migration_app = backend_app.clone();
+                    match tauri::async_runtime::spawn_blocking(move || {
+                        backend_migration::migrate_legacy_backend_data(&migration_app)
+                    })
+                    .await
+                    {
+                        Ok(Ok(outcome)) => log::info!("旧后端数据迁移检查完成: {outcome:?}"),
+                        Ok(Err(err)) => log::error!("旧后端数据迁移失败: {err}"),
+                        Err(err) => log::error!("旧后端数据迁移任务失败: {err}"),
+                    }
+
+                    if let Err(err) = start_backend_sidecar(&backend_app, health_client) {
+                        log::error!("启动 TabKeep 后端失败: {err}");
+                    }
+                });
+            }
             match load_usage_stats(&app.handle()) {
                 Ok(stats) => set_usage_stats(&state, stats),
                 Err(err) => log::warn!("读取桌面用量统计失败: {err}"),
@@ -388,7 +421,7 @@ pub fn run() {
             };
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = run_http_server(server_state).await {
-                    log::error!("TabKeep desktop HTTP server failed: {err}");
+                    log::error!("TabKeep HTTP server failed: {err}");
                 }
             });
 
@@ -447,8 +480,153 @@ pub fn run() {
             sticky_notes_complete_reminder,
             sticky_notes_refresh_daily_poetry,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running TabKeep desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building TabKeep")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                stop_backend_sidecar(app);
+            }
+        });
+}
+
+fn start_backend_sidecar(
+    app: &tauri::AppHandle,
+    health_client: reqwest::Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let backend_root = app.path().app_local_data_dir()?.join("backend");
+    let backend_data = backend_root.join("data");
+    let model_cache = backend_root.join("models");
+    fs::create_dir_all(&backend_data)?;
+    fs::create_dir_all(&model_cache)?;
+
+    let command = app
+        .shell()
+        .sidecar(BACKEND_SIDECAR_NAME)?
+        .env("TABKEEP_DATA_DIR", &backend_data)
+        .env("HF_HOME", &model_cache)
+        .env("PYTHONUTF8", "1");
+    let (mut events, child) = command.spawn()?;
+    let pid = child.pid();
+
+    {
+        let state = app.state::<BackendSidecar>();
+        let mut guard = state.0.lock().map_err(|_| "后端进程状态锁已损坏")?;
+        *guard = Some(child);
+    }
+
+    let event_app = app.clone();
+    let health_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = events.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    let line = String::from_utf8_lossy(&bytes);
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        log::info!("[backend] {line}");
+                    }
+                }
+                CommandEvent::Stderr(bytes) => {
+                    let line = String::from_utf8_lossy(&bytes);
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        log::warn!("[backend] {line}");
+                    }
+                }
+                CommandEvent::Error(error) => {
+                    log::error!("后端输出读取失败: {error}");
+                }
+                CommandEvent::Terminated(payload) => {
+                    let state = event_app.state::<BackendSidecar>();
+                    if let Ok(mut guard) = state.0.lock() {
+                        let is_current = guard
+                            .as_ref()
+                            .map(CommandChild::pid)
+                            .is_some_and(|current_pid| current_pid == pid);
+                        if is_current {
+                            guard.take();
+                        }
+                    }
+                    if payload.code == Some(0) {
+                        log::info!("TabKeep 后端已退出");
+                    } else {
+                        log::error!(
+                            "TabKeep 后端异常退出: code={:?}, signal={:?}",
+                            payload.code,
+                            payload.signal
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    tauri::async_runtime::spawn(async move {
+        for _ in 0..BACKEND_READY_ATTEMPTS {
+            let ready = match health_client
+                .get(format!("{BACKEND_URL}/"))
+                .timeout(Duration::from_secs(2))
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => response
+                    .json::<Value>()
+                    .await
+                    .ok()
+                    .and_then(|payload| {
+                        payload
+                            .get("version")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned)
+                    })
+                    .is_some_and(|version| version == env!("CARGO_PKG_VERSION")),
+                _ => false,
+            };
+            if ready {
+                log::info!("TabKeep 后端已就绪");
+                if std::env::var_os("TABKEEP_ACCEPTANCE_EXIT_AFTER_READY").is_some() {
+                    sleep(Duration::from_secs(1)).await;
+                    health_app.exit(0);
+                }
+                return;
+            }
+            sleep(Duration::from_millis(BACKEND_READY_INTERVAL_MS)).await;
+        }
+        log::error!("TabKeep 后端在等待时间内未就绪，请查看应用日志");
+    });
+
+    log::info!("已启动 TabKeep 后端 sidecar，pid={pid}");
+    Ok(())
+}
+
+fn stop_backend_sidecar(app: &tauri::AppHandle) {
+    let state = app.state::<BackendSidecar>();
+    let child = state.0.lock().ok().and_then(|mut guard| guard.take());
+    if let Some(child) = child {
+        let pid = child.pid();
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let status = std::process::Command::new("taskkill.exe")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+            if status.is_ok_and(|status| status.success()) {
+                log::info!("已停止 TabKeep 后端进程树，pid={pid}");
+                return;
+            }
+            log::warn!("结束 TabKeep 后端进程树失败，改为结束直接子进程，pid={pid}");
+        }
+
+        match child.kill() {
+            Ok(()) => log::info!("已停止 TabKeep 后端 sidecar，pid={pid}"),
+            Err(err) => log::warn!("停止 TabKeep 后端 sidecar 失败，pid={pid}: {err}"),
+        }
+    }
 }
 
 fn setup_close_to_hide(app: &tauri::App) {
@@ -1325,7 +1503,7 @@ async fn run_http_server(state: HttpState) -> anyhow::Result<()> {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let mut app = Router::new()
+    let app = Router::new()
         .route("/health", get(health))
         .route("/capture", post(capture))
         .route("/translate", post(translate))
@@ -1338,27 +1516,25 @@ async fn run_http_server(state: HttpState) -> anyhow::Result<()> {
         .route("/region/config", get(region_config));
 
     #[cfg(debug_assertions)]
-    {
-        app = app
-            .route("/debug/sticky/open", post(debug_sticky_open))
-            .route(
-                "/debug/sticky/frontend-open",
-                post(debug_sticky_frontend_open),
-            )
-            .route(
-                "/debug/sticky/frontend-open-existing",
-                post(debug_sticky_frontend_open_existing),
-            )
-            .route(
-                "/debug/sticky/frontend-result",
-                post(debug_sticky_frontend_result),
-            );
-    }
+    let app = app
+        .route("/debug/sticky/open", post(debug_sticky_open))
+        .route(
+            "/debug/sticky/frontend-open",
+            post(debug_sticky_frontend_open),
+        )
+        .route(
+            "/debug/sticky/frontend-open-existing",
+            post(debug_sticky_frontend_open_existing),
+        )
+        .route(
+            "/debug/sticky/frontend-result",
+            post(debug_sticky_frontend_result),
+        );
 
     let app = app.with_state(state).layer(cors);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", DESKTOP_PORT)).await?;
-    log::info!("TabKeep desktop HTTP server listening on 127.0.0.1:{DESKTOP_PORT}");
+    log::info!("TabKeep HTTP server listening on 127.0.0.1:{DESKTOP_PORT}");
     axum::serve(listener, app).await?;
     Ok(())
 }

@@ -8,6 +8,10 @@
     "dev:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only extension",
     "dev:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only desktop",
     "dev:eval": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only eval",
+    "release:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-backend.ps1",
+    "release:desktop": "pnpm --dir desktop tauri:build:release",
+    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1",
+    "accept:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/accept-windows-install.ps1",
     "test:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$env:PYTHONDONTWRITEBYTECODE='1'; & 'C:\\Users\\yeweixuan\\.conda\\envs\\tabkeep\\python.exe' -m unittest discover -s backend/tests\"",
     "mock:obsidian": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"& 'C:\\Users\\yeweixuan\\.conda\\envs\\tabkeep\\python.exe' scripts/mock_obsidian_vault.py --force\""
   }

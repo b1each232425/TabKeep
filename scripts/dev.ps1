@@ -14,6 +14,10 @@ $Root = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
 $TempDir = Join-Path $Root.Path ".tmp"
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 
+if (-not $DryRun) {
+  & (Join-Path $PSScriptRoot "register-dev-data.ps1") -RootPath $Root.Path
+}
+
 $AllTargets = @(
   @{
     Id = "backend"
@@ -29,7 +33,7 @@ $AllTargets = @(
   },
   @{
     Id = "desktop"
-    Name = "TabKeep Desktop :38472"
+    Name = "TabKeep :38472"
     WorkingDirectory = Join-Path $Root.Path "desktop"
     Command = "pnpm tauri:dev"
   },
