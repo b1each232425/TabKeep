@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Awaitable
 
 from openai import AsyncOpenAI
 
 from schemas.config import ModelConfig
 from schemas.knowledge import EmbeddingConfig
+from services import storage
 
 
-RAGAS_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "ragas_cache"
+RAGAS_CACHE_DIR = storage.DATA_DIR / "ragas_cache"
 RAGAS_METRIC_NAMES = {
     "ragasFaithfulness": "Faithfulness",
     "ragasFactualCorrectness": "Factual Correctness",

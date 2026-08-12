@@ -6,15 +6,15 @@
   - 收 _lock 串行化写,避免并发撕文件
 """
 import threading
-from pathlib import Path
 
 from logger import logger
 from schemas.config import NoteAdapterConfig
+from services import storage
 from services.note.base import NotebookInfo, SaveRequest, SaveResult
 from services.note.formatting import markdown_note
 
-# 写到 backend/data/notes/,不存在会建
-DATA_DIR = Path(__file__).parent.parent.parent / "data" / "notes"
+# 源码运行默认写到 backend/data/notes；正式版由 TABKEEP_DATA_DIR 定位。
+DATA_DIR = storage.DATA_DIR / "notes"
 _lock = threading.Lock()
 
 

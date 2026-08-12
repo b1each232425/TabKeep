@@ -12,6 +12,7 @@
 并发:用 threading.Lock 保护 _state 读写;uvicorn 单进程下也够用。
 """
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -22,7 +23,14 @@ from schemas.knowledge import KnowledgeConfig
 # ─────────────────────────────────────────────────────────────
 # 路径常量
 # ─────────────────────────────────────────────────────────────
-DATA_DIR = Path(__file__).parent.parent / "data"
+def resolve_data_dir() -> Path:
+    configured = os.getenv("TABKEEP_DATA_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path(__file__).parent.parent / "data"
+
+
+DATA_DIR = resolve_data_dir()
 CONFIG_FILE = DATA_DIR / "config.json"
 
 

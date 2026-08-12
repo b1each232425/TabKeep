@@ -9,6 +9,7 @@ FastAPI 应用入口。
   5. 健康检查
   6. uvicorn 启动入口(`python main.py` 也能跑)
 """
+import os
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
@@ -40,7 +41,24 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 # ─────────────────────────────────────────────────────────────
 # FastAPI 实例
 # ─────────────────────────────────────────────────────────────
-app = FastAPI(title="TabKeep API", version="0.1.0", lifespan=lifespan)
+APP_VERSION = "1.0.0"
+DEFAULT_BACKEND_HOST = "127.0.0.1"
+DEFAULT_BACKEND_PORT = 38471
+
+
+def backend_host() -> str:
+    return os.getenv("TABKEEP_BACKEND_HOST", DEFAULT_BACKEND_HOST).strip() or DEFAULT_BACKEND_HOST
+
+
+def backend_port() -> int:
+    value = os.getenv("TABKEEP_BACKEND_PORT", str(DEFAULT_BACKEND_PORT)).strip()
+    port = int(value)
+    if port <= 0 or port > 65535:
+        raise ValueError(f"Invalid TABKEEP_BACKEND_PORT: {value}")
+    return port
+
+
+app = FastAPI(title="TabKeep API", version=APP_VERSION, lifespan=lifespan)
 
 # 开发环境允许所有来源跨域;生产部署应该收紧
 app.add_middleware(
@@ -65,7 +83,7 @@ app.include_router(ocr_router)
 @app.get("/", summary="健康检查")
 def read_root() -> dict[str, str]:
     """用于检查后端是否启动。不读 storage,纯 echo。"""
-    return {"message": "TabKeep API Running", "version": "0.1.0"}
+    return {"message": "TabKeep API Running", "version": APP_VERSION}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -73,4 +91,5 @@ def read_root() -> dict[str, str]:
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=38471)
+
+    uvicorn.run(app, host=backend_host(), port=backend_port())

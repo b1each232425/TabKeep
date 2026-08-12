@@ -32,6 +32,8 @@ backend/.env*
 # === 后端运行时数据（config.json 含明文 apiKey/token，不提交） ===
 backend/data/
 backend/logs/
+.release/
+desktop/src-tauri/binaries/*.exe
 
 # === 个人开发文档（本地保留，不对外发布） ===
 /*.md

@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from schemas.ocr import ComicDetectionBounds, ComicDetectionRegion
+from services import storage
 
 MODEL_URL = (
     "https://huggingface.co/ogkalu/comic-text-and-bubble-detector/"
@@ -224,8 +225,7 @@ def _model_path() -> Path:
     override = os.getenv("TABKEEP_COMIC_DETECTOR_MODEL", "").strip()
     if override:
         return Path(override).expanduser()
-    backend_root = Path(__file__).resolve().parents[1]
-    return backend_root / "data" / "models" / "detection" / MODEL_FILENAME
+    return storage.DATA_DIR / "models" / "detection" / MODEL_FILENAME
 
 
 def _ensure_model() -> Path:
