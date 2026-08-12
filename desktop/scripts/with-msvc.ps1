@@ -61,8 +61,8 @@ if (-not $vcvars) {
 }
 
 $commandLine = ($Command | ForEach-Object { Quote-CmdArg $_ }) -join " "
-Write-Host "[TabKeep Desktop] MSVC: $vcvars"
-Write-Host "[TabKeep Desktop] Run: $commandLine"
+Write-Host "[TabKeep] MSVC: $vcvars"
+Write-Host "[TabKeep] Run: $commandLine"
 
 $cmdLineForCmd = '"' + $vcvars + '" >nul && ' + $commandLine
 & cmd.exe /d /s /c $cmdLineForCmd

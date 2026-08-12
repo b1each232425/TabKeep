@@ -1,7 +1,7 @@
 {
   "name": "tabkeep-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri",
     "tauri:dev": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri dev",
-    "tauri:build": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build"
+    "tauri:build": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build",
+    "tauri:build:release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

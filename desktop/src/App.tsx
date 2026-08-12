@@ -71,8 +71,7 @@ type Section =
 const importMetaEnv = (import.meta as ImportMeta & {
   env?: Record<string, string | boolean | undefined>
 }).env
-const SHOW_OCR_DEBUG =
-  importMetaEnv?.DEV === true || importMetaEnv?.VITE_TABKEEP_SHOW_OCR_DEBUG === "true"
+const SHOW_DEVELOPMENT_TOOLS = importMetaEnv?.DEV === true
 
 function App() {
   const view = new URLSearchParams(window.location.search).get("view")
@@ -110,7 +109,7 @@ function DesktopApp() {
       const backendOk = await checkBackendHealth()
       setBackendReady(backendOk)
       if (!backendOk) {
-        setConnectionError("FastAPI 后端未连接")
+        setConnectionError("服务正在启动，请稍候")
         return
       }
 
@@ -137,6 +136,25 @@ function DesktopApp() {
   useEffect(() => {
     refreshAll()
   }, [])
+
+  useEffect(() => {
+    if (backendReady !== false) return
+
+    let checking = false
+    const timer = window.setInterval(async () => {
+      if (checking) return
+      checking = true
+      try {
+        if (await checkBackendHealth()) {
+          await refreshAll()
+        }
+      } finally {
+        checking = false
+      }
+    }, 2000)
+
+    return () => window.clearInterval(timer)
+  }, [backendReady])
 
   useEffect(() => {
     let disposed = false
@@ -223,13 +241,14 @@ function DesktopApp() {
     { id: "graph", label: "知识图谱", icon: ChartNetwork },
     { id: "settings", label: "设置", icon: Settings2 },
   ]
-  const debugNavItems: { id: Section; label: string; icon: LucideIcon }[] = [
-    { id: "connectionDebug", label: "连接调试", icon: KeyRound },
-    { id: "vectorDebug", label: "向量库", icon: Database },
-  ]
-  if (SHOW_OCR_DEBUG) {
-    debugNavItems.push({ id: "ocrDebug", label: "OCR 调试", icon: Settings2 })
-  }
+  const debugNavItems: { id: Section; label: string; icon: LucideIcon }[] =
+    SHOW_DEVELOPMENT_TOOLS
+      ? [
+          { id: "connectionDebug", label: "连接调试", icon: KeyRound },
+          { id: "vectorDebug", label: "向量库", icon: Database },
+          { id: "ocrDebug", label: "OCR 调试", icon: Settings2 },
+        ]
+      : []
 
   const saveToken = async () => {
     const token = tokenInput.trim()
@@ -333,7 +352,7 @@ function DesktopApp() {
             setNoteAdapter={setNoteAdapter}
           />
         )}
-        {section === "connectionDebug" && (
+        {SHOW_DEVELOPMENT_TOOLS && section === "connectionDebug" && (
           <ConnectionDebugSection
             desktopStatus={desktopStatus}
             backendReady={backendReady}
@@ -344,8 +363,8 @@ function DesktopApp() {
             onClearToken={clearToken}
           />
         )}
-        {section === "vectorDebug" && <VectorDebugSection />}
-        {section === "ocrDebug" && SHOW_OCR_DEBUG && <OcrDebugSection />}
+        {SHOW_DEVELOPMENT_TOOLS && section === "vectorDebug" && <VectorDebugSection />}
+        {SHOW_DEVELOPMENT_TOOLS && section === "ocrDebug" && <OcrDebugSection />}
         </main>
       </div>
     </div>
