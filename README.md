@@ -1,123 +1,152 @@
 # TabKeep
 
-TabKeep 是一个本地优先的浏览器与桌面知识工作流工具。它把标签页整理、网页收藏、桌面翻译、OCR、笔记集成、个人知识库、RAG 问答和知识图谱放到同一个工作台里。
+TabKeep 是一个本地优先的浏览器与桌面知识工作流工具：从浏览器收集网页和标签页，把内容保存到笔记或本地知识库，再通过搜索、RAG 问答和知识图谱使用这些资料。
 
-当前项目还处在个人开发和验证阶段，适合用来学习和打磨本地 RAG 产品链路，也适合继续扩展成自己的桌面知识助手。
+项目目前处于个人开发和验证阶段。下文按仓库当前代码说明功能、运行方式和发布状态。
 
-## 主要功能
+## 功能
 
-- 浏览器标签页同步、分组和收藏。
-- 网页正文提取，并保存到本地 Markdown、Obsidian 风格目录或 SiYuan。
-- 桌面端文本翻译、截图 OCR、区域翻译和翻译调试。
-- 知识库同步、索引健康检查、混合检索和 RAG 问答。
-- 基于文档、标题、标签、概念和语义相似度的知识图谱。
-- 独立 RAG 评估台，用 Recall@K、Top1、MRR 和答案样本检查效果。
+- **浏览器扩展**：按域名整理 Chrome/Edge 标签页；可用配置的 LLM 按自定义类别分组；提取网页正文并收藏链接、全文或摘要；自动同步 Chrome 和 Edge 116+ 的原生标签组到桌面端归档。
+- **笔记集成**：将收藏保存到本地 Markdown、Obsidian/Markdown 目录或思源笔记。
+- **桌面端**：集中管理模型、分组、笔记和知识库设置；提供翻译、截图 OCR、区域翻译、便签、提醒和知识图谱等功能。
+- **知识库**：同步 Markdown/Obsidian 目录、思源笔记和 TabKeep 收藏；用 SQLite/FTS 与可选 LanceDB 向量索引进行检索，再以配置的模型生成带引用的回答。
+- **评估工具**：独立页面用于检查知识检索效果和 RAG 样本。
 
-## 项目组成
+## 架构
 
-```text
+extension/ 是 Chrome MV3 扩展，支持 Chrome 和 Edge 116+，负责浏览器标签页和网页内容采集。它向本机 FastAPI 服务 38471 发送分类、配置、笔记和标签组归档请求；桌面能力可选地通过 38472 本机服务调用。
+
+desktop/ 使用 Tauri 2、React 和 Rust。React 提供主要界面，Rust 负责桌面窗口、托盘、快捷键、截图等系统集成。发布版桌面端会启动单独打包的 FastAPI 后端 sidecar。
+
+backend/ 保存配置和笔记，运行知识同步、索引、检索、RAG 与 OCR 模型 API。知识库数据默认存放在本机；模型调用由用户配置的 API 提供方执行。
+
+主要目录：
+
+~~~text
 TabKeep/
-├── backend/    # FastAPI 后端，负责数据、同步、索引、检索、RAG 和图谱
-├── desktop/    # Tauri 2 + React 桌面端，负责主要用户界面
-├── extension/  # Plasmo Chrome 扩展，负责浏览器侧捕获和收藏
-├── scripts/    # 开发启动脚本和辅助工具
-└── docs/       # 配置、发布和使用相关说明
-```
+├── backend/                  # FastAPI API、笔记适配器、知识库与 OCR 服务
+├── desktop/                  # Tauri 2 + React + Rust 桌面应用
+├── extension/                # Chrome MV3 扩展
+├── scripts/                  # Windows 开发启动、打包和验收脚本
+├── AGENTS.md                 # Agent 项目边界与工作说明
+├── claude.md                 # 代码规范
+├── design.md                 # 设计工作参考
+└── README.md                 # 本文件
+~~~
 
-更细的代码入口说明见 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)。
+## 开发环境
 
-## 快速启动
+根目录的一键启动和正式打包脚本针对 Windows 编写。建议准备：
 
-### 环境要求
+- Windows 10/11、PowerShell 和 Conda；开发启动脚本会激活名为 tabkeep 的 Conda 环境。
+- Python 3.10+、Node.js、pnpm。
+- Rust 和 Tauri 2 工具链；Windows 桌面构建需要 Visual Studio C++ Build Tools。
+- Chrome，用于加载和调试扩展。
+- 可选：思源笔记、Obsidian/Markdown 目录，以及兼容 OpenAI API 的模型服务。语义检索默认使用 SiliconFlow API 地址和 BAAI/bge-m3 模型；API Key 在桌面端知识库设置中配置。
 
-- Windows + PowerShell
-- Node.js + pnpm
-- Python 3.10+
-- Rust 和 Tauri 2 工具链
-- 可选：SiYuan、Obsidian/Markdown 笔记目录
-- 可选：SiliconFlow API Key，用于 embedding、rerank 和模型调用
+## 安装依赖
 
-### 安装依赖
+在 Windows PowerShell 中从仓库根目录运行：
 
-```powershell
-cd TabKeep
-
-pip install -r backend/requirements.txt
+~~~powershell
+conda create -n tabkeep python=3.10
+conda activate tabkeep
+python -m pip install -r backend/requirements.txt
 
 cd desktop
 pnpm install
 
 cd ..\extension
 pnpm install
-```
 
-### 开发启动
+cd ..
+~~~
 
-```powershell
-cd TabKeep
+如果 Conda 环境已存在，跳过创建步骤。第一次安装依赖需要网络连接。
 
-# 日常开发：启动 backend、extension、desktop，不打开 RAG 评估台
+## 启动开发环境
+
+一键启动后端、扩展和桌面端：
+
+~~~powershell
 pnpm dev:app
+~~~
 
-# 全量开发：额外启动 RAG 评估台
+启动上述服务并额外打开 RAG 评估页面：
+
+~~~powershell
 pnpm dev
+~~~
 
-# 只启动某一部分
+仅启动一个部分：
+
+~~~powershell
 pnpm dev:backend
 pnpm dev:extension
 pnpm dev:desktop
 pnpm dev:eval
-```
+~~~
 
-默认端口：
+开发启动器会为服务打开独立 PowerShell 窗口。它使用 Conda 环境 tabkeep 运行后端。手动启动后端时，可在 backend/ 目录运行 python main.py。桌面 Tauri 开发构建还需要 Windows MSVC 工具链。
 
-- Backend API: `http://127.0.0.1:38471`
-- Desktop local service: `http://127.0.0.1:38472`
-- RAG Eval: `http://127.0.0.1:5175/eval.html`
+| 服务 | 默认地址 | 说明 |
+| --- | --- | --- |
+| FastAPI 后端 | http://127.0.0.1:38471 | 配置、笔记、知识库、检索和问答 |
+| Tauri 本机服务 | http://127.0.0.1:38472 | 桌面翻译、截图/OCR 和扩展桌面集成 |
+| 扩展开发服务 | http://localhost:3000 | Plasmo 开发页面 |
+| RAG 评估页面 | http://127.0.0.1:5175/eval.html | 独立的检索评估工作台 |
 
-## 基础配置
+## 首次配置
 
-普通使用优先在桌面端完成配置：
+在桌面端设置中配置：
 
-- 设置：模型 API、标签分组、笔记集成。
-- 知识库：启用索引、填写 SiliconFlow API Key、配置同步来源。
-- 知识图谱：查看文档关系、主题目录和相似笔记。
+1. **模型 API**：填写兼容 OpenAI Chat Completions 的模型名、Base URL 和 API Key，用于分类、摘要、问答和 OpenAI 兼容翻译。其他翻译供应商及凭据在翻译设置中单独配置。
+2. **标签分类**：创建 AI 分组使用的类别名称和说明。
+3. **笔记集成**：选择本地 Markdown、Obsidian/Markdown 文件夹或思源笔记，并设置默认保存位置；思源需要本机 API 地址和 Token。
+4. **知识库**：配置 Markdown/Obsidian 路径；如需语义检索，再启用 embedding 并填写 API Key。没有 embedding 配置时仍可使用全文检索。启用 embedding 后，重排会沿用该 API 地址和 Key，并使用服务内置模型。
 
-更多配置项见 [docs/CONFIGURATION.md](docs/CONFIGURATION.md)。
+启用语义检索、重排或 RAG 问答时，相关文本会发送到对应的模型服务。请根据自己的数据要求选择服务并配置 API。
 
-## 发布前检查
+## 数据与限制
 
-常用验证命令：
+- 源码运行时，后端默认数据目录是 backend/data/；可用 TABKEEP_DATA_DIR 更改。安装版由桌面端放入操作系统的 TabKeep 应用数据目录。配置、知识库数据库、向量索引和本地 Markdown 笔记保存在该数据目录下。
+- 配置文件可能含模型 API Key、思源 Token 和本机 API Token。请勿把运行数据、密钥、日志、网页内容或截图提交到仓库。
+- 标签快照在扩展端缓存到 IndexedDB；后端 /tabs 接口当前仅使用内存，后端重启后数据会清空，它不是持久化的标签历史。
+- 标签归档只记录 Chrome/Edge 普通窗口中的用户原生标签组，包括组名、颜色、折叠状态和网页 URL/标题/图标；扩展自动创建的域名/AI 分组不纳入归档。数据保存在本机 SQLite。关闭浏览器中的标签组不会删除归档；恢复会按 URL 重新加载页面，不保存网页正文、滚动位置或表单状态。浏览器重启后原生组 ID 会变化；TabKeep 仅在来源浏览器实例、组名、颜色和标签 URL 能唯一匹配时续接归档或离线删除命令。若有多个相同候选组，会保留为独立记录，不自动关闭。
+- 标签展示和本地分组不依赖桌面端。AI 分类、后端笔记保存和知识库功能需要后端；翻译、截图和其他桌面能力需要桌面端运行。
+- 本机服务默认仅监听 127.0.0.1。网页正文、笔记、截图、OCR 文本和剪贴板都按敏感数据处理；模型调用会把相应内容发送到用户配置的服务。桌面端启动时会检查每日诗笺；没有有效缓存时，会向今日诗词服务获取公开诗句，不会随请求上传本地笔记或网页内容。
 
-```powershell
-cd TabKeep\desktop
+## 构建与验证
+
+桌面 Web UI 和扩展构建：
+
+~~~powershell
+cd desktop
 pnpm build
 
 cd ..\extension
 pnpm build
+~~~
 
-cd ..
-pnpm test:backend
-```
+后端单元测试：
 
-完整发布检查清单见 [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)。
+~~~powershell
+cd backend
+python -m unittest discover -s tests
+~~~
 
-## 数据与隐私
+根目录 pnpm test:backend 目前固定使用开发机上的 Python 绝对路径，不适合作为通用测试命令。跨端发布前还要在目标操作系统检查桌面系统能力和扩展连接状态。
 
-TabKeep 默认只绑定本机地址 `127.0.0.1`。网页正文、截图、OCR 文本、笔记内容和 API Key 都应视为敏感数据。
+## 发布平台
 
-仓库已忽略 `backend/data/`、`backend/logs/`、`desktop/dist/`、`desktop/src-tauri/target/`、`extension/build/` 等运行时和构建产物。提交前请确认没有把本地知识库、密钥、截图或日志带入版本库。
+当前仓库提供的正式安装包流程是 Windows：
 
-## 当前状态
+~~~powershell
+pnpm release:windows
+~~~
 
-已具备较完整的本地 RAG 闭环：
+该流程先用 PyInstaller 生成 Windows 后端 .exe sidecar，再用 Tauri 和 MSVC 打包 Windows 安装程序；pnpm accept:windows 用于 Windows 安装验收。
 
-1. 多来源同步。
-2. paragraph/chunk 索引。
-3. SQLite + FTS + LanceDB。
-4. hybrid recall + rerank。
-5. RAG 问答。
-6. 检索与答案评估。
-7. 知识图谱浏览。
+Tauri 配置允许通用 bundle target，但仓库的开发启动器、sidecar 构建和正式发布脚本仍是 Windows 专用流程。当前没有已配置并验证的 macOS 安装包流程。要发布 macOS，需要在 macOS 环境构建对应架构的后端 sidecar、处理平台专属能力并完成安装验证。
 
-接下来更适合继续补齐：首次使用引导、打包发布流程、错误状态文案、配置迁移和端到端测试。
+浏览器扩展单独构建和分发，不包含在桌面安装程序里。扩展构建和加载步骤见 extension/README.md。

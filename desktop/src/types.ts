@@ -43,6 +43,45 @@ export type TabGroupColor =
   | "cyan"
   | "orange"
 
+export interface TabGroupArchiveTab {
+  url: string
+  title: string
+  favIconUrl?: string | null
+  index: number
+  active: boolean
+}
+
+export interface TabGroupArchive {
+  id: string
+  browserInstanceId: string
+  browser: "chrome" | "edge"
+  title: string
+  color: TabGroupColor
+  collapsed: boolean
+  tabs: TabGroupArchiveTab[]
+  isOpen: boolean
+  browserOnline: boolean
+  browserReady: boolean
+  updatedAt: string
+}
+
+export interface TabGroupArchiveList {
+  items: TabGroupArchive[]
+}
+
+export type TabGroupRestoreTarget = "current" | "new"
+
+export interface TabGroupCommandResponse {
+  commandId: string
+  status: "queued"
+}
+
+export interface TabGroupDeleteResponse {
+  deleted: boolean
+  status: "deleted" | "queued"
+  commandId?: string | null
+}
+
 export interface TabGroupStyleOptions {
   colorMode: "random" | "uniform"
   uniformColor: TabGroupColor

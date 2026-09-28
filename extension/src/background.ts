@@ -19,6 +19,11 @@ import { groupTabsByDomain } from "./utils/tabUtils"
 import { saveToIDB } from "./utils/indexedDB"
 import type { TabData, TabGroupColor, TabGroupStyleOptions } from "./types"
 import { apiFetch, captureWithDesktop, ensureApiToken, ocrWithDesktop } from "./config/api"
+import {
+  activateTabGroupArchiveBridge,
+  markTabKeepManagedGroup,
+  registerTabGroupArchiveBridge,
+} from "./services/tabGroupArchive"
 
 
 // ─────────────────────────────────────────────────────────────
@@ -244,6 +249,11 @@ async function applyGrouping(
         color,
         collapsed: options.collapsedByDefault
       })
+      try {
+        await markTabKeepManagedGroup(groupId)
+      } catch (e) {
+        console.warn(`[TabKeep] 标记自建标签组失败:`, e)
+      }
       console.log(`[TabKeep] 已建组 "${groupName}" (${valid.length} 个 tab, 颜色 ${color})`)
     } catch (e) {
       console.warn(`[TabKeep] 建组 "${groupName}" 失败:`, e)
@@ -801,6 +811,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 const initializeApiToken = async () => {
   try {
     const token = await ensureApiToken()
+    activateTabGroupArchiveBridge()
     const res = await apiFetch("/config/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -818,6 +829,7 @@ const initializeApiToken = async () => {
 }
 
 // 入口
+registerTabGroupArchiveBridge()
 saveTabsData()
 initializeApiToken().then(syncToBackend)
 

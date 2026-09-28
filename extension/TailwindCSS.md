@@ -1,330 +1,40 @@
 ---
 name: tailwind
-description: "Use when styling with Tailwind CSS, editing tailwind.config.ts, tailwind.config.js, @tailwind directives, utility classes, responsive layouts, @apply, cn(), @theme config, dark mode, or forms."
+description: "TabKeep 扩展的 Tailwind CSS 规范；本项目目前使用 Tailwind CSS 3。"
 ---
 
-# Tailwind CSS v4 Skill
+# 扩展端 Tailwind CSS 规范
 
-<workflow>
+本指南只适用于 extension/。扩展依赖 tailwindcss@3，配置文件为 tailwind.config.js，全局样式入口为 src/style.css。桌面端有自己的样式入口和构建配置。
 
-## Quick Reference
+## 当前配置
 
-### Tailwind v4 CSS-Based Config
+- Tailwind 扫描范围是 src/**/*.{ts,tsx}；运行时生成的类名不要拼接成 Tailwind 无法静态识别的字符串。
+- 设计 Token 在 src/style.css 的 CSS 自定义属性中定义，并由 tailwind.config.js 映射到语义色。
+- 基础样式与复用类放在 src/style.css；单个组件的布局优先使用 utility classes。
+- 类名合并 helper 是 src/lib/utils.ts 中的 cn()。
+- 当前按钮组件在 src/components/ui/button.tsx，需要相同交互样式时优先复用。
 
-<example>
+## 约定
 
-```css
-/* styles.css */
-@import "tailwindcss";
+- 沿用语义色，例如 bg-background、text-foreground、border-border，避免在新组件里复制一套颜色值。
+- 重复出现且有产品含义的模式，可在 @layer components 中定义短小的 tk-* 类。
+- 为响应式布局和交互状态提供明确的 Tailwind class；保持扩展弹窗紧凑，并检查窄窗口下的溢出。
+- 不要在未升级依赖和配置前使用 Tailwind CSS v4 的 @theme 或 @import "tailwindcss" 语法。现有样式入口使用 v3 的 @tailwind base、@tailwind components 和 @tailwind utilities。
+- 增加或更改 UI 时，遵循根目录 [设计参考](../design.md) 和当前扩展已有的视觉语言。
 
-@theme {
-  --color-primary: oklch(0.5 0.2 240);
-  --radius-lg: 0.5rem;
-}
-```
+## 示例
 
-</example>
+~~~tsx
+import { cn } from "../lib/utils"
 
-### Layout
-
-<example>
-
-```tsx
-// Flexbox
-<div className="flex items-center justify-between gap-4">
-
-// Grid
-<div className="grid grid-cols-3 gap-4">
-
-// Container
-<div className="container mx-auto px-4">
-```
-
-</example>
-
-### Spacing
-
-<example>
-
-```tsx
-// Padding
-<div className="p-4 px-6 py-2">
-
-// Margin
-<div className="m-4 mx-auto my-2">
-
-// Gap
-<div className="gap-4 gap-x-2 gap-y-4">
-```
-
-</example>
-
-### Typography
-
-<example>
-
-```tsx
-<h1 className="text-4xl font-bold tracking-tight">
-<p className="text-muted-foreground text-sm">
-<span className="font-medium">
-```
-
-</example>
-
-### Colors (Semantic)
-
-<example>
-
-```tsx
-// Background
-<div className="bg-background bg-primary bg-muted">
-
-// Text
-<span className="text-foreground text-primary text-muted-foreground">
-
-// Border
-<div className="border border-border border-primary">
-```
-
-</example>
-
-### Sizing
-
-<example>
-
-```tsx
-// Width/Height
-<div className="w-full h-screen w-64 h-12">
-
-// Max/Min
-<div className="max-w-md min-h-screen">
-```
-
-</example>
-
-### Borders & Shadows
-
-<example>
-
-```tsx
-<div className="rounded-lg border border-border shadow-sm">
-<div className="rounded-full">
-```
-
-</example>
-
-### Interactive States
-
-<example>
-
-```tsx
-<button className="hover:bg-primary/90 focus:ring-2 focus:ring-primary disabled:opacity-50">
-<a className="hover:underline">
-```
-
-</example>
-
-### Responsive Design
-
-<example>
-
-```tsx
-// Mobile-first breakpoints
-<div className="w-full md:w-1/2 lg:w-1/3">
-
-// Hide/show
-<div className="hidden md:block">
-<div className="block md:hidden">
-```
-
-</example>
-
-### Animation
-
-<example>
-
-```tsx
-// Built-in
-<div className="animate-spin animate-pulse animate-bounce">
-
-// Transitions
-<div className="transition-colors duration-200 ease-in-out">
-```
-
-</example>
-
-## Shadcn/ui Components
-
-<example>
-
-```tsx
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-
-// Button variants
-<Button variant="default">Primary</Button>
-<Button variant="secondary">Secondary</Button>
-<Button variant="outline">Outline</Button>
-<Button variant="ghost">Ghost</Button>
-<Button variant="destructive">Destructive</Button>
-
-// Button sizes
-<Button size="sm">Small</Button>
-<Button size="default">Default</Button>
-<Button size="lg">Large</Button>
-
-// Card
-<Card>
-  <CardHeader>
-    <CardTitle>Title</CardTitle>
-  </CardHeader>
-  <CardContent>
-    Content here
-  </CardContent>
-</Card>
-```
-
-</example>
-
-## Dark Mode
-
-<example>
-
-```tsx
-// Automatic with system preference
-<div className="bg-background text-foreground">
-
-// Force dark
-<div className="dark">
-  <div className="bg-background"> {/* Uses dark theme colors */}
-```
-
-</example>
-
-## Custom Classes with cn()
-
-<example>
-
-```tsx
-import { cn } from "@/lib/utils"
-
-interface Props {
-  className?: string
-}
-
-function Component({ className }: Props) {
+function TagPill({ className }: { className?: string }) {
   return (
-    <div className={cn(
-      "flex items-center p-4 rounded-lg",
-      "bg-background border border-border",
-      className
-    )}>
-      Content
-    </div>
+    <span className={cn("flex items-center gap-2 rounded-md border border-border bg-card p-3", className)}>
+      <span className="text-sm text-muted-foreground">标签页</span>
+    </span>
   )
 }
-```
+~~~
 
-</example>
-
-## Form Styling
-
-<example>
-
-```tsx
-<form className="space-y-4">
-  <div className="space-y-2">
-    <label className="text-sm font-medium">Email</label>
-    <Input type="email" placeholder="email@example.com" />
-  </div>
-  <Button type="submit" className="w-full">
-    Submit
-  </Button>
-</form>
-```
-
-</example>
-
-## Common Patterns
-
-### Card with Actions
-
-<example>
-
-```tsx
-<Card>
-  <CardHeader className="flex flex-row items-center justify-between">
-    <CardTitle>Title</CardTitle>
-    <Button variant="ghost" size="sm">Action</Button>
-  </CardHeader>
-  <CardContent className="space-y-4">
-    {/* Content */}
-  </CardContent>
-</Card>
-```
-
-</example>
-
-### Responsive Grid
-
-<example>
-
-```tsx
-<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-  {items.map(item => (
-    <Card key={item.id}>...</Card>
-  ))}
-</div>
-```
-
-</example>
-
-### Loading State
-
-<example>
-
-```tsx
-<Button disabled={isLoading}>
-  {isLoading ? (
-    <>
-      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-      Loading...
-    </>
-  ) : (
-    'Submit'
-  )}
-</Button>
-```
-
-</example>
-
-</workflow>
-
-## Official References
-
-- <https://tailwindcss.com/docs>
-- <https://tailwindcss.com/docs/installation>
-- <https://tailwindcss.com/blog/tailwindcss-v4>
-- <https://tailwindcss.com/docs/upgrade-guide>
-- <https://github.com/tailwindlabs/tailwindcss/releases>
-- <https://ui.shadcn.com/docs>
-
-## Shared Styleguide Baseline
-
-- Use shared styleguides for generic language/framework rules to reduce duplication in this skill.
-- [General Principles](https://github.com/cofin/flow/blob/main/templates/styleguides/general.md)
-- [Tailwind and Shadcn](https://github.com/cofin/flow/blob/main/templates/styleguides/frameworks/tailwind.md)
-- Keep this skill focused on tool-specific workflows, edge cases, and integration details.
-
-<guardrails>
-## Guardrails
-
-Add guardrails instructions here.
-</guardrails>
-
-<validation>
-## Validation
-
-Add validation instructions here.
-</validation>
+修改后在 extension/ 运行 pnpm build，确认 Tailwind 扫描到新增组件所用的类。

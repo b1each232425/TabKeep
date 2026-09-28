@@ -64,7 +64,7 @@ export async function ensureDesktopApiToken(): Promise<string> {
 }
 
 export async function backendRequest<T>(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -155,7 +155,7 @@ function isTauriRuntime(): boolean {
 }
 
 async function browserBackendRequest<T>(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
