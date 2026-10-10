@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "skillName": "mysql-interview-notes",
+  "skillVersion": "0.2.0",
+  "knowledgeVersion": "2026-09-29T17:09:11+08:00",
+  "generatedAt": "2026-09-29T17:09:11+08:00",
+  "generator": "TabKeep standalone skill exporter",
+  "sourceCount": 13,
+  "blockCount": 113,
+  "contentHash": "85cce8aa3b83387ef1ec413a96adbd01eabcfab8b235d48cb64cb25002ff4893",
+  "runtimeDependencies": [],
+  "triggers": [
+    "InnoDB 行存储、数据页与记录结构",
+    "B+ 树、索引选择、回表与索引失效",
+    "事务隔离、MVCC、幻读与锁",
+    "SQL 执行流程、COUNT 与分页优化"
+  ],
+  "capabilities": [
+    "从知识索引定位相关来源段落，并基于证据组织回答与引用。",
+    "区分笔记明确记载与通用补充；证据不足时明确拒答或说明缺失。"
+  ],
+  "goal": "基于精选的个人 MySQL 技术笔记，为面试与日常排查问题提供可溯源回答，并在笔记缺少证据时明确说明。",
+  "selection": {}
+}

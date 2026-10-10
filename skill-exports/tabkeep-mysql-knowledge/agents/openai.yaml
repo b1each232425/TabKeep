@@ -1,0 +1,7 @@
+interface:
+  display_name: "TabKeep MySQL 知识"
+  short_description: "基于个人 MySQL 知识笔记回答问题并核验来源依据"
+  default_prompt: "Use $tabkeep-mysql-knowledge to answer this MySQL question and cite the bundled evidence."
+
+policy:
+  allow_implicit_invocation: true

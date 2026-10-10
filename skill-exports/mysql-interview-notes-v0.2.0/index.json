@@ -1,0 +1,2510 @@
+{
+  "schemaVersion": 1,
+  "knowledgeVersion": "2026-09-29T17:09:11+08:00",
+  "contentHash": "85cce8aa3b83387ef1ec413a96adbd01eabcfab8b235d48cb64cb25002ff4893",
+  "documents": [
+    {
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "b11717fdea04958a4cbe7e6480f241cc27ecd164",
+      "blockIds": [
+        "block-001-000",
+        "block-001-001",
+        "block-001-002",
+        "block-001-003",
+        "block-001-004",
+        "block-001-005",
+        "block-001-006",
+        "block-001-007",
+        "block-001-008",
+        "block-001-009",
+        "block-001-010",
+        "block-001-011",
+        "block-001-012"
+      ]
+    },
+    {
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "710b042e1593476e6ffcdd68b51fff0230e67773",
+      "blockIds": [
+        "block-002-000",
+        "block-002-001",
+        "block-002-002",
+        "block-002-003",
+        "block-002-004",
+        "block-002-005",
+        "block-002-006",
+        "block-002-007"
+      ]
+    },
+    {
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "3b9632e738b7f80578dc5b858d123a2d140389d8",
+      "blockIds": [
+        "block-003-000",
+        "block-003-001",
+        "block-003-002",
+        "block-003-003",
+        "block-003-004",
+        "block-003-005",
+        "block-003-006",
+        "block-003-007",
+        "block-003-008"
+      ]
+    },
+    {
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "34ef759e004f244713bd74f9d2b768e6952a4f59",
+      "blockIds": [
+        "block-004-000",
+        "block-004-001",
+        "block-004-002",
+        "block-004-003",
+        "block-004-004",
+        "block-004-005",
+        "block-004-006",
+        "block-004-007",
+        "block-004-008"
+      ]
+    },
+    {
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "e00b8efe14a7a275c2d47f0306dbdf1b9c9acdd1",
+      "blockIds": [
+        "block-005-000",
+        "block-005-001",
+        "block-005-002",
+        "block-005-003",
+        "block-005-004",
+        "block-005-005",
+        "block-005-006",
+        "block-005-007"
+      ]
+    },
+    {
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "title": "MySQL 是怎么加锁的？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "283105c14bf07d82127ed78db0a7408395c09d7a",
+      "blockIds": [
+        "block-006-000",
+        "block-006-001",
+        "block-006-002",
+        "block-006-003",
+        "block-006-004",
+        "block-006-005",
+        "block-006-006",
+        "block-006-007"
+      ]
+    },
+    {
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "title": "MySQL 有哪些锁？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "f24cd258a9cf50d83d57bc63de9fbc1abc74f104",
+      "blockIds": [
+        "block-007-000",
+        "block-007-001",
+        "block-007-002",
+        "block-007-003",
+        "block-007-004",
+        "block-007-005",
+        "block-007-006",
+        "block-007-007"
+      ]
+    },
+    {
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "8b47da43f192900f88ef95b8fdffb0fa0d7b3a82",
+      "blockIds": [
+        "block-008-000",
+        "block-008-001",
+        "block-008-002",
+        "block-008-003",
+        "block-008-004",
+        "block-008-005",
+        "block-008-006",
+        "block-008-007"
+      ]
+    },
+    {
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "3affa12b0cdd919276e58849990fbd6c950d4448",
+      "blockIds": [
+        "block-009-000",
+        "block-009-001",
+        "block-009-002",
+        "block-009-003",
+        "block-009-004",
+        "block-009-005",
+        "block-009-006",
+        "block-009-007"
+      ]
+    },
+    {
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "title": "从数据页的角度看 B+ 树 | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "f7fc6c70d6bb6e6e869d3feae84a10befd8618c5",
+      "blockIds": [
+        "block-010-000",
+        "block-010-001",
+        "block-010-002",
+        "block-010-003",
+        "block-010-004",
+        "block-010-005",
+        "block-010-006",
+        "block-010-007"
+      ]
+    },
+    {
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "a0e19fd44a00af3b544a39a5b333622d1e549549",
+      "blockIds": [
+        "block-011-000",
+        "block-011-001",
+        "block-011-002",
+        "block-011-003",
+        "block-011-004",
+        "block-011-005",
+        "block-011-006",
+        "block-011-007"
+      ]
+    },
+    {
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "title": "索引失效有哪些？ | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "4ee17fdf52d3121675d4704de38333c68ea4d023",
+      "blockIds": [
+        "block-012-000",
+        "block-012-001",
+        "block-012-002",
+        "block-012-003",
+        "block-012-004",
+        "block-012-005",
+        "block-012-006",
+        "block-012-007",
+        "block-012-008",
+        "block-012-009"
+      ]
+    },
+    {
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "title": "索引常见面试题 | 小林coding",
+      "sourceType": "markdown",
+      "contentHash": "e4a5d9397fa23f24655705a642cc89cf23ef1934",
+      "blockIds": [
+        "block-013-000",
+        "block-013-001",
+        "block-013-002",
+        "block-013-003",
+        "block-013-004",
+        "block-013-005",
+        "block-013-006",
+        "block-013-007"
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "block-001-000",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-000",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p0"
+    },
+    {
+      "id": "block-001-001",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-001",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p1"
+    },
+    {
+      "id": "block-001-002",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？",
+      "keywords": [
+        "InnoDB",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-002",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p2"
+    },
+    {
+      "id": "block-001-003",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？ / count() 是什么？",
+      "keywords": [
+        "SQL",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好",
+        "是什么"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-003",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p3"
+    },
+    {
+      "id": "block-001-004",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？ / count(主键字段) 执行过程是怎样的？",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "SQL",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好",
+        "主键字段",
+        "执行过程是怎样的"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-004",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p4"
+    },
+    {
+      "id": "block-001-005",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？ / count(1) 执行过程是怎样的？",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好",
+        "执行过程是怎样的"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-005",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p5"
+    },
+    {
+      "id": "block-001-006",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？ / count(\\*) 执行过程是怎样的？",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "SQL",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好",
+        "执行过程是怎样的"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-006",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p6"
+    },
+    {
+      "id": "block-001-007",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？ / count(字段) 执行过程是怎样的？",
+      "keywords": [
+        "索引",
+        "SQL",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好",
+        "字段",
+        "执行过程是怎样的"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-007",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p7"
+    },
+    {
+      "id": "block-001-008",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 哪种 count 性能最好？ / 小结",
+      "keywords": [
+        "索引",
+        "二级索引",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "哪种",
+        "性能最好",
+        "小结"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-008",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p8"
+    },
+    {
+      "id": "block-001-009",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 为什么要通过遍历的方式来计数？",
+      "keywords": [
+        "InnoDB",
+        "事务",
+        "锁",
+        "MVCC",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "为什么要通过遍历的方式来",
+        "计数"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-009",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p9"
+    },
+    {
+      "id": "block-001-010",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 如何优化 count(\\*)？",
+      "keywords": [
+        "索引",
+        "二级索引",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "如何优化"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-010",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p10"
+    },
+    {
+      "id": "block-001-011",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 如何优化 count(\\*)？ / 第一种，近似值",
+      "keywords": [
+        "索引",
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "如何优化",
+        "第一种",
+        "近似值"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-011",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p11"
+    },
+    {
+      "id": "block-001-012",
+      "title": "count(*) 和 count(1) 有什么区别？哪个性能最好？ | 小林coding / 如何优化 count(\\*)？ / 第二种，额外表保存计数值",
+      "keywords": [
+        "count",
+        "coding",
+        "有什么区别",
+        "哪个性能最好",
+        "小林",
+        "如何优化",
+        "第二种",
+        "额外表保存计数值"
+      ],
+      "file": "references/count-count-1-coding.md",
+      "anchor": "block-001-012",
+      "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+      "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p12"
+    },
+    {
+      "id": "block-002-000",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-000",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p0"
+    },
+    {
+      "id": "block-002-001",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-001",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p1"
+    },
+    {
+      "id": "block-002-002",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "SQL",
+        "VARCHA",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-002",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p2"
+    },
+    {
+      "id": "block-002-003",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "SQL",
+        "VARCHA",
+        "TEXT",
+        "BLOB",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-003",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p3"
+    },
+    {
+      "id": "block-002-004",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "B+树",
+        "SQL",
+        "VARCHA",
+        "TEXT",
+        "BLOB",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-004",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p4"
+    },
+    {
+      "id": "block-002-005",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding / 以后可复用点",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "MVCC",
+        "SQL",
+        "VARCHA",
+        "TEXT",
+        "BLOB",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林",
+        "以后可复用点"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-005",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p5"
+    },
+    {
+      "id": "block-002-006",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "SQL",
+        "VARCHA",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-006",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p6"
+    },
+    {
+      "id": "block-002-007",
+      "title": "MySQL 一行记录是怎么存储的？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "coding",
+        "一行记录是怎么存储的",
+        "小林",
+        "配图"
+      ],
+      "file": "references/mysql-coding.md",
+      "anchor": "block-002-007",
+      "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+      "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p7"
+    },
+    {
+      "id": "block-003-000",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "分页",
+        "SQL",
+        "coding",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-000",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p0"
+    },
+    {
+      "id": "block-003-001",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "分页",
+        "SQL",
+        "coding",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-001",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p1"
+    },
+    {
+      "id": "block-003-002",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 两种limit的执行过程",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "B+树",
+        "索引",
+        "回表",
+        "分页",
+        "SQL",
+        "coding",
+        "limit",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "两种",
+        "的执行过程"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-002",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p2"
+    },
+    {
+      "id": "block-003-003",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 两种limit的执行过程 / 基于主键索引的limit执行过程",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "分页",
+        "SQL",
+        "coding",
+        "limit",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "两种",
+        "的执行过程",
+        "基于主键索引的",
+        "执行过程"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-003",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p3"
+    },
+    {
+      "id": "block-003-004",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 两种limit的执行过程 / 基于非主键索引的limit执行过程",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "回表",
+        "分页",
+        "SQL",
+        "coding",
+        "limit",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "两种",
+        "的执行过程",
+        "基于非主键索引的",
+        "执行过程"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-004",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p4"
+    },
+    {
+      "id": "block-003-005",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 深度分页问题",
+      "keywords": [
+        "MySQL",
+        "分页",
+        "SQL",
+        "coding",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "深度分页问题"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-005",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p5"
+    },
+    {
+      "id": "block-003-006",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 深度分页问题 / 如果你是想取出全表的数据",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "分页",
+        "SQL",
+        "coding",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "深度分页问题",
+        "如果你是想取出全表的数据"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-006",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p6"
+    },
+    {
+      "id": "block-003-007",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 深度分页问题 / 如果是给用户做分页展示",
+      "keywords": [
+        "MySQL",
+        "分页",
+        "SQL",
+        "coding",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "深度分页问题",
+        "如果是给用户做分页展示"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-007",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p7"
+    },
+    {
+      "id": "block-003-008",
+      "title": "MySQL 分页有什么性能问题？怎么优化？ | 小林coding / 深度分页问题 / 总结",
+      "keywords": [
+        "MySQL",
+        "事务",
+        "隔离级别",
+        "MVCC",
+        "分页",
+        "SQL",
+        "coding",
+        "分页有什么性能问题",
+        "怎么优化",
+        "小林",
+        "深度分页问题",
+        "总结"
+      ],
+      "file": "references/mysql-coding-2.md",
+      "anchor": "block-003-008",
+      "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+      "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p8"
+    },
+    {
+      "id": "block-004-000",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-000",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p0"
+    },
+    {
+      "id": "block-004-001",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-001",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p1"
+    },
+    {
+      "id": "block-004-002",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 实验",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "VARCHA",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "实验"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-002",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p2"
+    },
+    {
+      "id": "block-004-003",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 单表数量限制",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "VARCHA",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "单表数量限制"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-003",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p3"
+    },
+    {
+      "id": "block-004-004",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 表空间",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "表空间"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-004",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p4"
+    },
+    {
+      "id": "block-004-005",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 页的数据结构",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "页的数据结构"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-005",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p5"
+    },
+    {
+      "id": "block-004-006",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 索引的数据结构",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "索引的数据结构"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-006",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p6"
+    },
+    {
+      "id": "block-004-007",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 单表建议值",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "单表建议值"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-007",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p7"
+    },
+    {
+      "id": "block-004-008",
+      "title": "MySQL 单表不要超过 2000W 行，靠谱吗？ | 小林coding / 总结",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "单表不要超过",
+        "靠谱吗",
+        "小林",
+        "总结"
+      ],
+      "file": "references/mysql-2000w-coding.md",
+      "anchor": "block-004-008",
+      "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+      "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p8"
+    },
+    {
+      "id": "block-005-000",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "幻读",
+        "隔离级别",
+        "SQL",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-000",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p0"
+    },
+    {
+      "id": "block-005-001",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "幻读",
+        "隔离级别",
+        "SQL",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-001",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p1"
+    },
+    {
+      "id": "block-005-002",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "SQL",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-002",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p2"
+    },
+    {
+      "id": "block-005-003",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "undo log",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-003",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p3"
+    },
+    {
+      "id": "block-005-004",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "undo log",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-004",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p4"
+    },
+    {
+      "id": "block-005-005",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding / 可以怎么用",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林",
+        "可以怎么用"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-005",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p5"
+    },
+    {
+      "id": "block-005-006",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "undo log",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-006",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p6"
+    },
+    {
+      "id": "block-005-007",
+      "title": "MySQL 可重复读隔离级别，完全解决幻读了吗？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "幻读",
+        "隔离级别",
+        "SQL",
+        "coding",
+        "可重复读隔离级别",
+        "完全解决幻读了吗",
+        "小林",
+        "配图"
+      ],
+      "file": "references/mysql-coding-3.md",
+      "anchor": "block-005-007",
+      "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+      "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p7"
+    },
+    {
+      "id": "block-006-000",
+      "title": "MySQL 是怎么加锁的？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "锁",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-000",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p0"
+    },
+    {
+      "id": "block-006-001",
+      "title": "MySQL 是怎么加锁的？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "锁",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-001",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p1"
+    },
+    {
+      "id": "block-006-002",
+      "title": "MySQL 是怎么加锁的？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "锁",
+        "隔离级别",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-002",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p2"
+    },
+    {
+      "id": "block-006-003",
+      "title": "MySQL 是怎么加锁的？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "幻读",
+        "隔离级别",
+        "快照读",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-003",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p3"
+    },
+    {
+      "id": "block-006-004",
+      "title": "MySQL 是怎么加锁的？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "二级索引",
+        "事务",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "快照读",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-004",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p4"
+    },
+    {
+      "id": "block-006-005",
+      "title": "MySQL 是怎么加锁的？ | 小林coding / 可以怎么用",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "事务",
+        "锁",
+        "record lock",
+        "幻读",
+        "隔离级别",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林",
+        "可以怎么用"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-005",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p5"
+    },
+    {
+      "id": "block-006-006",
+      "title": "MySQL 是怎么加锁的？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-006",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p6"
+    },
+    {
+      "id": "block-006-007",
+      "title": "MySQL 是怎么加锁的？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "锁",
+        "SQL",
+        "coding",
+        "是怎么加锁的",
+        "小林",
+        "配图"
+      ],
+      "file": "references/mysql-coding-4.md",
+      "anchor": "block-006-007",
+      "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+      "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p7"
+    },
+    {
+      "id": "block-007-000",
+      "title": "MySQL 有哪些锁？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "锁",
+        "SQL",
+        "coding",
+        "有哪些锁",
+        "小林"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-000",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p0"
+    },
+    {
+      "id": "block-007-001",
+      "title": "MySQL 有哪些锁？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "锁",
+        "SQL",
+        "coding",
+        "有哪些锁",
+        "小林"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-001",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p1"
+    },
+    {
+      "id": "block-007-002",
+      "title": "MySQL 有哪些锁？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "锁",
+        "SQL",
+        "coding",
+        "有哪些锁",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-002",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p2"
+    },
+    {
+      "id": "block-007-003",
+      "title": "MySQL 有哪些锁？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "MVCC",
+        "快照读",
+        "死锁",
+        "SQL",
+        "binlog",
+        "coding",
+        "有哪些锁",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-003",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p3"
+    },
+    {
+      "id": "block-007-004",
+      "title": "MySQL 有哪些锁？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "SQL",
+        "binlog",
+        "coding",
+        "有哪些锁",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-004",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p4"
+    },
+    {
+      "id": "block-007-005",
+      "title": "MySQL 有哪些锁？ | 小林coding / 可以怎么用",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "幻读",
+        "MVCC",
+        "SQL",
+        "binlog",
+        "coding",
+        "有哪些锁",
+        "小林",
+        "可以怎么用"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-005",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p5"
+    },
+    {
+      "id": "block-007-006",
+      "title": "MySQL 有哪些锁？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "gap lock",
+        "record lock",
+        "幻读",
+        "SQL",
+        "binlog",
+        "coding",
+        "有哪些锁",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-006",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p6"
+    },
+    {
+      "id": "block-007-007",
+      "title": "MySQL 有哪些锁？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "锁",
+        "SQL",
+        "coding",
+        "有哪些锁",
+        "小林",
+        "配图"
+      ],
+      "file": "references/mysql-coding-5.md",
+      "anchor": "block-007-007",
+      "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+      "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p7"
+    },
+    {
+      "id": "block-008-000",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-000",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p0"
+    },
+    {
+      "id": "block-008-001",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-001",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p1"
+    },
+    {
+      "id": "block-008-002",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-002",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p2"
+    },
+    {
+      "id": "block-008-003",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-003",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p3"
+    },
+    {
+      "id": "block-008-004",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "B+树",
+        "索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-004",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p4"
+    },
+    {
+      "id": "block-008-005",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding / 以后可复用点",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林",
+        "以后可复用点"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-005",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p5"
+    },
+    {
+      "id": "block-008-006",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-006",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p6"
+    },
+    {
+      "id": "block-008-007",
+      "title": "为什么 MySQL 采用 B+ 树作为索引？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "B+",
+        "coding",
+        "为什么",
+        "采用",
+        "树作为索引",
+        "小林",
+        "配图"
+      ],
+      "file": "references/mysql-b-coding.md",
+      "anchor": "block-008-007",
+      "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+      "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p7"
+    },
+    {
+      "id": "block-009-000",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "事务",
+        "隔离级别",
+        "MVCC",
+        "SQL",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-000",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p0"
+    },
+    {
+      "id": "block-009-001",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "事务",
+        "隔离级别",
+        "MVCC",
+        "SQL",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-001",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p1"
+    },
+    {
+      "id": "block-009-002",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "undo log",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-002",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p2"
+    },
+    {
+      "id": "block-009-003",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "redo log",
+        "undo log",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-003",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p3"
+    },
+    {
+      "id": "block-009-004",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "redo log",
+        "undo log",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-004",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4"
+    },
+    {
+      "id": "block-009-005",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding / 以后可复用点",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "事务",
+        "锁",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "死锁",
+        "SQL",
+        "undo log",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林",
+        "以后可复用点"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-005",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p5"
+    },
+    {
+      "id": "block-009-006",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "事务",
+        "next-key lock",
+        "幻读",
+        "隔离级别",
+        "MVCC",
+        "当前读",
+        "快照读",
+        "SQL",
+        "undo log",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-006",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p6"
+    },
+    {
+      "id": "block-009-007",
+      "title": "事务隔离级别是怎么实现的？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "事务",
+        "隔离级别",
+        "SQL",
+        "coding",
+        "事务隔离级别是怎么实现的",
+        "小林",
+        "配图"
+      ],
+      "file": "references/coding.md",
+      "anchor": "block-009-007",
+      "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+      "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p7"
+    },
+    {
+      "id": "block-010-000",
+      "title": "从数据页的角度看 B+ 树 | 小林coding",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "SQL",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-000",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p0"
+    },
+    {
+      "id": "block-010-001",
+      "title": "从数据页的角度看 B+ 树 | 小林coding",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "SQL",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-001",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p1"
+    },
+    {
+      "id": "block-010-002",
+      "title": "从数据页的角度看 B+ 树 | 小林coding / 这篇解决什么",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-002",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p2"
+    },
+    {
+      "id": "block-010-003",
+      "title": "从数据页的角度看 B+ 树 | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-003",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p3"
+    },
+    {
+      "id": "block-010-004",
+      "title": "从数据页的角度看 B+ 树 | 小林coding / 关键原文摘录",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-004",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4"
+    },
+    {
+      "id": "block-010-005",
+      "title": "从数据页的角度看 B+ 树 | 小林coding / 以后可复用点",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林",
+        "以后可复用点"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-005",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p5"
+    },
+    {
+      "id": "block-010-006",
+      "title": "从数据页的角度看 B+ 树 | 小林coding / 复习问题",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-006",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p6"
+    },
+    {
+      "id": "block-010-007",
+      "title": "从数据页的角度看 B+ 树 | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "B+",
+        "coding",
+        "从数据页的角度看",
+        "小林",
+        "配图"
+      ],
+      "file": "references/b-coding.md",
+      "anchor": "block-010-007",
+      "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+      "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p7"
+    },
+    {
+      "id": "block-011-000",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-000",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p0"
+    },
+    {
+      "id": "block-011-001",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "SQL",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-001",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p1"
+    },
+    {
+      "id": "block-011-002",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-002",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p2"
+    },
+    {
+      "id": "block-011-003",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-003",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p3"
+    },
+    {
+      "id": "block-011-004",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding / 关键原文摘录",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-004",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p4"
+    },
+    {
+      "id": "block-011-005",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding / 以后可复用点",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "Buffer Pool",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林",
+        "以后可复用点"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-005",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p5"
+    },
+    {
+      "id": "block-011-006",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "回表",
+        "SQL",
+        "Buffer Pool",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-006",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p6"
+    },
+    {
+      "id": "block-011-007",
+      "title": "执行一条 select 语句，期间发生了什么？ | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "select",
+        "coding",
+        "执行一条",
+        "语句",
+        "期间发生了什么",
+        "小林",
+        "配图"
+      ],
+      "file": "references/select-coding.md",
+      "anchor": "block-011-007",
+      "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+      "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p7"
+    },
+    {
+      "id": "block-012-000",
+      "title": "索引失效有哪些？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "索引失效有哪些",
+        "小林"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-000",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p0"
+    },
+    {
+      "id": "block-012-001",
+      "title": "索引失效有哪些？ | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "索引失效有哪些",
+        "小林"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-001",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p1"
+    },
+    {
+      "id": "block-012-002",
+      "title": "索引失效有哪些？ | 小林coding / 索引存储结构长什么样？",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "SQL",
+        "TEXT",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "索引存储结构长什么样"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-002",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p2"
+    },
+    {
+      "id": "block-012-003",
+      "title": "索引失效有哪些？ | 小林coding / 对索引使用左或者左右模糊匹配",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "对索引使用左或者左右模糊",
+        "匹配"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-003",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p3"
+    },
+    {
+      "id": "block-012-004",
+      "title": "索引失效有哪些？ | 小林coding / 对索引使用函数",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "二级索引",
+        "SQL",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "对索引使用函数"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-004",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p4"
+    },
+    {
+      "id": "block-012-005",
+      "title": "索引失效有哪些？ | 小林coding / 对索引进行表达式计算",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "对索引进行表达式计算"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-005",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p5"
+    },
+    {
+      "id": "block-012-006",
+      "title": "索引失效有哪些？ | 小林coding / 对索引隐式类型转换",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "二级索引",
+        "SQL",
+        "VARCHA",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "对索引隐式类型转换"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-006",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p6"
+    },
+    {
+      "id": "block-012-007",
+      "title": "索引失效有哪些？ | 小林coding / 联合索引非最左匹配",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "联合索引非最左匹配"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-007",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p7"
+    },
+    {
+      "id": "block-012-008",
+      "title": "索引失效有哪些？ | 小林coding / WHERE 子句中的 OR",
+      "keywords": [
+        "索引",
+        "coding",
+        "WHERE",
+        "OR",
+        "索引失效有哪些",
+        "小林",
+        "子句中的"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-008",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p8"
+    },
+    {
+      "id": "block-012-009",
+      "title": "索引失效有哪些？ | 小林coding / 总结",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "索引失效有哪些",
+        "小林",
+        "总结"
+      ],
+      "file": "references/coding-2.md",
+      "anchor": "block-012-009",
+      "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+      "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p9"
+    },
+    {
+      "id": "block-013-000",
+      "title": "索引常见面试题 | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "索引常见面试题",
+        "小林"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-000",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p0"
+    },
+    {
+      "id": "block-013-001",
+      "title": "索引常见面试题 | 小林coding",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "SQL",
+        "coding",
+        "索引常见面试题",
+        "小林"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-001",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p1"
+    },
+    {
+      "id": "block-013-002",
+      "title": "索引常见面试题 | 小林coding / 这篇解决什么",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "coding",
+        "索引常见面试题",
+        "小林",
+        "这篇解决什么"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-002",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p2"
+    },
+    {
+      "id": "block-013-003",
+      "title": "索引常见面试题 | 小林coding / 可回看摘要",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "TEXT",
+        "coding",
+        "索引常见面试题",
+        "小林",
+        "可回看摘要"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-003",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p3"
+    },
+    {
+      "id": "block-013-004",
+      "title": "索引常见面试题 | 小林coding / 关键原文摘录",
+      "keywords": [
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "TEXT",
+        "coding",
+        "索引常见面试题",
+        "小林",
+        "关键原文摘录"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-004",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4"
+    },
+    {
+      "id": "block-013-005",
+      "title": "索引常见面试题 | 小林coding / 以后可复用点",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "coding",
+        "索引常见面试题",
+        "小林",
+        "以后可复用点"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-005",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p5"
+    },
+    {
+      "id": "block-013-006",
+      "title": "索引常见面试题 | 小林coding / 复习问题",
+      "keywords": [
+        "MySQL",
+        "InnoDB",
+        "索引",
+        "聚簇索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "coding",
+        "索引常见面试题",
+        "小林",
+        "复习问题"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-006",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p6"
+    },
+    {
+      "id": "block-013-007",
+      "title": "索引常见面试题 | 小林coding / 配图",
+      "keywords": [
+        "MySQL",
+        "索引",
+        "二级索引",
+        "回表",
+        "SQL",
+        "coding",
+        "索引常见面试题",
+        "小林",
+        "配图"
+      ],
+      "file": "references/coding-3.md",
+      "anchor": "block-013-007",
+      "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+      "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p7"
+    }
+  ]
+}

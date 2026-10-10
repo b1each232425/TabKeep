@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "skillName": "tabkeep-mysql-knowledge",
+  "skillVersion": "0.1.0",
+  "knowledgeVersion": "2026-09-20T18:46:37+08:00",
+  "generatedAt": "2026-09-20T18:46:37+08:00",
+  "generator": "TabKeep standalone skill exporter",
+  "sourceCount": 10,
+  "blockCount": 82,
+  "contentHash": "49b358828ee953f27ab34a48b2d9cebd2888e15f8511ee9285fc4901f0071dd6",
+  "runtimeDependencies": [],
+  "triggers": [],
+  "capabilities": [],
+  "goal": "",
+  "selection": {}
+}
