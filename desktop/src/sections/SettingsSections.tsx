@@ -194,7 +194,7 @@ function ModelApiConfigPanel({
             className="tk-input"
             value={draft.model}
             onChange={(event) => setDraft({ ...draft, model: event.target.value })}
-            placeholder="gpt-4o-mini / MiniMax-M3"
+            placeholder="Qwen/Qwen3.5-4B"
           />
         </label>
         <label className="tk-field">
@@ -203,7 +203,7 @@ function ModelApiConfigPanel({
             className="tk-input"
             value={draft.baseURL}
             onChange={(event) => setDraft({ ...draft, baseURL: event.target.value })}
-            placeholder="https://api.openai.com/v1"
+            placeholder="https://api.siliconflow.cn/v1"
           />
         </label>
         <label className="tk-field">
@@ -215,6 +215,14 @@ function ModelApiConfigPanel({
             onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
             placeholder="sk-..."
           />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={draft.enableThinking}
+            onChange={(event) => setDraft({ ...draft, enableThinking: event.target.checked })}
+          />
+          <span>自动适配 thinking 参数</span>
         </label>
       </div>
       <div className="tk-command-bar">

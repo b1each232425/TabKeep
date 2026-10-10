@@ -9,9 +9,10 @@ import type {
 } from "../types"
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
-  model: "",
-  baseURL: "",
+  model: "Qwen/Qwen3.5-4B",
+  baseURL: "https://api.siliconflow.cn/v1",
   apiKey: "",
+  enableThinking: false,
 }
 
 export const DEFAULT_NOTE_ADAPTER: NoteAdapterConfig = {

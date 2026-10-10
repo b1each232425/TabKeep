@@ -3,18 +3,50 @@ LLM 调用统一封装。
 
 整个后端所有需要调大模型的地方(分类 / 摘要)都通过这一个 chat_completion() 走。
 - 用 OpenAI 兼容协议,所以 modelConfig.baseURL 可以指向 OpenAI / DeepSeek / MiniMax 等
-- 默认 temperature=0(确定性输出,适合分类/摘要)
-- 启用 thinking mode(adapteive):让模型先生成 <think> 块再正式回答
+- 不主动发送 temperature,让模型使用自己的默认值(兼容仅支持默认温度的推理模型)
+- 启用 thinking mode:按上游平台协议让模型先思考再正式回答
   - 上游 caller 需要在解析前用 _THINK_RE 去除 <think> 部分
 - 统一捕获鉴权 / 限流 / 网络 / API 错误,让上层用 try/except 处理
 """
 import json
 import time
+from urllib.parse import urlparse
 
 from loguru import logger
 from openai import APIConnectionError, APIError, AsyncOpenAI, AuthenticationError, RateLimitError
 
 from schemas.config import ModelConfig
+
+
+def _is_siliconflow_base_url(base_url: str) -> bool:
+    """判断是否为 SiliconFlow OpenAI 兼容端点。"""
+    return urlparse(base_url.strip()).netloc.lower() in {
+        "api.siliconflow.cn",
+        "api.siliconflow.com",
+    }
+
+
+def build_chat_completion_kwargs(
+    config: ModelConfig,
+    messages: list[dict],
+) -> dict[str, object]:
+    """构造标准 Chat Completions 参数,按配置选择性启用 thinking 扩展。
+
+    不强行发送 ``temperature=0``。部分较新的推理模型只接受默认值
+    ``temperature=1``;省略该字段可以同时兼容这类模型和 OpenAI 兼容服务。
+    """
+    kwargs: dict[str, object] = {
+        "model": config.model,
+        "messages": messages,
+    }
+    if config.enableThinking:
+        # 不同 OpenAI 兼容平台的 thinking 扩展字段并不统一，按端点自动适配。
+        # 官方 GPT 默认不发送任何 thinking 扩展，避免未知字段导致 400。
+        if _is_siliconflow_base_url(config.baseURL):
+            kwargs["extra_body"] = {"enable_thinking": True}
+        else:
+            kwargs["extra_body"] = {"thinking": {"type": "adaptive"}}
+    return kwargs
 
 
 # ─────────────────────────────────────────────────────────────
@@ -36,13 +68,7 @@ async def chat_completion(config: ModelConfig, messages: list[dict]) -> str:
     )
     start = time.time()
     try:
-        resp = await client.chat.completions.create(
-            model=config.model,
-            messages=messages,
-            temperature=0,
-            # 让模型走"先思考再回答"模式;上游解析时要去掉 <think> 块
-            extra_body={"thinking": {"type": "adaptive"}},
-        )
+        resp = await client.chat.completions.create(**build_chat_completion_kwargs(config, messages))
     except AuthenticationError as e:
         logger.error(f"LLM 鉴权失败: {e.message}")
         raise

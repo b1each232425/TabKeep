@@ -18,6 +18,7 @@ class ModelConfig(BaseModel):
     model: str                       # 模型名,如 "gpt-4" / "MiniMax-M3"
     baseURL: str                     # OpenAI 兼容 API base URL
     apiKey: str                      # 鉴权 key
+    enableThinking: bool = False     # 是否发送兼容平台的 thinking 扩展参数
 
 
 # ─────────────────────────────────────────────────────────────
