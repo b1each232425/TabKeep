@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 
 BACKEND_DIR = Path(SPEC).resolve().parent
@@ -31,6 +31,8 @@ hiddenimports += [
     "torch",
     "transformers",
 ]
+hiddenimports += collect_submodules("uvicorn.protocols.websockets")
+hiddenimports += collect_submodules("websockets")
 
 a = Analysis(
     [str(BACKEND_DIR / "main.py")],

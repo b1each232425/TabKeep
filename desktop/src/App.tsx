@@ -5,6 +5,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import type { LucideIcon } from "lucide-react"
 import {
+  Archive,
   ChartNetwork,
   Database,
   KeyRound,
@@ -53,6 +54,7 @@ import {
 import { OverviewSection } from "./sections/OverviewSection"
 import { SettingsSection } from "./sections/SettingsSections"
 import { StickyNotesSection } from "./sections/StickyNotesSection"
+import { TabGroupArchivesSection } from "./sections/TabGroupArchivesSection"
 import { StickyNoteWindow } from "./sections/stickyNotes/StickyNoteWindow"
 import { TranslateSection } from "./sections/TranslateSection"
 import { VectorDebugSection } from "./sections/VectorDebugSection"
@@ -60,6 +62,7 @@ import tabkeepIcon from "./assets/tabkeep-icon.png"
 
 type Section =
   | "overview"
+  | "tabArchives"
   | "stickyNotes"
   | "translate"
   | "knowledge"
@@ -235,6 +238,7 @@ function DesktopApp() {
 
   const navItems: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: "overview", label: "概览", icon: LayoutDashboard },
+    { id: "tabArchives", label: "标签归档", icon: Archive },
     { id: "stickyNotes", label: "便签", icon: StickyNote },
     { id: "translate", label: "翻译", icon: Languages },
     { id: "knowledge", label: "知识库", icon: Database },
@@ -335,6 +339,7 @@ function DesktopApp() {
             refreshing={refreshing}
           />
         )}
+        {section === "tabArchives" && <TabGroupArchivesSection />}
         {section === "stickyNotes" && (
           <StickyNotesSection reminderFocusKey={stickyReminderFocusKey} />
         )}
