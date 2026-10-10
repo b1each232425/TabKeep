@@ -1,0 +1,629 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "mysql-skill-ab-v0.2.0",
+  "skillVersion": "0.2.0",
+  "model": "XingChenAGI/Xing4.0-29B",
+  "apiHost": "api.siliconflow.cn",
+  "thinkingEnabled": false,
+  "maxCompletionTokens": 700,
+  "createdAt": "2026-10-01T12:55:32+08:00",
+  "protocol": {
+    "arms": [
+      "A: configured model only",
+      "B: configured model plus the same selected evidence blocks, without SKILL.md",
+      "C: configured model plus the same evidence blocks and SKILL.md"
+    ],
+    "controlledVariables": [
+      "model",
+      "question",
+      "evidence blocks for B/C",
+      "answer format"
+    ],
+    "notCovered": "Direct API prompts do not test a host application's automatic Skill discovery or trigger behavior."
+  },
+  "records": [
+    {
+      "caseId": "mysql-note-data-page-01-v2",
+      "arm": "A",
+      "output": "InnoDB 数据页默认大小是 **16KB**。\n\n数据页之间维护前后指针是为了支持 **B+ 树结构**。在 B+ 树中，所有数据都存储在叶子节点上，通过指针相互连接形成有序链表。这保证了：\n1. **高效的范围查询与顺序扫描**：例如 `SELECT ... ORDER BY` 可以通过指针直接遍历，无需回表。\n2. **页分裂与合并的快速维护**：当页满需要分裂或合并时，只需调整前后指针即可，无需移动大量数据。",
+      "latencySeconds": 14.991,
+      "promptTokens": 65,
+      "completionTokens": 620,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-data-page-01-v2",
+      "arm": "B",
+      "output": "InnoDB 的数据页默认大小是 **16KB**。\n\n数据页之间需要维护前后指针是为了让数据页之间不需要是物理上的连续的，而是逻辑上的连续（通过双向链表连接）。",
+      "latencySeconds": 10.674,
+      "promptTokens": 1168,
+      "completionTokens": 482,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-data-page-01-v2",
+      "arm": "C",
+      "output": "InnoDB 的数据页默认大小是 16KB。数据页之间需要维护前后指针，是为了让数据页之间不需要是物理上的连续的，而是逻辑上的连续。\n\n【来源：从数据页的角度看 B+ 树 | 段落：0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4 | block_id：block-010-004】",
+      "latencySeconds": 11.411,
+      "promptTokens": 1882,
+      "completionTokens": 673,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 7.933,
+      "promptTokens": 66,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-02-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 8.376,
+      "promptTokens": 1227,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-02-v2",
+      "arm": "C",
+      "output": "## InnoDB MVCC 版本链的隐藏字段\n\nInnoDB 的 MVCC 版本链由两个隐藏字段支持：\n\n### 1. trx_id（事务 ID）\n\n当一个事务对某条聚簇索引记录进行改动时，就会把该事务的事务 ID 记录在 trx_id 隐藏列里。它用于标识每条记录当前版本是由哪个事务创建的。\n\n### 2. roll_pointer（回滚指针）\n\n每次对某条聚簇索引记录进行改动时，都会把旧版本的记录写入到 undo 日志中，然后 roll_pointer 是个指针，指向每一个旧版本记录。它用于在版本链中定位旧版本记录的位置。\n\n这两个字段共同构成了版本链：新版本记录携带当前事务的 trx_id，并通过 roll_pointer 指向 undo 日志中的旧版本记录，从而形成一条从最新版本回溯到最早版本的链。\n\n【来源：事务隔离级别是怎么实现的？｜paragraph：2531ded2715a303bbc900e521c982f0d6853a511:p4｜block_id：block-009-004】",
+      "latencySeconds": 8.723,
+      "promptTokens": 1941,
+      "completionTokens": 471,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-index-interview-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 13.899,
+      "promptTokens": 60,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-index-interview-01-v2",
+      "arm": "B",
+      "output": "**回表**：在二级索引的 B+Tree 中只能查到主键值，要获取实际数据，需要再查主键索引的 B+Tree（即回表），也就是要查两个 B+Tree 才能查到数据。\n\n**覆盖索引**：当查询条件中包含的列都在二级索引的 B+Tree 中有对应的数据时，可以直接从二级索引的 B+Tree 中获取结果，无需再回主键索引，也就是只需要查一个 B+Tree 就能找到数据。\n\n> 引用：block_id: `block-013-004`, paragraph_id: `7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4`",
+      "latencySeconds": 12.04,
+      "promptTokens": 1140,
+      "completionTokens": 686,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-index-interview-01-v2",
+      "arm": "C",
+      "output": "## 回表\n\n回表是指查询数据时，需要查两个 B+Tree 才能查到数据的过程。具体来说：\n\n- **主键索引（聚簇索引）**：B+Tree 的叶子节点直接存放实际数据，所有完整用户记录都存放在主键索引的 B+Tree 的叶子节点里。\n- **二级索引（辅助索引）**：B+Tree 的叶子节点存放的是主键值，而不是实际数据。\n\n因此，当通过二级索引查询时，需要先通过二级索引找到对应的主键值，再通过主键值去聚簇索引（主键索引）中查找实际数据，这个过程就叫「回表」。\n\n【来源：block-013-004｜段落：7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4】\n\n## 覆盖索引\n\n覆盖索引是指这种在二级索引的 B+Tree 就能查询到结果的过程，也就是只需要查一个 B+Tree 就能找到数据。\n\n【来源：block-013-004｜段落：7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4】\n\n**简单总结**：回表 = 二级索引 + 主键索引（查两个 B+Tree）；覆盖索引 = 二级索引本身就能查到所需数据（查一个 B+Tree）。",
+      "latencySeconds": 4.846,
+      "promptTokens": 1854,
+      "completionTokens": 374,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-index-loss-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 17.724,
+      "promptTokens": 67,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-index-loss-02-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 17.806,
+      "promptTokens": 979,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-index-loss-02-v2",
+      "arm": "C",
+      "output": "【来源：对索引隐式类型转换｜段落：054fc7d4e180db7ebad68954c839562482470546:p6｜block_id：block-012-006】\n\n当索引字段是字符串",
+      "latencySeconds": 17.794,
+      "promptTokens": 1693,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-btree-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 17.575,
+      "promptTokens": 71,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-btree-01-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 6.958,
+      "promptTokens": 658,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-btree-01-v2",
+      "arm": "C",
+      "output": "",
+      "latencySeconds": 13.877,
+      "promptTokens": 1372,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-select-01-v2",
+      "arm": "A",
+      "output": "执行一条 SELECT 语句，MySQL 大致经历以下阶段：\n\n1. **连接与初始化**：建立 TCP 连接，完成身份验证，初始化会话变量和状态。\n2. **SQL 解析**：词法分析生成语法树，进行语义分析（如字段类型检查、权限校验）。\n3. **查询优化",
+      "latencySeconds": 10.935,
+      "promptTokens": 65,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-select-01-v2",
+      "arm": "B",
+      "output": "根据笔记证据，执行一条 SELECT 语句期间大致经历以下阶段：\n\n1. **连接阶段**：连接器通过 TCP",
+      "latencySeconds": 13.359,
+      "promptTokens": 575,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-select-01-v2",
+      "arm": "C",
+      "output": "【来源：执行一条 select 语句，期间发生了什么？｜段落：4469c35533d24576a2cd571185a2067b62234b10:p3｜block_id：block-011-003】\n\n执行一条 SELECT 语句时，MySQL 大致经历以下阶段：\n\n1. **连接阶段**：连接器通过 TCP 建立连接并校验身份、读取权限。\n2. **查询缓存**：MySQL 8.0 已移除 Server 层查询缓存模块（8.0 之前可能检查）。\n3. **解析阶段**：解析器进行词法分析、语法分析并构建语法树。\n4. **执行阶段**：依次经过 prepare、optimize、execute。\n   - **预处理器**：检查表和字段是否存在，并展开 `SELECT *`。\n   - **优化器**：基于成本选择索引和执行计划，可通过 `EXPLAIN` 查看 `key`、`type`、`Extra` 等信息。\n   - **执行器**：按照执行计划逐条从存储引擎读取记录，并将结果返回客户端。\n\n此外，笔记还补充了长连接的内存占用与处理方式、`wait_timeout` 和 `max_connections` 参数、覆盖索引，以及 MySQL 5.6 引入的索引下推（将部分条件过滤下推到存储引擎，减少二级索引回表次数）。\n\n来源：https://xiaolincoding.com/mysql/base/how_select.html#mysql-%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B%E6%98%AF%E6%80%8E%E6%A0%B7%E7%9A%84",
+      "latencySeconds": 5.728,
+      "promptTokens": 1289,
+      "completionTokens": 663,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-count-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 6.096,
+      "promptTokens": 65,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-count-01-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 7.433,
+      "promptTokens": 480,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-count-01-v2",
+      "arm": "C",
+      "output": "",
+      "latencySeconds": 16.493,
+      "promptTokens": 1194,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-20m-01-v2",
+      "arm": "A",
+      "output": "不是硬性限制。MySQL/InnoDB单表并没有官方规定的行数上限。2000万行只是一个业界经验值或建议值，当单表数据量达到该量级时，受限于物理资源（内存、磁盘I/O、CPU）和性能瓶颈（查询速度、锁竞争、备份恢复时间），系统性能会显著下降。此时应考虑使用分区表或拆分表来优化。",
+      "latencySeconds": 8.766,
+      "promptTokens": 64,
+      "completionTokens": 673,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-20m-01-v2",
+      "arm": "B",
+      "output": "不是硬性限制。根据笔记证据（`block-004-008`，`paragraph_id: 06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p8`），2000万行只是推荐值，超过这个值可能会导致 B + 树层级更高，从而影响查询性能。",
+      "latencySeconds": 8.024,
+      "promptTokens": 489,
+      "completionTokens": 433,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-20m-01-v2",
+      "arm": "C",
+      "output": "不是硬性限制，2000万行只是推荐值。超过这个值可能会导致B+树层级更高，影响查询性能。【来源：block-004-008｜段落：06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p8｜block_id：block-0",
+      "latencySeconds": 6.346,
+      "promptTokens": 1203,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-pagination-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 5.739,
+      "promptTokens": 59,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-pagination-01-v2",
+      "arm": "B",
+      "output": "资料不足。笔记中仅介绍了 `LIMIT offset, size` 的执行过程（如通过主键索引B+树取数据）以及 `limit size` 与 `limit offset, size` 的区别，但并未包含关于“为什么 LIMIT offset, size 的深分页会越来越慢”的原因解释（例如深分页时offset跳过大量数据导致扫描行数增加等）。\n\n引用笔记：\n- block_id",
+      "latencySeconds": 7.176,
+      "promptTokens": 949,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-pagination-01-v2",
+      "arm": "C",
+      "output": "",
+      "latencySeconds": 7.968,
+      "promptTokens": 1663,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-row-format-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 14.192,
+      "promptTokens": 66,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-row-format-02-v2",
+      "arm": "B",
+      "output": "根据笔记证据，单个允许 NULL 的 ASCII VARCHAR 字段最大长度为 65532，计算逻辑如下：\n\n- 一行记录的字段长度、变长字段长度列表和 NULL 值列表总和不能超过 65535 字节。\n- 单个允许 NULL 的 ASCII VARCHAR 字段最大长度 = 65535 - 2（变长字段长度列表） - 1（NULL 值列表）= 65532 字节。\n\n**引用信息**：\n- block_id: `block-002-003`\n- paragraph_id: `aaf7f494785c1a50184273ab8286570d0009429b:p3`",
+      "latencySeconds": 10.223,
+      "promptTokens": 664,
+      "completionTokens": 696,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-row-format-02-v2",
+      "arm": "C",
+      "output": "【来源：MySQL 一行记录是怎么存储的？｜段落：aaf7f494785c1a50184273ab8286570d0009429b:p3｜block_id：block-002-003】\n\n单个允许 NULL 的 ASCII VARCHAR 字段最大长度为 65532，是因为一行记录的字段长度、变长字段长度列表和 NULL 值列表总和不能超过 65535 字节。其中，变长字段长度列表占用 2 字节，NULL 值列表占用 1 字节，因此 VARCHAR(65532) = 65535 - 2 - 1 = 65532 字节。",
+      "latencySeconds": 8.454,
+      "promptTokens": 1378,
+      "completionTokens": 526,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-phantom-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 12.287,
+      "promptTokens": 60,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-phantom-01-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 13.099,
+      "promptTokens": 1165,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-phantom-01-v2",
+      "arm": "C",
+      "output": "**没有完全解决幻读。**\n\n笔记明确记载：可重复读隔离级别下，快照读通过 MVCC 很大程度上避免了幻读，但当前读（如 `select ... for update`）通过 next-key lock 也能避免幻读。然而存在特殊场景：事务 A 先执行快照读，事务 B 插入并提交，事务 A 再执行当前读时，结果集发生变化，此时会发生幻读。因此，可重复读隔离级别虽然很大程度上避免了幻读，但并没有完全解决幻读问题。\n\n【来源：MySQL 可重复读隔离级别，完全解决幻读了吗？｜段落：4a6b1731c285d86d9d45989c89704450f61441e7:p4｜block_id：block-005-004】",
+      "latencySeconds": 5.642,
+      "promptTokens": 1879,
+      "completionTokens": 445,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-locking-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 5.738,
+      "promptTokens": 72,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-locking-02-v2",
+      "arm": "B",
+      "output": "要通过 `performance_schema.data_locks` 判断 InnoDB 实际加了记录锁、间隙锁还是临键锁，可按以下步骤操作：\n\n1. **确认表类型并查询锁信息**：先确认表使用 InnoDB，并在事务未提交期间执行 `select * from performance_schema.data_",
+      "latencySeconds": 5.803,
+      "promptTokens": 608,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-locking-02-v2",
+      "arm": "C",
+      "output": "# 通过 performance_schema.data_locks 判断锁型\n\n## 判断方法\n\n执行 `select * from performance_schema.data_locks\\G`，结合三列判断实际锁型：\n\n- **LOCK_TYPE**：表示锁的对象类型（如 TABLE、RECORD 等），不等于一定是 Record Lock。\n- **LOCK_MODE**：核心判断依据，按以下规则解读：\n  - `X` → next-key 锁（记录锁 + 间隙锁合并）\n  - `X, REC_NOT_GAP` → 记录锁（仅锁记录本身，不锁间隙）\n  - `X, GAP` → 间隙锁（仅锁间隙，不锁记录）\n- **LOCK_DATA**：锁的具体数据范围，如索引键值、主键等。\n\n## 关键场景\n\n1. **等值查询**：目标记录存在 → 只锁记录本身；不存在 → 锁住目标值所在的索引间隙，阻止其他事务插入该值。\n2. **范围查询**：需同时检查记录本身和记录前面的间隙，不能只依据返回结果判断锁范围。\n3. **二级索引锁定读**：必须同时检查二级索引和主键索引上的锁，否则可能低估锁数量、锁冲突和并发影响",
+      "latencySeconds": 17.17,
+      "promptTokens": 1322,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-locks-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 8.55,
+      "promptTokens": 64,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-locks-02-v2",
+      "arm": "B",
+      "output": "长事务可能阻塞 DDL，是因为长事务期间一直持有 MDL 锁。\n\n根据笔记证据：\n- 对一张表进行 CRUD 操作时，加的是",
+      "latencySeconds": 12.378,
+      "promptTokens": 836,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-locks-02-v2",
+      "arm": "C",
+      "output": "【来源：MySQL 有哪些锁？ | 小林coding / 可以怎么用｜段落：f3638ecba090ec006d06e18facb1d65e7c5ce810:p4｜block_id：block-007-004】\n\n长事务阻塞 DDL 的原因是：**MDL 锁在事务提交前一直持有，而 DDL 操作需要 MDL 写锁**。\n\n具体机制如下：\n\n1. **MDL 锁的持有规则**：MDL 锁在事务提交后才会释放，这意味着事务执行期间，MDL 是一直持有的。\n2. **DDL 需要 MDL 写锁**：对一张表进行结构变更操作时，加的是 MDL 写锁。\n3. **写锁优先级高于读锁**：申请 MDL 锁的操作会形成一个队列，队列中写锁获取优先级高于读锁，一旦出现 MDL 写锁等待，会阻塞后续该表的所有 CRUD 操作。\n\n因此，一个持有 MDL 读锁的长事务，在 DDL 请求需要 MDL 写锁时，写锁必须等待读锁释放，从而阻塞 DDL 执行。",
+      "latencySeconds": 5.853,
+      "promptTokens": 1550,
+      "completionTokens": 506,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-04-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 10.207,
+      "promptTokens": 62,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-04-v2",
+      "arm": "B",
+      "output": "Read View 判断一个历史版本是否可见时，主要依赖以下四个字段：\n\n1. **m_ids**：记录创建 Read View 时仍活跃（未提交）的事务 ID 列表。\n2. **min_trx_id**：创建 Read View 时的最小事务 ID。\n3. **max_trx_id**：创建 Read View 时的最大事务 ID。\n4. **creator_trx_id**：创建 Read View 的事务 ID。\n\n（依据笔记：`block-009-004` 的 `paragraph_id: 2531ded2715a303bbc900e521c982f0d6853a511:p4`）",
+      "latencySeconds": 4.343,
+      "promptTokens": 1223,
+      "completionTokens": 500,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-04-v2",
+      "arm": "C",
+      "output": "【来源：事务隔离级别是怎么实现的？｜段落：2531ded2715a303bbc900e521c982f0d6853a511:p4｜block_id：block-009-004】\n\nRead View 有四个重要字段：**m_ids、min_trx_id、max_trx_id、creator_trx_id**。其中判断历史版本是否可见主要看 **min_trx_id、max_trx_id 和 m_ids**，结合记录上的 **trx_id 隐藏列** 即可判定：\n\n- trx_id < min_trx_id → 由创建 Read View 之前已提交的事务生成，可见；\n- trx_id ≥ max_trx_id → 由创建 Read View 之后才启动的事务生成，不可见；\n- trx_id ∈ m_ids → 生成该版本的事务在创建 Read View 时仍活跃（未提交），不可见；\n- trx_id ∉ m_ids → 该事务在创建 Read View 时已提交，可见。\n\n（creator_trx_id 用于标识 Read View 的创建者事务，不直接参与可见性判断。）",
+      "latencySeconds": 10.495,
+      "promptTokens": 1937,
+      "completionTokens": 647,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-index-loss-03-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 11.479,
+      "promptTokens": 64,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-index-loss-03-v2",
+      "arm": "B",
+      "output": "在索引列上调用函数，可能导致 MySQL 无法直接使用索引的原因是：索引保存的是索引字段的原始值，而不是经过函数计算后的值，因此无法匹配索引中的存储值。\n\n**引用：**\n- block_id: `block-012-004`\n- paragraph_id: `054fc7d4e180db7ebad68954c839562482470546:p4`",
+      "latencySeconds": 6.188,
+      "promptTokens": 490,
+      "completionTokens": 634,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-index-loss-03-v2",
+      "arm": "C",
+      "output": "",
+      "latencySeconds": 5.978,
+      "promptTokens": 1204,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-pagination-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 5.785,
+      "promptTokens": 57,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-pagination-02-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 5.826,
+      "promptTokens": 574,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-pagination-02-v2",
+      "arm": "C",
+      "output": "【来源：MySQL 分页有什么性能问题？怎么优化？｜段落：94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p6｜block_id：block-003-006】\n\n对于**给用户做分页展示**的场景，大数据量分页的核心问题是**深度分页**——当数据量很大时，`LIMIT offset size` 会因为 offset 过大导致性能急剧下降。\n\n笔记给出的优化方式是：**基于主键 id 进行游标分页（游标分页）**。具体做法是：\n\n1. 将数据按 id 主键排序；\n2. 每次取一批数据（如 100 条）；\n3. 将当前批次取到的**最大 id** 作为下次查询的筛选条件（`WHERE id > 最大id LIMIT 100`）；\n4. 循环往复，直到没有数据为止。\n\n这样每次查询只需定位到 id 位置并往后遍历固定数量的数据，**无论数据量多大，查询性能都很稳定**，不会因 offset 过大而变慢。\n\n> 通用补充：笔记中提到的“异构到 ES/Hive”场景同样适用此优化方式，只是从 MySQL 迁移到目标系统时，需确保目标系统也支持基于 id 的游标分页。",
+      "latencySeconds": 5.766,
+      "promptTokens": 1288,
+      "completionTokens": 462,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-pagination-measured-ms-v2",
+      "arm": "A",
+      "output": "这组笔记中未提供 `LIMIT 6000000,10` 深分页的实际测得毫秒数。由于缺乏相关实测数据，无法给出具体数值。",
+      "latencySeconds": 4.655,
+      "promptTokens": 72,
+      "completionTokens": 527,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-pagination-measured-ms-v2",
+      "arm": "B",
+      "output": "资料不足。本轮没有检索到相关来源段落，无法回答 LIMIT 6000000,10 深分页实际测得多少毫秒的问题。",
+      "latencySeconds": 7.75,
+      "promptTokens": 128,
+      "completionTokens": 312,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-pagination-measured-ms-v2",
+      "arm": "C",
+      "output": "当前 Skill 资料不足。本轮提供的笔记证据为空，未检索到任何相关来源段落，因此无法回答关于 LIMIT 6000000,10 深分页实际测得多少毫秒的问题。",
+      "latencySeconds": 6.057,
+      "promptTokens": 842,
+      "completionTokens": 308,
+      "refusalDetected": true,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-autoinc-current-mode-v2",
+      "arm": "A",
+      "output": "无法确定。由于未提供该实例的实测数据或配置信息，我无法得知当前运行的 MySQL 实例的 `innodb_autoinc_lock_mode` 实际配置值。\n\n该参数的默认值取决于 MySQL 版本：MySQL 5.6及以上版本默认为 2（连续模式），5.5及更早版本默认为 0（传统模式）。如需确认当前实例的实际值，请通过 `SHOW VARIABLES",
+      "latencySeconds": 9.495,
+      "promptTokens": 65,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-autoinc-current-mode-v2",
+      "arm": "B",
+      "output": "资料不足。本轮没有检索到关于当前运行的 MySQL 实例 `innodb_autoinc_lock_mode` 配置值的相关来源段落。",
+      "latencySeconds": 3.627,
+      "promptTokens": 121,
+      "completionTokens": 392,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-autoinc-current-mode-v2",
+      "arm": "C",
+      "output": "当前 Skill 资料不足。\n\n本轮检索的笔记证据中未包含关于 `innodb_autoinc_lock_mode` 配置的相关信息，因此无法基于笔记证据回答该问题。\n\n如需回答此问题，需要补充包含该配置说明的笔记来源。",
+      "latencySeconds": 3.893,
+      "promptTokens": 835,
+      "completionTokens": 283,
+      "refusalDetected": true,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-table-p95-v2",
+      "arm": "A",
+      "output": "目前我没有关于“笔记”或“订单表”的相关信息，因此无法提供最近一次查询的实际 P95 延迟数据。",
+      "latencySeconds": 2.807,
+      "promptTokens": 65,
+      "completionTokens": 330,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-table-p95-v2",
+      "arm": "B",
+      "output": "资料不足。本轮笔记中没有检索到关于订单表查询延迟的相关来源段落（paragraph_id: 无, block_id: 无），因此无法提供最近一次查询的实际 P95 延迟是多少毫秒的信息。",
+      "latencySeconds": 3.637,
+      "promptTokens": 121,
+      "completionTokens": 384,
+      "refusalDetected": true,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-table-p95-v2",
+      "arm": "C",
+      "output": "当前 Skill 资料不足。本轮笔记中未检索到关于“订单表最近一次查询的实际 P95 延迟”的相关来源段落，因此无法回答该问题。",
+      "latencySeconds": 4.491,
+      "promptTokens": 835,
+      "completionTokens": 349,
+      "refusalDetected": true,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-locking-exact-keys-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 8.842,
+      "promptTokens": 62,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-locking-exact-keys-v2",
+      "arm": "B",
+      "output": "资料不足。本轮笔记证据为“（本轮没有检索到相关来源段落。）”，未包含任何关于 SELECT ... FOR UPDATE 实际锁住哪些具体主键值的信息，因此无法作答。",
+      "latencySeconds": 7.378,
+      "promptTokens": 118,
+      "completionTokens": 493,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": null
+    },
+    {
+      "caseId": "mysql-note-locking-exact-keys-v2",
+      "arm": "C",
+      "output": "当前 Skill 资料不足。本轮检索未命中任何相关来源段落，无法回答“SELECT ... FOR UPDATE 实际锁住了哪些具体主键值”这一问题。\n\n需要补充的信息：\n1. 具体的查询语句、表结构、索引情况；\n2. 涉及的行数据（主键值）；\n3. 锁的上下文（事务、隔离级别、锁等待等）。\n\n在缺少上述信息前，无法给出任何结论。",
+      "latencySeconds": 2.295,
+      "promptTokens": 832,
+      "completionTokens": 155,
+      "refusalDetected": true,
+      "expectedSourceCitationMatched": null
+    }
+  ],
+  "failures": [],
+  "complete": true,
+  "finishedAt": "2026-10-01T13:11:31+08:00"
+}

@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "mysql-skill-ab-v0.2.0",
+  "skillVersion": "0.2.0",
+  "model": "XingChenAGI/Xing4.0-29B",
+  "apiHost": "api.siliconflow.cn",
+  "createdAt": "2026-09-29T17:28:51+08:00",
+  "protocol": {
+    "arms": [
+      "A: configured model only",
+      "B: configured model plus the same selected evidence blocks, without SKILL.md",
+      "C: configured model plus the same evidence blocks and SKILL.md"
+    ],
+    "controlledVariables": [
+      "model",
+      "question",
+      "evidence blocks for B/C",
+      "answer format"
+    ],
+    "notCovered": "Direct API prompts do not test a host application's automatic Skill discovery or trigger behavior."
+  },
+  "records": [
+    {
+      "caseId": "mysql-note-data-page-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 21.227,
+      "promptTokens": 65,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-data-page-01-v2",
+      "arm": "B",
+      "output": "InnoDB 的数据页默认大小是 **16KB**。\n\n数据页之间需要维护前后指针是为了让数据页之间不需要是物理上的连续的，而是逻辑上的连续（即采用链表结构）。\n\n> 引用：\n> - block_id: `block-010-004`, paragraph_id: `0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4`",
+      "latencySeconds": 20.001,
+      "promptTokens": 1168,
+      "completionTokens": 620,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-data-page-01-v2",
+      "arm": "C",
+      "output": "## InnoDB 数据页默认大小\n\n【来源：从数据页的角度看 B+ 树｜段落：0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4｜block_id：block-010-004】\n\nInnoDB 数据页的默认大小是 **16KB**，数据库每次读写都以 16KB 为单位，一次最少从磁盘中读取 16K 内容到内存，一次最少把内存中的 16K 内容刷新到磁盘中。\n\n## 为什么需要维护前后指针\n\n【来源：从数据页的角度看 B+ 树｜段落：0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4｜block_id：block-010-004】\n\n在 File Header 中有两个指针，分别指向上一个数据页和下一个数据页，连接起来的页相当于一个双向的链表。采用链表的结构让数据页之间不需要是物理上的连续的，而是逻辑上的连续。\n\n也就是说，数据页之间通过前后指针维护的是**逻辑上的连续性**，而非物理上的连续性。这样即使数据页在磁盘上物理位置不连续，也能按主键顺序逻辑访问。",
+      "latencySeconds": 13.939,
+      "promptTokens": 1882,
+      "completionTokens": 446,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": true
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-02-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 22.361,
+      "promptTokens": 66,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-02-v2",
+      "arm": "B",
+      "output": "",
+      "latencySeconds": 21.689,
+      "promptTokens": 1227,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-transaction-isolation-02-v2",
+      "arm": "C",
+      "output": "# InnoDB MVCC 版本链的隐藏字段\n\n## 版本链记录中的隐藏字段\n\n版本链由两个隐藏字段支持：\n\n1. **trx_id**：当一个事务对某条聚簇索引记录进行改动时，会把该事务的事务ID记录在 trx_id 隐藏列里。\n2. **roll_pointer**：每次对某条聚簇索引记录进行改动时，会把旧版本的记录写入到 undo 日志中，roll_pointer 是个指针，指向每一个旧版本记录。\n\n这两个字段共同构成了版本链，使得同一记录可以保存多个历史版本，从而支持 MVCC 的快照读。\n\n## Read View 的四个字段\n\nRead View 是快照读时用来判断版本可见性的关键结构，包含四个字段：\n\n| 字段 | 作用 |\n|------|------|\n| **m_ids** | 活跃事务ID列表；若 trx_id 在 m_ids 中，表示该事务在创建 Read View 时仍活跃（未提交），版本不可见 |\n| **min_trx_id** | 最小事务ID；若记录的 trx_id 小于此值，表示该版本由创建 Read View 之前已提交的事务生成，对当前事务可见 |\n| **max_trx_id** | 最大事务ID；若记录的 trx_id 大于等于此值，表示该版本由创建 Read View 之后才启动的事务生成，对当前事务不可见 |\n| **creator_trx_id** | 创建 Read View 的事务ID，用于追溯版本链的创建者 |\n\n## 可见性判断逻辑\n\n- trx_id < min_trx_id → 可见（创建前已提交）\n- trx_id ≥ max_trx_id → 不可见（创建后启动）\n- trx_id ∈ m_ids → 不可见（创建时活跃）\n- trx_id ∉ m_ids → 可见（创建时已提交）\n\n这种",
+      "latencySeconds": 95.829,
+      "promptTokens": 1941,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    },
+    {
+      "caseId": "mysql-note-index-interview-01-v2",
+      "arm": "A",
+      "output": "",
+      "latencySeconds": 10.972,
+      "promptTokens": 60,
+      "completionTokens": 700,
+      "refusalDetected": false,
+      "expectedSourceCitationMatched": false
+    }
+  ],
+  "failures": [
+    {
+      "caseId": "mysql-note-index-interview-01-v2",
+      "arm": "B",
+      "errorType": "APITimeoutError",
+      "statusCode": null
+    }
+  ],
+  "complete": false
+}
