@@ -48,7 +48,9 @@ $AllTargets = @(
 function Test-TargetEnabled {
   param([hashtable] $Target)
 
-  if ($Only -ne "all" -and $Target.Id -ne $Only) {
+  # 评估工作台需要同时打开桌面端，方便一边修改笔记一边验证 RAG。
+  $EvalBundle = $Only -eq "eval" -and $Target.Id -in @("eval", "desktop")
+  if ($Only -ne "all" -and -not $EvalBundle -and $Target.Id -ne $Only) {
     return $false
   }
 

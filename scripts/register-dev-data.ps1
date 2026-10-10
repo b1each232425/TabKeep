@@ -23,9 +23,19 @@ if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
 $AppData = Join-Path $env:LOCALAPPDATA "com.tabkeep.desktop"
 $Marker = Join-Path $AppData "legacy-backend-data-path.txt"
 New-Item -ItemType Directory -Force -Path $AppData | Out-Null
+
+$ExpectedPath = (Resolve-Path -LiteralPath $LegacyData).Path
+if (Test-Path -LiteralPath $Marker -PathType Leaf) {
+  $ExistingPath = (Get-Content -LiteralPath $Marker -Raw).Trim()
+  if ($ExistingPath -eq $ExpectedPath) {
+    Write-Output "Reusing local TabKeep legacy data marker: $Marker"
+    return
+  }
+}
+
 [IO.File]::WriteAllText(
   $Marker,
-  (Resolve-Path -LiteralPath $LegacyData).Path,
+  $ExpectedPath,
   [Text.UTF8Encoding]::new($false)
 )
 
