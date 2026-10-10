@@ -38,7 +38,7 @@ class SummarizerTestCase(unittest.TestCase):
         self.assertIn("解释为什么 RAG 需要 rerank。", markdown)
         self.assertIn("## 关键原文摘录", markdown)
         self.assertIn("> Rerank 会重新评估 query 与候选段落的相关性。", markdown)
-        self.assertIn("## 以后可复用点", markdown)
+        self.assertIn("## 可以怎么用", markdown)
         self.assertIn("- 调参时先看 Recall,再看 MRR。", markdown)
         self.assertIn("## 复习问题", markdown)
         self.assertIn("- 为什么 rerank 能提升 MRR?", markdown)
@@ -60,7 +60,7 @@ class SummarizerTestCase(unittest.TestCase):
         markdown = parse_summary_markdown(raw)
 
         self.assertIn("> (未提取到关键原文摘录)", markdown)
-        self.assertIn("> (未提取到可复用点)", markdown)
+        self.assertIn("> (未提取到具体用法)", markdown)
         self.assertIn("> (未生成复习问题)", markdown)
         self.assertIn("> (无有意义的配图)", markdown)
 

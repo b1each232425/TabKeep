@@ -8,7 +8,7 @@
 
 设计取舍:
   - LLM 只负责抽取结构化字段,后端统一渲染 markdown,减少格式漂移
-  - prompt 固定生成"解决什么 / 可回看摘要 / 原文摘录 / 可复用点 / 复习问题 / 配图"
+  - prompt 固定生成"解决什么 / 可回看摘要 / 原文摘录 / 可以怎么用 / 复习问题 / 配图"
   - 16K 字符上限:超过部分截断 + 末尾加注记;平衡 token 数和保留信息
   - 原文摘录仍用 blockquote 保存,让用户日后回看能看到证据
 """
@@ -75,13 +75,13 @@ def build_messages(title: str, url: str, content: str) -> list[dict[str, str]]:
             "role": "system",
             "content": (
                 "你是 TabKeep 的中文网页精读摘录助手。给定网页标题、URL 和正文 markdown, "
-                "请把它整理成以后可复习、可检索、可复用的学习笔记素材。\n\n"
+                "请把它整理成方便查阅、理解和实践的学习笔记。\n\n"
                 "只输出一个 JSON object,不要 markdown code fence,不要解释文字。JSON 字段必须为:\n"
                 "{\n"
                 '  "problem": "这篇文章主要解决什么问题,1-3 句话",\n'
                 '  "summary": "可回看的摘要,保留关键背景、方案、结论和限制",\n'
                 '  "key_excerpts": ["值得保留的原文摘录,按原文顺序,尽量保留数字/术语/代码/结论"],\n'
-                '  "reusable_points": ["以后可以怎么用这篇文章,每条一个可复用点"],\n'
+                '  "reusable_points": ["这篇内容具体能用在哪些场景,每条写一个做法或判断依据"],\n'
                 '  "review_questions": ["复习或追问问题,3-6 条,问题本身要可被搜索召回"],\n'
                 '  "images": ["从正文中挑选的信息量图片 markdown,例如 ![alt](url)"]\n'
                 "}\n\n"
@@ -91,6 +91,7 @@ def build_messages(title: str, url: str, content: str) -> list[dict[str, str]]:
                 "- key_excerpts 必须尽量使用原文,不要改写成评论\n"
                 "- 技术文章要优先保留问题背景、方案、代码、命令、配置、错误信息、适用场景和坑点\n"
                 "- 观点文章要优先保留论点、论据、反例、关键数据和结论\n"
+                "- reusable_points 要写具体的应用场景、操作建议或判断方法,不要写成空泛的价值总结\n"
                 "- review_questions 要便于以后搜索,避免空泛问题\n"
                 "- 没有有意义的图片时 images 输出 []\n"
             ),
@@ -153,7 +154,7 @@ def render_summary_markdown(summary: StructuredSummary) -> str:
         ("## 这篇解决什么", summary.problem),
         ("## 可回看摘要", summary.summary),
         ("## 关键原文摘录", _render_blockquotes(summary.key_excerpts, "未提取到关键原文摘录")),
-        ("## 以后可复用点", _render_list(summary.reusable_points, "未提取到可复用点")),
+        ("## 可以怎么用", _render_list(summary.reusable_points, "未提取到具体用法")),
         ("## 复习问题", _render_list(summary.review_questions, "未生成复习问题")),
         ("## 配图", "\n".join(summary.images) if summary.images else PLACEHOLDER_IMAGE),
     ]
