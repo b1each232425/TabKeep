@@ -29,6 +29,10 @@ import { KnowledgeHealthSummary } from "./knowledge/KnowledgeHealthSummary"
 import { KnowledgeSearchPanel } from "./knowledge/KnowledgeSearchPanel"
 import { KnowledgeSyncPanel } from "./knowledge/KnowledgeSyncPanel"
 import {
+  KnowledgeSkillExportPanel,
+  KnowledgeSkillExportTrigger,
+} from "./knowledge/KnowledgeSkillExportPanel"
+import {
   formatIndexHealthStatus,
   formatIndexRepairStatus,
   formatKnowledgeSyncStatus,
@@ -54,6 +58,7 @@ export function KnowledgeSection() {
   const [askResult, setAskResult] = useState<KnowledgeAskResponse | null>(null)
   const [asking, setAsking] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [skillExportOpen, setSkillExportOpen] = useState(false)
   const autoRerankReady = Boolean(config.embedding.enabled && config.embedding.apiKey.trim())
 
   const refresh = async () => {
@@ -189,7 +194,7 @@ export function KnowledgeSection() {
     setAsking(true)
     setStatus(null)
     try {
-      const result = await askKnowledge(value, sessionId, 8)
+      const result = await askKnowledge(value, sessionId)
       setAskResult(result)
       if (result.sessionId) setSessionId(result.sessionId)
       if (!result.ok) setStatus(result.error ?? "知识库问答失败")
@@ -226,13 +231,23 @@ export function KnowledgeSection() {
           <h1 className="tk-page-title">知识库</h1>
           <p className="tk-page-subtitle">搜索与问答</p>
         </div>
-        <Button variant="secondary" onClick={refresh} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          刷新
-        </Button>
+        <div className="flex items-center gap-2">
+          <KnowledgeSkillExportTrigger onClick={() => setSkillExportOpen(true)} />
+          <Button variant="secondary" onClick={refresh} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            刷新
+          </Button>
+        </div>
       </header>
 
       {status && <Notice tone={statusTone}>{status}</Notice>}
+
+      {skillExportOpen && (
+        <KnowledgeSkillExportPanel
+          onClose={() => setSkillExportOpen(false)}
+          onStatus={setStatus}
+        />
+      )}
 
       <section className="tk-knowledge-workspace">
         <KnowledgeSearchPanel

@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "mysql-skill-ab-v0.2.0",
+  "description": "从 TabKeep MySQL v2 评估集筛选的 20 条 Skill 对照样本：16 条有来源答案，4 条笔记未覆盖的拒答题。",
+  "sourceDataset": "backend/evaluation/rag/tabkeep_mysql_notes_v2.json",
+  "skillPackage": "skill-exports/mysql-interview-notes-v0.2.0",
+  "protocol": {
+    "arms": [
+      "A: configured model only",
+      "B: configured model plus the same selected evidence blocks, without SKILL.md",
+      "C: configured model plus the same evidence blocks and SKILL.md"
+    ],
+    "controlledVariables": ["model", "question", "evidence blocks for B/C", "answer format"],
+    "notCovered": "Direct API prompts do not test a host application's automatic Skill discovery or trigger behavior."
+  },
+  "cases": [
+    {
+      "id": "mysql-note-data-page-01-v2",
+      "caseType": "natural",
+      "question": "InnoDB 的数据页默认大小是多少？为什么数据页之间还需要维护前后指针？",
+      "expectedAnswer": "InnoDB 数据页默认大小为 16KB。页之间通过 File Header 中的上一页和下一页指针形成逻辑上的双向链表，便于按主键顺序遍历相邻页，支持范围查询。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f", "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4", "blockId": "block-010-004"}]
+    },
+    {
+      "id": "mysql-note-transaction-isolation-02-v2",
+      "caseType": "challenge",
+      "question": "InnoDB 的 MVCC 版本链由哪些隐藏字段支持？它们分别起什么作用？",
+      "expectedAnswer": "记录中的 trx_id 记录最近一次修改它的事务 ID，roll_pointer 指向该记录的上一个历史版本；配合 undo log 可沿版本链查找满足 Read View 的可见版本。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "2531ded2715a303bbc900e521c982f0d6853a511", "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4", "blockId": "block-009-004"}]
+    },
+    {
+      "id": "mysql-note-index-interview-01-v2",
+      "caseType": "natural",
+      "question": "什么是回表？什么情况下可以通过覆盖索引避免回表？",
+      "expectedAnswer": "二级索引叶子节点只保存索引列和主键，查询还需要根据主键回到聚簇索引查完整记录，这就是回表。如果二级索引已经包含查询所需的全部列，就能直接返回结果，形成覆盖索引。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790", "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4", "blockId": "block-013-004"}]
+    },
+    {
+      "id": "mysql-note-index-loss-02-v2",
+      "caseType": "challenge",
+      "question": "字符串索引列和数字比较时，为什么可能发生隐式类型转换并导致索引失效？",
+      "expectedAnswer": "如果 phone 是字符串索引列却与数字比较，MySQL 可能对列做 CAST(phone AS signed int)，需要逐行转换后再比较，索引难以直接定位。应让比较两侧类型一致，例如把数字写成字符串；数字索引列与数字字符串比较时则可能转换常量而仍使用索引。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "054fc7d4e180db7ebad68954c839562482470546", "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p6", "blockId": "block-012-006"}]
+    },
+    {
+      "id": "mysql-note-btree-01-v2",
+      "caseType": "natural",
+      "question": "MySQL 为什么通常使用 B+ 树而不是二叉树、AVL 树或红黑树作为索引？",
+      "expectedAnswer": "多叉 B+ 树层高较低，查询时磁盘 I/O 更少；非叶子节点主要保存索引信息，叶子节点有序且相连，有利于范围查询。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "af1ff42e767ef012688f00048f703110e3ee9f48", "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p3", "blockId": "block-008-003"}]
+    },
+    {
+      "id": "mysql-note-select-01-v2",
+      "caseType": "natural",
+      "question": "执行一条 SELECT 语句时，MySQL 从连接到返回结果大致经历哪些阶段？",
+      "expectedAnswer": "客户端先通过连接器完成网络连接、认证和权限校验；服务层随后进行解析、预处理和优化，生成执行计划；执行器调用存储引擎读取记录，最后把结果返回给客户端。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "4469c35533d24576a2cd571185a2067b62234b10", "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p3", "blockId": "block-011-003"}]
+    },
+    {
+      "id": "mysql-note-count-01-v2",
+      "caseType": "natural",
+      "question": "COUNT(*)、COUNT(1) 和 COUNT(字段) 的语义和性能有什么区别？",
+      "expectedAnswer": "COUNT(表达式)只统计表达式非 NULL 的行；COUNT(1) 和 COUNT(*) 都统计行数，通常没有性能差异。COUNT(字段)还要判断字段是否为 NULL，非索引字段可能需要更多读取，因此不能把三者简单认为完全等价。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "69eee422b125adc522bdac53c65d87482a5b18ea", "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p3", "blockId": "block-001-003"}]
+    },
+    {
+      "id": "mysql-note-20m-01-v2",
+      "caseType": "natural",
+      "question": "MySQL 单表不要超过 2000 万行是硬性限制吗？",
+      "expectedAnswer": "不是硬性限制。笔记把 2000W 行作为推荐值；超过这个值可能使 B+ 树层级升高，影响查询性能，并非对所有表都适用的硬上限。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef", "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p8", "blockId": "block-004-008"}]
+    },
+    {
+      "id": "mysql-note-pagination-01-v2",
+      "caseType": "natural",
+      "question": "为什么 LIMIT offset, size 的深分页会越来越慢？",
+      "expectedAnswer": "数据库通常需要先定位并读取前 offset 行，再丢弃它们，最后返回 size 行。offset 越大，扫描、排序或回表的无效工作越多，所以深分页会变慢。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e", "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p2", "blockId": "block-003-002"}]
+    },
+    {
+      "id": "mysql-note-row-format-02-v2",
+      "caseType": "challenge",
+      "question": "为什么单个允许 NULL 的 ASCII VARCHAR 字段最大长度是 65532？",
+      "expectedAnswer": "非 TEXT、BLOB 类型的单行总长度上限是 65535 字节。单个允许 NULL 的 ASCII VARCHAR 还要扣除 NULL 值列表占 1 字节，以及变长字段长度列表占 2 字节，因此最大为 65535 - 1 - 2 = 65532。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "aaf7f494785c1a50184273ab8286570d0009429b", "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p3", "blockId": "block-002-003"}]
+    },
+    {
+      "id": "mysql-note-phantom-01-v2",
+      "caseType": "natural",
+      "question": "MySQL 的可重复读隔离级别完全解决幻读了吗？",
+      "expectedAnswer": "不能简单说完全解决。普通一致性读通过 MVCC 和 Read View 保持快照一致，但当前读会读取最新版本并可能遇到范围内新插入的记录；需要通过 next-key lock 等锁机制约束当前读的范围。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "4a6b1731c285d86d9d45989c89704450f61441e7", "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p4", "blockId": "block-005-004"}]
+    },
+    {
+      "id": "mysql-note-locking-02-v2",
+      "caseType": "challenge",
+      "question": "如何通过 performance_schema.data_locks 判断 InnoDB 实际加了记录锁、间隙锁还是临键锁？",
+      "expectedAnswer": "查询 performance_schema.data_locks，结合 LOCK_TYPE、LOCK_MODE 和 LOCK_DATA 判断锁定对象与模式；X 通常表示 next-key 锁，X, REC_NOT_GAP 表示记录锁，X, GAP 表示间隙锁。还需结合索引、查询条件和 MySQL 版本判断具体范围。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "2b16dedb1e971660075751e0384865bd55a28bdc", "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p5", "blockId": "block-006-005"}]
+    },
+    {
+      "id": "mysql-note-locks-02-v2",
+      "caseType": "challenge",
+      "question": "为什么长事务可能阻塞 DDL？这和 MySQL 的 MDL 锁有什么关系？",
+      "expectedAnswer": "访问表时会持有元数据锁（MDL），事务结束后才释放。长事务长期占用 MDL 读锁时，DDL 需要申请 MDL 写锁而被阻塞；同时排队的 DDL 还可能反过来阻塞后续访问，因此应及时提交事务并监控锁等待。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810", "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p4", "blockId": "block-007-004"}]
+    },
+    {
+      "id": "mysql-note-transaction-isolation-04-v2",
+      "caseType": "challenge",
+      "question": "Read View 判断一个历史版本是否可见时，主要看哪些字段？",
+      "expectedAnswer": "Read View 主要包含 m_ids、min_trx_id、max_trx_id 和 creator_trx_id。InnoDB 根据版本的 trx_id 与这些字段判断可见性，不可见时沿 roll_pointer 回溯 undo log 版本链。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "2531ded2715a303bbc900e521c982f0d6853a511", "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4", "blockId": "block-009-004"}]
+    },
+    {
+      "id": "mysql-note-index-loss-03-v2",
+      "caseType": "natural",
+      "question": "在索引列上调用函数，为什么可能让 MySQL 无法直接使用索引？",
+      "expectedAnswer": "如果对索引列做函数运算，数据库需要逐行计算函数结果，而普通索引保存的是原始列值，二者顺序不对应，因此可能无法用索引定位。MySQL 8.0 可考虑建立匹配的函数索引。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "054fc7d4e180db7ebad68954c839562482470546", "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p4", "blockId": "block-012-004"}]
+    },
+    {
+      "id": "mysql-note-pagination-02-v2",
+      "caseType": "challenge",
+      "question": "大数据量分页有哪些更合适的优化方式？",
+      "expectedAnswer": "批量取出数据时可按 id 主键排序，记下本批最大 id 作为下一批筛选条件，通过主键索引定位后继续分批读取，避免 offset 不断增大的深分页。",
+      "shouldRefuse": false,
+      "expectedSources": [{"documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e", "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p6", "blockId": "block-003-006"}]
+    },
+    {
+      "id": "mysql-note-pagination-measured-ms-v2",
+      "caseType": "negative",
+      "question": "这组笔记对 LIMIT 6000000,10 深分页实际测得多少毫秒？",
+      "expectedAnswer": "",
+      "shouldRefuse": true,
+      "expectedSources": []
+    },
+    {
+      "id": "mysql-note-autoinc-current-mode-v2",
+      "caseType": "negative",
+      "question": "当前运行的 MySQL 实例 innodb_autoinc_lock_mode 配置值是多少？",
+      "expectedAnswer": "",
+      "shouldRefuse": true,
+      "expectedSources": []
+    },
+    {
+      "id": "mysql-note-table-p95-v2",
+      "caseType": "negative",
+      "question": "笔记里那张订单表最近一次查询的实际 P95 延迟是多少毫秒？",
+      "expectedAnswer": "",
+      "shouldRefuse": true,
+      "expectedSources": []
+    },
+    {
+      "id": "mysql-note-locking-exact-keys-v2",
+      "caseType": "negative",
+      "question": "那次 SELECT ... FOR UPDATE 实际锁住了哪些具体主键值？",
+      "expectedAnswer": "",
+      "shouldRefuse": true,
+      "expectedSources": []
+    }
+  ]
+}

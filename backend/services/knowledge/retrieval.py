@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from schemas.knowledge import KnowledgeCitation, KnowledgeHitTestItem, KnowledgeHitTestResponse, KnowledgeSearchResponse
+import unicodedata
+
+from schemas.knowledge import (
+    KnowledgeCitation,
+    KnowledgeCitationSource,
+    KnowledgeHitTestItem,
+    KnowledgeHitTestResponse,
+    KnowledgeSearchResponse,
+)
 from services import storage
 from services.knowledge import db, vector_store
 from services.knowledge.embeddings import embed_texts, embedding_config_ready
@@ -33,7 +41,7 @@ async def search_knowledge(query: str, limit: int = 8) -> KnowledgeSearchRespons
         except Exception as exc:
             logger.warning(f"向量检索失败,回退 FTS: {type(exc).__name__}: {exc}")
 
-    merged = rrf_merge(fts_items, vector_items, candidate_limit)
+    merged = rrf_merge(fts_items, vector_items, candidate_limit * 3)
     rerank_used = False
     rerank_message = None
     if rerank_config_ready(rerank_config) and merged:
@@ -45,6 +53,7 @@ async def search_knowledge(query: str, limit: int = 8) -> KnowledgeSearchRespons
         except Exception as exc:
             rerank_message = f"Rerank 失败，已使用 RRF 排序: {type(exc).__name__}: {exc}"
             logger.warning(rerank_message)
+    merged = deduplicate_citations(merged)
     source_mode = "hybrid" if vector_used and fts_items else "vector" if vector_used else "fts"
     return KnowledgeSearchResponse(
         ok=True,
@@ -61,6 +70,7 @@ async def hit_test_knowledge(
     limit: int = 8,
     search_mode: str = "hybrid",
     min_score: float = 0,
+    corpus_profile: str = "notes",
 ) -> KnowledgeHitTestResponse:
     clean_query = query.strip()
     normalized_mode = normalize_search_mode(search_mode)
@@ -75,8 +85,26 @@ async def hit_test_knowledge(
 
     limit = max(1, min(limit, 50))
     min_score = max(0, float(min_score or 0))
+    if corpus_profile not in {"notes", "rgb"}:
+        return KnowledgeHitTestResponse(
+            ok=False,
+            query=clean_query,
+            searchMode=normalized_mode,
+            sourceMode="fts",
+            error=f"未知的检索语料: {corpus_profile}",
+        )
+    rgb_corpus = None
+    if corpus_profile == "rgb":
+        from services.knowledge import rgb_benchmark
+
+        rgb_corpus = rgb_benchmark
+
     config = storage.get_knowledge_config()
-    vector_ok, vector_message = vector_store.availability()
+    if rgb_corpus:
+        vector_ok = rgb_corpus.vector_index_available()
+        vector_message = None if vector_ok else "RGB 向量索引尚未构建"
+    else:
+        vector_ok, vector_message = vector_store.availability()
     vector_ready = embedding_config_ready(config.embedding) and vector_ok
     if not embedding_config_ready(config.embedding):
         vector_message = "Embedding 未配置或未启用"
@@ -84,14 +112,25 @@ async def hit_test_knowledge(
     rerank_config = rerank_config_from_embedding(config.embedding)
     rerank_ready = rerank_config_ready(rerank_config)
     candidate_limit = max(limit, min(int(rerank_config.topN or 20), 50)) if rerank_ready else limit
-    fts_hits = db.search_fts_hits(clean_query, candidate_limit * 3) if normalized_mode in {"fts", "hybrid"} else []
+    if normalized_mode in {"fts", "hybrid"}:
+        fts_hits = (
+            rgb_corpus.search_fts_hits(clean_query, candidate_limit * 3)
+            if rgb_corpus
+            else db.search_fts_hits(clean_query, candidate_limit * 3)
+        )
+    else:
+        fts_hits = []
     vector_rows: list[dict] = []
     vector_error: str | None = None
     if normalized_mode in {"vector", "hybrid"}:
         if vector_ready:
             try:
                 vectors = await embed_texts(config.embedding, [clean_query])
-                vector_rows = vector_store.search(vectors[0], candidate_limit * 3)
+                vector_rows = (
+                    rgb_corpus.search_vectors(vectors[0], candidate_limit * 3)
+                    if rgb_corpus
+                    else vector_store.search(vectors[0], candidate_limit * 3)
+                )
             except Exception as exc:
                 vector_error = f"向量检索失败: {type(exc).__name__}: {exc}"
                 logger.warning(vector_error)
@@ -116,7 +155,11 @@ async def hit_test_knowledge(
             item["ftsRawRank"] = hit.raw_rank
         item["rrf"] = float(item["rrf"]) + 1 / (RRF_K + rank)
 
-    vector_citations = vector_rows_to_citation_map(vector_rows)
+    vector_citations = (
+        rgb_corpus.vector_rows_to_citation_map(vector_rows)
+        if rgb_corpus
+        else vector_rows_to_citation_map(vector_rows)
+    )
     for rank, row in enumerate(vector_rows, start=1):
         chunk_id = str(row.get("chunk_id", ""))
         citation = vector_citations.get(chunk_id)
@@ -169,8 +212,6 @@ async def hit_test_knowledge(
                 rrfRank=len(result_items) + 1,
             )
         )
-        if len(result_items) >= candidate_limit:
-            break
 
     rerank_used = False
     rerank_message = None
@@ -192,6 +233,14 @@ async def hit_test_knowledge(
             rerank_message = f"Rerank 失败，已使用 RRF 排序: {type(exc).__name__}: {exc}"
             logger.warning(rerank_message)
 
+    deduplicated = deduplicate_citations(result_items)
+    result_items = [
+        KnowledgeHitTestItem(
+            **item.model_dump(exclude={"rank"}),
+            rank=index,
+        )
+        for index, item in enumerate(deduplicated, start=1)
+    ]
     result_items = result_items[:limit]
 
     source_mode = "hybrid" if any("fts" in item.matchedBy for item in result_items) and any(
@@ -256,6 +305,72 @@ def rrf_merge(
     for item in ranked:
         item.score = round(scores.get(citation_key(item), 0), 6)
     return ranked[:limit]
+
+
+def deduplicate_citations(items: list[KnowledgeCitation]) -> list[KnowledgeCitation]:
+    """Collapse identical paragraph contexts while preserving every source reference."""
+    unique: list[KnowledgeCitation] = []
+    positions: dict[tuple[str, str], int] = {}
+
+    for item in items:
+        key = citation_context_key(item)
+        if key is None:
+            unique.append(item)
+            continue
+
+        position = positions.get(key)
+        if position is None:
+            positions[key] = len(unique)
+            unique.append(item)
+            continue
+
+        primary = unique[position]
+        sources = list(primary.duplicateSources)
+        source_keys = {citation_source_key(source) for source in sources}
+        primary_key = citation_source_key(primary)
+        source = citation_source(item)
+        source_key = citation_source_key(source)
+        if source_key != primary_key and source_key not in source_keys:
+            sources.append(source)
+            source_keys.add(source_key)
+        for alternate in item.duplicateSources:
+            alternate_key = citation_source_key(alternate)
+            if alternate_key != primary_key and alternate_key not in source_keys:
+                sources.append(alternate)
+                source_keys.add(alternate_key)
+        unique[position] = primary.model_copy(update={"duplicateSources": sources})
+
+    return unique
+
+
+def citation_context_key(item: KnowledgeCitation) -> tuple[str, str] | None:
+    content = normalize_exact_text(item.content)
+    title = normalize_exact_text(item.title)
+    if not content:
+        return None
+    return title, content
+
+
+def normalize_exact_text(value: str | None) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value or "").split())
+
+
+def citation_source(item: KnowledgeCitation) -> KnowledgeCitationSource:
+    return KnowledgeCitationSource(
+        documentId=item.documentId,
+        paragraphId=item.paragraphId,
+        chunkId=item.chunkId,
+        title=item.title,
+        paragraphTitle=item.paragraphTitle,
+        sourceType=item.sourceType,
+        url=item.url,
+        path=item.path,
+    )
+
+
+def citation_source_key(item: KnowledgeCitation | KnowledgeCitationSource) -> tuple[str, str, str]:
+    paragraph_id = item.paragraphId or ""
+    return item.documentId, paragraph_id, "" if paragraph_id else item.chunkId
 
 
 def normalize_search_mode(search_mode: str | None) -> str:

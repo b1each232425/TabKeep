@@ -11,6 +11,10 @@ import type {
   KnowledgeReindexResponse,
   KnowledgeSearchMode,
   KnowledgeSearchResponse,
+  KnowledgeSkillDraftRequest,
+  KnowledgeSkillDraftResponse,
+  KnowledgeSkillExportRequest,
+  KnowledgeSkillExportResponse,
   KnowledgeSiyuanPrecheckResponse,
   KnowledgeSiyuanSyncResponse,
   KnowledgeStats,
@@ -103,6 +107,18 @@ export async function searchKnowledge(
   return backendRequest<KnowledgeSearchResponse>("POST", "/knowledge/search", { query, limit })
 }
 
+export async function exportStandaloneSkill(
+  request: KnowledgeSkillExportRequest,
+): Promise<KnowledgeSkillExportResponse> {
+  return backendRequest<KnowledgeSkillExportResponse>("POST", "/knowledge/skill/export", request)
+}
+
+export async function generateStandaloneSkillDraft(
+  request: KnowledgeSkillDraftRequest,
+): Promise<KnowledgeSkillDraftResponse> {
+  return backendRequest<KnowledgeSkillDraftResponse>("POST", "/knowledge/skill/draft", request)
+}
+
 export async function hitTestKnowledge(options: {
   query: string
   limit?: number
@@ -120,7 +136,7 @@ export async function hitTestKnowledge(options: {
 export async function askKnowledge(
   question: string,
   sessionId?: string | null,
-  limit = 8,
+  limit = 5,
 ): Promise<KnowledgeAskResponse> {
   return backendRequest<KnowledgeAskResponse>("POST", "/knowledge/ask", {
     question,

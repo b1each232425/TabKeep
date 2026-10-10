@@ -33,12 +33,14 @@ class RagasEvaluationTestCase(unittest.TestCase):
                 "ragasFaithfulness": FakeMetricResult(0.9),
                 "ragasFactualCorrectness": RuntimeError("judge unavailable"),
                 "ragasContextPrecision": FakeMetricResult(0.7),
+                "ragasContextRecall": FakeMetricResult(0.8),
             }
         )
 
         self.assertTrue(result.evaluated)
         self.assertEqual(result.faithfulness, 0.9)
         self.assertEqual(result.context_precision, 0.7)
+        self.assertEqual(result.context_recall, 0.8)
         self.assertIsNone(result.factual_correctness)
         self.assertIn("Factual Correctness", result.error or "")
         self.assertIn("judge unavailable", result.error or "")

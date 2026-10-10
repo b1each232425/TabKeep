@@ -56,6 +56,7 @@ export function EvalCaseEditor({
             ))}
           </select>
         </label>
+        <Checkbox checked={draft.isCore} onChange={(checked) => onDraftChange({ ...draft, isCore: checked })} label="核心集用例" />
         <label className="tk-field">
           <span className="tk-label">主要命中文本</span>
           <textarea

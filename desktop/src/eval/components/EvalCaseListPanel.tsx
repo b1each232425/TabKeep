@@ -12,6 +12,9 @@ import { Button } from "./EvalControls"
 
 export function EvalCaseListPanel({
   cases,
+  evalScope,
+  coreCount,
+  onEvalScopeChange,
   retrievalReadyCount,
   answerReadyCount,
   searchMode,
@@ -34,6 +37,9 @@ export function EvalCaseListPanel({
   onRemoveCase,
 }: {
   cases: KnowledgeEvalCase[]
+  evalScope: "core" | "full"
+  coreCount: number
+  onEvalScopeChange: (value: "core" | "full") => void
   retrievalReadyCount: number
   answerReadyCount: number
   searchMode: KnowledgeSearchMode
@@ -57,16 +63,20 @@ export function EvalCaseListPanel({
 }) {
   return (
     <section className="tk-panel">
-      <div className="tk-panel-header">
-        <div>
+      <div className="tk-panel-header items-start">
+        <div className="min-w-[10.5rem] shrink-0 pt-0.5">
           <h2 className="tk-panel-title">用例集</h2>
-          <p className="text-xs text-muted-foreground">
-            {cases.length} 条 · 检索 {retrievalReadyCount} · 答案 {answerReadyCount}
+          <p className="whitespace-nowrap text-xs text-muted-foreground">
+            本次 {evalScope === "core" ? coreCount : cases.length}/{cases.length} 条 · 检索 {retrievalReadyCount} · 答案 {answerReadyCount}
           </p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-[120px_92px_92px_108px_92px_auto_auto]">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <select className="tk-select !w-[142px] shrink-0" aria-label="评估范围" value={evalScope} onChange={(event) => onEvalScopeChange(event.target.value as "core" | "full")}>
+            <option value="core">核心 {coreCount} 条</option>
+            <option value="full">全量 {cases.length} 条</option>
+          </select>
           <select
-            className="tk-select"
+            className="tk-select !w-[120px] shrink-0"
             value={searchMode}
             onChange={(event) => onSearchModeChange(event.target.value as KnowledgeSearchMode)}>
             <option value="hybrid">Hybrid</option>
@@ -74,7 +84,7 @@ export function EvalCaseListPanel({
             <option value="vector">Vector</option>
           </select>
           <input
-            className="tk-input"
+            className="tk-input !w-[92px] shrink-0"
             type="number"
             min={1}
             max={50}
@@ -83,7 +93,7 @@ export function EvalCaseListPanel({
             aria-label="评估召回数量"
           />
           <input
-            className="tk-input"
+            className="tk-input !w-[92px] shrink-0"
             type="number"
             min={0}
             step={0.05}
@@ -92,7 +102,7 @@ export function EvalCaseListPanel({
             aria-label="评估最低分"
           />
           <label
-            className={`inline-flex h-11 items-center gap-2 rounded-md border border-border px-3 text-sm ${
+            className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-border px-3 text-sm ${
               answerReadyCount > 0
                 ? "bg-white/75 text-slate-700"
                 : "bg-slate-50 text-muted-foreground"
@@ -111,7 +121,7 @@ export function EvalCaseListPanel({
             答案评估
           </label>
           <label
-            className={`inline-flex h-11 items-center gap-2 rounded-md border border-border px-3 text-sm ${
+            className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-border px-3 text-sm ${
               evaluateAnswer && ragasReadyCount > 0
                 ? "bg-white/75 text-slate-700"
                 : "bg-slate-50 text-muted-foreground"
@@ -130,17 +140,17 @@ export function EvalCaseListPanel({
             Ragas
           </label>
           <input
-            className="tk-input"
+            className="tk-input !w-[92px] shrink-0"
             type="number"
             min={1}
             max={260}
-            value={answerLimit}
-            disabled={!evaluateAnswer || answerReadyCount === 0}
+            value={evalScope === "core" ? coreCount : answerLimit}
+            disabled={evalScope === "core" || !evaluateAnswer || answerReadyCount === 0}
             onChange={(event) => onAnswerLimitChange(event.target.value)}
             aria-label="答案评估样本数"
             title="答案评估默认只抽样运行，避免一次调用过多模型服务"
           />
-          <Button onClick={onRunEval} disabled={running || cases.length === 0}>
+          <Button onClick={onRunEval} disabled={running || cases.length === 0 || (evalScope === "core" && coreCount === 0)}>
             <Search className="h-4 w-4" />
             {running ? "评估中..." : "运行评估"}
           </Button>
@@ -159,7 +169,7 @@ export function EvalCaseListPanel({
         )}
         {answerReadyCount > 0 && evaluateAnswer && (
           <div className="mb-3 rounded-md border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-800">
-            答案评估会调用问答模型；本次最多评估 {safePositiveInt(answerLimit, 30)} 条，默认优先跑拒答、困难问法和自然问法。
+            答案评估会调用问答模型；本次最多评估 {evalScope === "core" ? coreCount : safePositiveInt(answerLimit, cases.length)} 条，默认优先跑拒答、困难问法和自然问法。
           </div>
         )}
         {evaluateRagas && (
@@ -180,6 +190,7 @@ export function EvalCaseListPanel({
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       <span className="tk-badge tk-badge-success">{formatCaseType(item.caseType)}</span>
+                      {item.isCore && <span className="tk-badge tk-badge-success">核心</span>}
                       {item.expectedText && <span className="tk-badge">文本</span>}
                       {item.expectedPath && <span className="tk-badge">路径</span>}
                       {item.expectedTitle && <span className="tk-badge">标题</span>}

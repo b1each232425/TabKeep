@@ -15,6 +15,10 @@ from schemas.knowledge import (
     KnowledgeEvalCase,
     KnowledgeEvalCaseRequest,
     KnowledgeEvalRelevantTarget,
+    KnowledgeEvalRunRecord,
+    KnowledgeEvalRunRequest,
+    KnowledgeEvalRunResponse,
+    KnowledgeEvalRunSummary,
     KnowledgeMessage,
     KnowledgeSession,
     KnowledgeStats,
@@ -26,8 +30,11 @@ from services.knowledge.cjk import build_fts_query, segment_for_fts
 
 DB_PATH = storage.DATA_DIR / "knowledge.db"
 EVAL_CASE_TYPES = {"keyword", "natural", "challenge", "negative"}
+DEFAULT_EVAL_DATASET = "tabkeep-mysql-notes-v2"
 SYNC_LOG_VISIBLE_LIMIT = 20
 SYNC_LOG_RETENTION_LIMIT = 100
+EVAL_RUN_VISIBLE_LIMIT = 20
+EVAL_RUN_RETENTION_LIMIT = 20
 
 
 @dataclass
@@ -228,7 +235,9 @@ def init_db() -> None:
                 expected_answer TEXT NOT NULL DEFAULT '',
                 answer_keywords TEXT NOT NULL DEFAULT '',
                 should_refuse INTEGER NOT NULL DEFAULT 0,
+                is_core INTEGER NOT NULL DEFAULT 0,
                 note TEXT NOT NULL DEFAULT '',
+                dataset TEXT NOT NULL DEFAULT 'legacy',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -247,6 +256,14 @@ def init_db() -> None:
                 chunks_indexed INTEGER NOT NULL DEFAULT 0,
                 error_count INTEGER NOT NULL DEFAULT 0,
                 payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS rag_eval_runs (
+                id TEXT PRIMARY KEY,
+                request_json TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL
             );
 
@@ -279,11 +296,17 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_knowledge_sync_runs_time ON knowledge_sync_runs(ended_at DESC, created_at DESC)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_rag_eval_runs_time ON rag_eval_runs(created_at DESC)"
+        )
         _ensure_column(conn, "knowledge_topic_documents", "anchor", "TEXT")
         _ensure_column(conn, "rag_eval_cases", "case_type", "TEXT NOT NULL DEFAULT 'keyword'")
         _ensure_column(conn, "rag_eval_cases", "expected_answer", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "rag_eval_cases", "answer_keywords", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "rag_eval_cases", "should_refuse", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "rag_eval_cases", "is_core", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "rag_eval_cases", "dataset", "TEXT NOT NULL DEFAULT 'legacy'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_eval_cases_dataset ON rag_eval_cases(dataset, updated_at DESC)")
 
 
 def connect() -> sqlite3.Connection:
@@ -846,6 +869,91 @@ def get_chunks_by_ids(chunk_ids: list[str]) -> dict[str, KnowledgeCitation]:
     return {row["chunk_id"]: row_to_citation(row, score=0) for row in rows}
 
 
+def get_source_record(document_id: str, paragraph_id: str | None = None) -> dict[str, object] | None:
+    """读取一个已索引来源的元数据和段落内容，供只读集成使用。"""
+    clean_document_id = document_id.strip()
+    clean_paragraph_id = paragraph_id.strip() if paragraph_id else None
+    if not clean_document_id:
+        return None
+
+    init_db()
+    with connection() as conn:
+        document_row = conn.execute(
+            """
+            SELECT id, source_type, title, url, path, note_id,
+                   content_hash, content_bytes, paragraph_count, chunk_count,
+                   index_status, embedding_status, updated_at, indexed_at
+            FROM documents
+            WHERE id = ?
+            """,
+            (clean_document_id,),
+        ).fetchone()
+        if not document_row:
+            return None
+
+        document = {
+            "id": document_row["id"],
+            "sourceType": document_row["source_type"],
+            "title": document_row["title"],
+            "url": document_row["url"],
+            "path": document_row["path"],
+            "noteId": document_row["note_id"],
+            "contentHash": document_row["content_hash"],
+            "contentBytes": document_row["content_bytes"],
+            "paragraphCount": document_row["paragraph_count"],
+            "chunkCount": document_row["chunk_count"],
+            "indexStatus": document_row["index_status"],
+            "embeddingStatus": document_row["embedding_status"],
+            "updatedAt": document_row["updated_at"],
+            "indexedAt": document_row["indexed_at"],
+        }
+
+        if clean_paragraph_id:
+            paragraph_row = conn.execute(
+                """
+                SELECT id, paragraph_index, title, content, char_len
+                FROM paragraphs
+                WHERE document_id = ? AND id = ?
+                """,
+                (clean_document_id, clean_paragraph_id),
+            ).fetchone()
+            if not paragraph_row:
+                return None
+            return {
+                "document": document,
+                "paragraph": {
+                    "id": paragraph_row["id"],
+                    "index": paragraph_row["paragraph_index"],
+                    "title": paragraph_row["title"],
+                    "content": paragraph_row["content"],
+                    "charLen": paragraph_row["char_len"],
+                },
+            }
+
+        paragraph_rows = conn.execute(
+            """
+            SELECT id, paragraph_index, title, char_len
+            FROM paragraphs
+            WHERE document_id = ?
+            ORDER BY paragraph_index
+            """,
+            (clean_document_id,),
+        ).fetchall()
+
+    return {
+        "document": document,
+        "paragraphs": [
+            {
+                "id": row["id"],
+                "index": row["paragraph_index"],
+                "title": row["title"],
+                "charLen": row["char_len"],
+            }
+            for row in paragraph_rows
+        ],
+    }
+
+
 def get_vector_record_metadata(chunk_ids: list[str]) -> dict[str, dict]:
     ids = [chunk_id for chunk_id in dict.fromkeys(chunk_ids) if chunk_id]
     if not ids:
@@ -906,6 +1014,17 @@ def get_stats(vector_available: bool = False, vector_message: str | None = None)
         vectorAvailable=vector_available,
         vectorMessage=vector_message,
     )
+
+
+def index_content_fingerprint() -> str:
+    """Fingerprint indexed documents without persisting note contents in run metadata."""
+    init_db()
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id, content_hash, index_status, embedding_status FROM documents ORDER BY id"
+        ).fetchall()
+    snapshot = [tuple(row) for row in rows]
+    return hashlib.sha256(json.dumps(snapshot, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def inspect_index_health() -> dict:
@@ -1095,17 +1214,24 @@ def list_messages(session_id: str) -> list[KnowledgeMessage]:
     ]
 
 
-def list_eval_cases() -> list[KnowledgeEvalCase]:
+def list_eval_cases(dataset: str | None = None) -> list[KnowledgeEvalCase]:
     init_db()
+    where = ""
+    params: tuple[str, ...] = ()
+    if dataset is not None and dataset.strip():
+        where = "WHERE dataset = ?"
+        params = (dataset.strip(),)
     with connection() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT id, question, case_type, expected_text, expected_path, expected_title,
                    expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
-                   expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
+                   expected_answer, answer_keywords, should_refuse, is_core, note, dataset, created_at, updated_at
             FROM rag_eval_cases
+            {where}
             ORDER BY updated_at DESC
-            """
+            """,
+            params,
         ).fetchall()
     return [row_to_eval_case(row) for row in rows]
 
@@ -1121,7 +1247,7 @@ def get_eval_cases(case_ids: list[str]) -> list[KnowledgeEvalCase]:
             f"""
             SELECT id, question, case_type, expected_text, expected_path, expected_title,
                    expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
-                   expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
+                   expected_answer, answer_keywords, should_refuse, is_core, note, dataset, created_at, updated_at
             FROM rag_eval_cases
             WHERE id IN ({placeholders})
             """,
@@ -1147,9 +1273,9 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
             INSERT INTO rag_eval_cases (
                 id, question, case_type, expected_text, expected_path, expected_title,
                 expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
-                expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
+                expected_answer, answer_keywords, should_refuse, is_core, note, dataset, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 question = excluded.question,
                 case_type = excluded.case_type,
@@ -1162,7 +1288,9 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
                 expected_answer = excluded.expected_answer,
                 answer_keywords = excluded.answer_keywords,
                 should_refuse = excluded.should_refuse,
+                is_core = excluded.is_core,
                 note = excluded.note,
+                dataset = excluded.dataset,
                 updated_at = excluded.updated_at
             """,
             (
@@ -1178,7 +1306,9 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
                 req.expectedAnswer.strip(),
                 req.answerKeywords.strip(),
                 1 if req.shouldRefuse else 0,
+                1 if req.isCore else 0,
                 req.note.strip(),
+                req.dataset.strip() or DEFAULT_EVAL_DATASET,
                 created_at,
                 now,
             ),
@@ -1187,7 +1317,7 @@ def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) ->
             """
             SELECT id, question, case_type, expected_text, expected_path, expected_title,
                    expected_document_id, expected_paragraph_id, additional_relevant_targets_json,
-                   expected_answer, answer_keywords, should_refuse, note, created_at, updated_at
+                   expected_answer, answer_keywords, should_refuse, is_core, note, dataset, created_at, updated_at
             FROM rag_eval_cases
             WHERE id = ?
             """,
@@ -1200,7 +1330,151 @@ def delete_eval_case(case_id: str) -> bool:
     init_db()
     with connection() as conn:
         cursor = conn.execute("DELETE FROM rag_eval_cases WHERE id = ?", (case_id,))
-        return cursor.rowcount > 0
+    return cursor.rowcount > 0
+
+
+def save_eval_run(
+    request: KnowledgeEvalRunRequest,
+    result: KnowledgeEvalRunResponse,
+    duration_ms: int,
+    *,
+    retention_limit: int = EVAL_RUN_RETENTION_LIMIT,
+) -> KnowledgeEvalRunRecord:
+    init_db()
+    run_id = result.runId or uuid.uuid4().hex
+    result.runId = run_id
+    created_at = now_iso()
+    record = KnowledgeEvalRunRecord(
+        runId=run_id,
+        createdAt=created_at,
+        durationMs=max(0, int(duration_ms)),
+        request=request,
+        result=result,
+    )
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO rag_eval_runs (id, request_json, response_json, duration_ms, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                request_json = excluded.request_json,
+                response_json = excluded.response_json,
+                duration_ms = excluded.duration_ms,
+                created_at = excluded.created_at
+            """,
+            (
+                run_id,
+                request.model_dump_json(),
+                result.model_dump_json(),
+                record.durationMs,
+                created_at,
+            ),
+        )
+        prune_eval_runs(conn, retention_limit)
+    return record
+
+
+def list_eval_run_summaries(
+    limit: int = EVAL_RUN_VISIBLE_LIMIT,
+) -> list[KnowledgeEvalRunSummary]:
+    init_db()
+    safe_limit = max(1, min(int(limit or EVAL_RUN_VISIBLE_LIMIT), EVAL_RUN_RETENTION_LIMIT))
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, request_json, response_json, duration_ms, created_at
+            FROM rag_eval_runs
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    summaries: list[KnowledgeEvalRunSummary] = []
+    for row in rows:
+        try:
+            request = KnowledgeEvalRunRequest.model_validate_json(row["request_json"])
+            result = KnowledgeEvalRunResponse.model_validate_json(row["response_json"])
+            summaries.append(
+                KnowledgeEvalRunSummary(
+                    runId=row["id"],
+                    createdAt=row["created_at"],
+                    dataset=result.dataset,
+                    datasetVersion=result.datasetVersion,
+                    durationMs=row["duration_ms"],
+                    total=result.total,
+                    evaluated=result.evaluated,
+                    recallAtK=result.recallAtK,
+                    precisionAtK=result.precisionAtK,
+                    mrr=result.mrr,
+                    top1Accuracy=result.top1Accuracy,
+                    answerEvaluated=result.answerEvaluated,
+                    ragasRequested=result.ragasRequested,
+                    ragasEvaluated=result.ragasEvaluated,
+                    ragasFailed=result.ragasFailed,
+                    limit=result.limit,
+                    searchMode=result.searchMode,
+                    evaluateAnswer=request.evaluateAnswer,
+                    evaluateRagas=request.evaluateRagas,
+                    answerLimit=result.answerLimit,
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    return summaries
+
+
+def get_eval_run(run_id: str | None = None) -> KnowledgeEvalRunRecord | None:
+    init_db()
+    with connection() as conn:
+        if run_id:
+            row = conn.execute(
+                """
+                SELECT id, request_json, response_json, duration_ms, created_at
+                FROM rag_eval_runs
+                WHERE id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT id, request_json, response_json, duration_ms, created_at
+                FROM rag_eval_runs
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+    if not row:
+        return None
+    try:
+        return KnowledgeEvalRunRecord(
+            runId=row["id"],
+            createdAt=row["created_at"],
+            durationMs=row["duration_ms"],
+            request=KnowledgeEvalRunRequest.model_validate_json(row["request_json"]),
+            result=KnowledgeEvalRunResponse.model_validate_json(row["response_json"]),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def prune_eval_runs(
+    conn: sqlite3.Connection,
+    retention_limit: int = EVAL_RUN_RETENTION_LIMIT,
+) -> None:
+    safe_limit = max(1, min(int(retention_limit or EVAL_RUN_RETENTION_LIMIT), 1000))
+    conn.execute(
+        """
+        DELETE FROM rag_eval_runs
+        WHERE id NOT IN (
+            SELECT id
+            FROM rag_eval_runs
+            ORDER BY created_at DESC
+            LIMIT ?
+        )
+        """,
+        (safe_limit,),
+    )
 
 
 def load_chunks(conn: sqlite3.Connection, chunk_ids: list[str]) -> list[IndexedChunk]:
@@ -1279,7 +1553,9 @@ def row_to_eval_case(row: sqlite3.Row) -> KnowledgeEvalCase:
         expectedAnswer=row_value(row, "expected_answer", ""),
         answerKeywords=row_value(row, "answer_keywords", ""),
         shouldRefuse=bool(row_value(row, "should_refuse", 0)),
+        isCore=bool(row_value(row, "is_core", 0)),
         note=row["note"],
+        dataset=row_value(row, "dataset", "legacy"),
         createdAt=row["created_at"],
         updatedAt=row["updated_at"],
     )

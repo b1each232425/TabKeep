@@ -17,7 +17,9 @@ export const EMPTY_EVAL_CASE: KnowledgeEvalCaseRequest = {
   expectedAnswer: "",
   answerKeywords: "",
   shouldRefuse: false,
+  isCore: false,
   note: "",
+  dataset: "tabkeep-mysql-notes-v2",
 }
 
 export const CASE_TYPE_OPTIONS = [

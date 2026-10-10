@@ -1,0 +1,2098 @@
+[
+  {
+    "id": "mysql-note-data-page-01-v2",
+    "question": "InnoDB 的数据页默认大小是多少？为什么数据页之间还需要维护前后指针？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+    "expectedParagraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+        "paragraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p3"
+      }
+    ],
+    "expectedAnswer": "InnoDB 数据页默认大小为 16KB。页之间通过 File Header 中的上一页和下一页指针形成逻辑上的双向链表，便于按主键顺序遍历相邻页，支持范围查询。",
+    "answerKeywords": "16KB,File Header,双向链表,范围查询",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/从数据页的角度看 B+ 树 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-data-page-02-v2",
+    "question": "InnoDB 数据页内是如何快速定位一条记录的？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+    "expectedParagraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4"
+      }
+    ],
+    "expectedAnswer": "记录按主键顺序组成单向链表，页目录把记录分组并让每个槽指向组内最大的记录。查找时先对页目录做二分定位目标槽，再在槽对应范围内顺序扫描少量记录。",
+    "answerKeywords": "页目录,槽",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/从数据页的角度看 B+ 树 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-transaction-isolation-01-v2",
+    "question": "MySQL InnoDB 的读提交和可重复读在 Read View 的生成时机上有什么区别？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ee091486687dc5e183189283c54111c774aca43d",
+    "expectedParagraphId": "ee091486687dc5e183189283c54111c774aca43d:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4"
+      }
+    ],
+    "expectedAnswer": "读提交（RC）在每个语句执行前重新生成 Read View，因此同一事务内两次查询可能看到不同版本；可重复读（RR）通常在第一次一致性读时生成并复用 Read View。",
+    "answerKeywords": "每个语句执行前,Read View",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/事务隔离级别是怎么实现的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-transaction-isolation-02-v2",
+    "question": "InnoDB 的 MVCC 版本链由哪些隐藏字段支持？它们分别起什么作用？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ee091486687dc5e183189283c54111c774aca43d",
+    "expectedParagraphId": "ee091486687dc5e183189283c54111c774aca43d:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p5"
+      }
+    ],
+    "expectedAnswer": "记录中的 trx_id 记录最近一次修改它的事务 ID，roll_pointer 指向该记录的上一个历史版本；配合 undo log 可沿版本链查找满足 Read View 的可见版本。",
+    "answerKeywords": "trx_id,roll_pointer,undo log,Read View",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/事务隔离级别是怎么实现的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-index-interview-01-v2",
+    "question": "什么是回表？什么情况下可以通过覆盖索引避免回表？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+    "expectedParagraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+        "paragraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p3"
+      }
+    ],
+    "expectedAnswer": "二级索引叶子节点只保存索引列和主键，查询还需要根据主键回到聚簇索引查完整记录，这就是回表。如果二级索引已经包含查询所需的全部列，就能直接返回结果，形成覆盖索引。",
+    "answerKeywords": "回表,二级索引,覆盖索引",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引常见面试题 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-index-interview-02-v2",
+    "question": "联合索引为什么要遵循最左匹配原则？范围条件对后续索引列有什么影响？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+    "expectedParagraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+        "paragraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p3"
+      }
+    ],
+    "expectedAnswer": "联合索引先按最左列排序，在相同前缀内再按后续列排序，因此遵循最左匹配原则。遇到一般范围查询后，后面的列不能继续用于确定扫描范围；笔记说明 >=、<=、BETWEEN 和前缀 LIKE 是例外。",
+    "answerKeywords": "联合索引,最左匹配,范围查询",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引常见面试题 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-index-loss-01-v2",
+    "question": "为什么 LIKE '%林' 或 LIKE '%林%' 通常会导致索引失效？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "13818dc13f7631f92112a53670cee1db97b35d07",
+    "expectedParagraphId": "13818dc13f7631f92112a53670cee1db97b35d07:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+        "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "13818dc13f7631f92112a53670cee1db97b35d07",
+        "paragraphId": "13818dc13f7631f92112a53670cee1db97b35d07:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+        "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "13818dc13f7631f92112a53670cee1db97b35d07",
+        "paragraphId": "13818dc13f7631f92112a53670cee1db97b35d07:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+        "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p5"
+      }
+    ],
+    "expectedAnswer": "LIKE 以通配符开头时不能按索引有序前缀定位，可能导致索引失效，最后转为全表扫描。",
+    "answerKeywords": "索引失效,全表扫描",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引失效有哪些？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-index-loss-02-v2",
+    "question": "字符串索引列和数字比较时，为什么可能发生隐式类型转换并导致索引失效？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "13818dc13f7631f92112a53670cee1db97b35d07",
+    "expectedParagraphId": "13818dc13f7631f92112a53670cee1db97b35d07:p6",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+        "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p6"
+      }
+    ],
+    "expectedAnswer": "如果 phone 是字符串索引列却与数字比较，MySQL 可能对列做 CAST(phone AS signed int)，需要逐行转换后再比较，索引难以直接定位。应让比较两侧类型一致，例如把数字写成字符串；数字索引列与数字字符串比较时则可能转换常量而仍使用索引。",
+    "answerKeywords": "数字比较,CAST(phone AS signed int)",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引失效有哪些？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-intro-01-v2",
+    "question": "这组 MySQL 笔记主要覆盖哪些知识模块？适合怎样使用？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "9f92ba26ac7e2e957dffe21ef81f7a2ccb75f9a0",
+    "expectedParagraphId": "9f92ba26ac7e2e957dffe21ef81f7a2ccb75f9a0:p2",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "a2d54c99bd712227397f9f01df84d01014b577ff",
+        "paragraphId": "a2d54c99bd712227397f9f01df84d01014b577ff:p2"
+      }
+    ],
+    "expectedAnswer": "笔记面向有一定基础但知识点联系不够系统的后端开发者和 DBA，覆盖 SQL、行记录存储、索引、事务、锁、日志、Buffer Pool 和 MySQL 架构等模块。可以按目录检索或搜索具体问题，不必严格线性阅读。",
+    "answerKeywords": "DBA,SQL",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/图解MySQL介绍 _ 小林coding-2.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-btree-01-v2",
+    "question": "MySQL 为什么通常使用 B+ 树而不是二叉树、AVL 树或红黑树作为索引？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+    "expectedParagraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+        "paragraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+        "paragraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p5"
+      }
+    ],
+    "expectedAnswer": "多叉 B+ 树层高较低，查询时磁盘 I/O 更少；非叶子节点主要保存索引信息，叶子节点有序且相连，有利于范围查询。",
+    "answerKeywords": "B+ 树,磁盘 I/O,范围查询",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/为什么 MySQL 采用 B+ 树作为索引？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-btree-02-v2",
+    "question": "B+ 树的聚簇索引和二级索引叶子节点分别保存什么？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+    "expectedParagraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p4"
+      }
+    ],
+    "expectedAnswer": "聚簇索引的叶子节点保存完整行记录；二级索引的叶子节点保存索引列值和主键值，若查询列不在二级索引中，还要根据主键回到聚簇索引取数据。",
+    "answerKeywords": "聚簇索引,二级索引,主键值",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/为什么 MySQL 采用 B+ 树作为索引？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-select-01-v2",
+    "question": "执行一条 SELECT 语句时，MySQL 从连接到返回结果大致经历哪些阶段？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+    "expectedParagraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+        "paragraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+        "paragraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p5"
+      }
+    ],
+    "expectedAnswer": "客户端先通过连接器完成网络连接、认证和权限校验；服务层随后进行解析、预处理和优化，生成执行计划；执行器调用存储引擎读取记录，最后把结果返回给客户端。",
+    "answerKeywords": "连接器,解析,优化,存储引擎",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/执行一条 select 语句，期间发生了什么？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-select-02-v2",
+    "question": "SELECT 执行流程里，优化器负责什么？可以通过什么查看它选择的索引和计划？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+    "expectedParagraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+        "paragraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+        "paragraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p5"
+      }
+    ],
+    "expectedAnswer": "优化器基于成本选择索引和执行计划；可以通过 EXPLAIN 查看 key、type、Extra 等字段来观察其选择。",
+    "answerKeywords": "优化器,EXPLAIN,key,type,Extra",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/执行一条 select 语句，期间发生了什么？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-count-01-v2",
+    "question": "COUNT(*)、COUNT(1) 和 COUNT(字段) 的语义和性能有什么区别？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+    "expectedParagraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+        "paragraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p6"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p6"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+        "paragraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p7"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p7"
+      }
+    ],
+    "expectedAnswer": "COUNT(表达式)只统计表达式非 NULL 的行；COUNT(1) 和 COUNT(*) 都统计行数，通常没有性能差异。COUNT(字段)还要判断字段是否为 NULL，非索引字段可能需要更多读取，因此不能把三者简单认为完全等价。",
+    "answerKeywords": "COUNT(1),COUNT(字段),NULL",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/count(_) 和 count(1) 有什么区别？哪个性能最好？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-count-02-v2",
+    "question": "为什么 InnoDB 的 COUNT(*) 通常需要扫描记录？大表统计行数可以怎么优化？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+    "expectedParagraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p9",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p9"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+        "paragraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p11"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p11"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+        "paragraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p12"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p12"
+      }
+    ],
+    "expectedAnswer": "InnoDB 支持事务和 MVCC，同一时刻不同事务可能看到不同版本，所以不能只依赖一个静态元数据行数，通常需要扫描可见记录。大表可以按业务接受度使用 SHOW TABLE STATUS 或 EXPLAIN 的估算值，或维护独立的计数表；精确 COUNT 仍要承担扫描成本。",
+    "answerKeywords": "事务,MVCC,SHOW TABLE STATUS,计数表",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/count(_) 和 count(1) 有什么区别？哪个性能最好？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-20m-01-v2",
+    "question": "MySQL 单表不要超过 2000 万行是硬性限制吗？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ef29ab0515f4927c0558a6abea47b23d55b03641",
+    "expectedParagraphId": "ef29ab0515f4927c0558a6abea47b23d55b03641:p8",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+        "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p8"
+      }
+    ],
+    "expectedAnswer": "不是硬性限制。笔记把 2000W 行作为推荐值；超过这个值可能使 B+ 树层级升高，影响查询性能，并非对所有表都适用的硬上限。",
+    "answerKeywords": "2000W,B+ 树,层级,查询性能",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 单表不要超过 2000W 行，靠谱吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-20m-02-v2",
+    "question": "按笔记里的三层 B+ 树示例，查询 id=6 最多访问几个页？如果这些页都未加载到内存会怎样？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ef29ab0515f4927c0558a6abea47b23d55b03641",
+    "expectedParagraphId": "ef29ab0515f4927c0558a6abea47b23d55b03641:p7",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+        "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p7"
+      }
+    ],
+    "expectedAnswer": "笔记示例中查询 id=6 依次访问三层 B+ 树的三个页；如果这些页都在磁盘且未提前加载到内存，最多需要三次磁盘 IO。",
+    "answerKeywords": "id=6,三个页,磁盘,三次",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 单表不要超过 2000W 行，靠谱吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-pagination-01-v2",
+    "question": "为什么 LIMIT offset, size 的深分页会越来越慢？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "9f40ec38a8370bb90b6d566ad81941d261a6d912",
+    "expectedParagraphId": "9f40ec38a8370bb90b6d566ad81941d261a6d912:p2",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+        "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p2"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "9f40ec38a8370bb90b6d566ad81941d261a6d912",
+        "paragraphId": "9f40ec38a8370bb90b6d566ad81941d261a6d912:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+        "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "9f40ec38a8370bb90b6d566ad81941d261a6d912",
+        "paragraphId": "9f40ec38a8370bb90b6d566ad81941d261a6d912:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+        "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p4"
+      }
+    ],
+    "expectedAnswer": "数据库通常需要先定位并读取前 offset 行，再丢弃它们，最后返回 size 行。offset 越大，扫描、排序或回表的无效工作越多，所以深分页会变慢。",
+    "answerKeywords": "offset,回表",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 分页有什么性能问题？怎么优化？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-pagination-02-v2",
+    "question": "大数据量分页有哪些更合适的优化方式？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "9f40ec38a8370bb90b6d566ad81941d261a6d912",
+    "expectedParagraphId": "9f40ec38a8370bb90b6d566ad81941d261a6d912:p6",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+        "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p6"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "9f40ec38a8370bb90b6d566ad81941d261a6d912",
+        "paragraphId": "9f40ec38a8370bb90b6d566ad81941d261a6d912:p7"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+        "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p7"
+      }
+    ],
+    "expectedAnswer": "批量取出数据时可按 id 主键排序，记下本批最大 id 作为下一批筛选条件，通过主键索引定位后继续分批读取，避免 offset 不断增大的深分页。",
+    "answerKeywords": "id,主键,分批,offset",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 分页有什么性能问题？怎么优化？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-row-format-01-v2",
+    "question": "InnoDB 的表空间、段、区、页和行之间是什么关系？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+    "expectedParagraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p4"
+      }
+    ],
+    "expectedAnswer": "InnoDB 的存储层次可以理解为表空间包含段，段由区组成，区通常包含 64 个页、约 1MB，页是读写的基本单位，行记录存放在页内；普通数据页默认约 16KB。",
+    "answerKeywords": "表空间,段,区,64 个页,16KB",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 一行记录是怎么存储的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-row-format-02-v2",
+    "question": "为什么单个允许 NULL 的 ASCII VARCHAR 字段最大长度是 65532？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+    "expectedParagraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+        "paragraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p4"
+      }
+    ],
+    "expectedAnswer": "非 TEXT、BLOB 类型的单行总长度上限是 65535 字节。单个允许 NULL 的 ASCII VARCHAR 还要扣除 NULL 值列表占 1 字节，以及变长字段长度列表占 2 字节，因此最大为 65535 - 1 - 2 = 65532。",
+    "answerKeywords": "65535,65532,NULL,变长字段长度",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 一行记录是怎么存储的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-phantom-01-v2",
+    "question": "MySQL 的可重复读隔离级别完全解决幻读了吗？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ac2d457c4639c42bf053e579f11323469cfd3fbf",
+    "expectedParagraphId": "ac2d457c4639c42bf053e579f11323469cfd3fbf:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+        "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ac2d457c4639c42bf053e579f11323469cfd3fbf",
+        "paragraphId": "ac2d457c4639c42bf053e579f11323469cfd3fbf:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+        "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0833231526f29e9098a7ebb20f67b31f2b2ccd45",
+        "paragraphId": "0833231526f29e9098a7ebb20f67b31f2b2ccd45:p1"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1af63b3e8727f4f763ebf7009070ba13ea31c3bf",
+        "paragraphId": "1af63b3e8727f4f763ebf7009070ba13ea31c3bf:p1"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0833231526f29e9098a7ebb20f67b31f2b2ccd45",
+        "paragraphId": "0833231526f29e9098a7ebb20f67b31f2b2ccd45:p11"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1af63b3e8727f4f763ebf7009070ba13ea31c3bf",
+        "paragraphId": "1af63b3e8727f4f763ebf7009070ba13ea31c3bf:p11"
+      }
+    ],
+    "expectedAnswer": "不能简单说完全解决。普通一致性读通过 MVCC 和 Read View 保持快照一致，但当前读会读取最新版本并可能遇到范围内新插入的记录；需要通过 next-key lock 等锁机制约束当前读的范围。",
+    "answerKeywords": "完全解决,MVCC,当前读,next-key lock",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 可重复读隔离级别，完全解决幻读了吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-phantom-02-v2",
+    "question": "InnoDB 如何通过当前读和 next-key lock 降低可重复读下的幻读风险？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ac2d457c4639c42bf053e579f11323469cfd3fbf",
+    "expectedParagraphId": "ac2d457c4639c42bf053e579f11323469cfd3fbf:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+        "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p4"
+      }
+    ],
+    "expectedAnswer": "SELECT ... FOR UPDATE 等当前读会读取最新版本，并通过 next-key lock（记录锁加间隙锁）锁住索引记录及其间隙，阻止其他事务在目标范围插入，从而控制范围内的幻读。",
+    "answerKeywords": "当前读,next-key lock",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 可重复读隔离级别，完全解决幻读了吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-locking-01-v2",
+    "question": "普通 SELECT、SELECT ... FOR UPDATE、UPDATE/DELETE 在 InnoDB 中分别会加什么类型的锁？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+    "expectedParagraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p4"
+      }
+    ],
+    "expectedAnswer": "普通一致性读通常不加行锁；SELECT ... FOR UPDATE 是当前读并请求排他锁，UPDATE/DELETE 也会加排他锁。具体锁住记录还是范围，还要看索引访问方式、隔离级别和记录是否存在。",
+    "answerKeywords": "行锁,SELECT ... FOR UPDATE,隔离级别",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 是怎么加锁的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-locking-02-v2",
+    "question": "如何通过 performance_schema.data_locks 判断 InnoDB 实际加了记录锁、间隙锁还是临键锁？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+    "expectedParagraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p5",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+        "paragraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p3"
+      }
+    ],
+    "expectedAnswer": "可以查询 performance_schema.data_locks，结合 INDEX_NAME、LOCK_TYPE、LOCK_MODE、LOCK_DATA 和事务信息判断锁定的索引对象及模式。LOCK_MODE 中的记录锁、间隙锁组合通常对应 next-key lock；唯一等值命中、未命中等场景还会让锁退化为记录锁或间隙锁。",
+    "answerKeywords": "performance_schema.data_locks,LOCK_TYPE,LOCK_MODE,LOCK_DATA",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 是怎么加锁的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-locks-01-v2",
+    "question": "MySQL 中全局锁、表级锁和行级锁分别影响什么范围？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "bf138b7e294c9bca1c9665774749bf00c7506380",
+    "expectedParagraphId": "bf138b7e294c9bca1c9665774749bf00c7506380:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+        "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p3"
+      }
+    ],
+    "expectedAnswer": "全局锁影响整个数据库实例，表级锁影响一张表，行级锁只影响符合条件的索引记录或范围。全局锁可用于一致性逻辑备份但会阻塞写入；InnoDB 常用 mysqldump --single-transaction 利用一致性读减少对业务写入的影响。",
+    "answerKeywords": "全局锁,表级锁,行级锁,--single-transaction",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 有哪些锁？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-locks-02-v2",
+    "question": "为什么长事务可能阻塞 DDL？这和 MySQL 的 MDL 锁有什么关系？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "bf138b7e294c9bca1c9665774749bf00c7506380",
+    "expectedParagraphId": "bf138b7e294c9bca1c9665774749bf00c7506380:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+        "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p4"
+      }
+    ],
+    "expectedAnswer": "访问表时会持有元数据锁（MDL），事务结束后才释放。长事务长期占用 MDL 读锁时，DDL 需要申请 MDL 写锁而被阻塞；同时排队的 DDL 还可能反过来阻塞后续访问，因此应及时提交事务并监控锁等待。",
+    "answerKeywords": "元数据锁（MDL）,MDL 写锁,锁等待",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 有哪些锁？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-data-page-03-v2",
+    "question": "InnoDB 为什么让数据页在物理上不连续，而通过 File Header 连接成逻辑链表？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+    "expectedParagraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+        "paragraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p3"
+      }
+    ],
+    "expectedAnswer": "数据页不要求在磁盘上物理连续，而是由 File Header 中指向上一页和下一页的指针维护逻辑连续性。这样页可以分散存储，仍能按链表顺序遍历。",
+    "answerKeywords": "File Header,数据页,指针",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/从数据页的角度看 B+ 树 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-data-page-04-v2",
+    "question": "查询二级索引时，为什么有时要再访问聚簇索引？如何避免这次访问？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+    "expectedParagraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "5a95e2de19f84d60638704dbacf67d73018325e0",
+        "paragraphId": "5a95e2de19f84d60638704dbacf67d73018325e0:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f",
+        "paragraphId": "0e7b113073f88ca1d3951ff5b3c116ab569d893f:p3"
+      }
+    ],
+    "expectedAnswer": "二级索引叶子节点通常只保存主键，查询非索引覆盖列时要根据主键回到聚簇索引取完整行，这叫回表。让二级索引包含查询所需列即可形成索引覆盖，避免回表。",
+    "answerKeywords": "二级索引叶子节点,回到聚簇索引,回表,索引覆盖",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/从数据页的角度看 B+ 树 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-transaction-isolation-03-v2",
+    "question": "InnoDB 默认使用哪个事务隔离级别？它主要通过什么机制保持普通查询的一致性？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ee091486687dc5e183189283c54111c774aca43d",
+    "expectedParagraphId": "ee091486687dc5e183189283c54111c774aca43d:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p5"
+      }
+    ],
+    "expectedAnswer": "InnoDB 默认隔离级别是可重复读（RR）。普通一致性读通过 MVCC 与 Read View 判断可见版本；Read View 通常在第一次一致性读时建立并复用。",
+    "answerKeywords": "可重复读,Read View,MVCC",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/事务隔离级别是怎么实现的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-transaction-isolation-04-v2",
+    "question": "Read View 判断一个历史版本是否可见时，主要看哪些字段？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ee091486687dc5e183189283c54111c774aca43d",
+    "expectedParagraphId": "ee091486687dc5e183189283c54111c774aca43d:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p5"
+      }
+    ],
+    "expectedAnswer": "Read View 主要包含 m_ids、min_trx_id、max_trx_id 和 creator_trx_id。InnoDB 根据版本的 trx_id 与这些字段判断可见性，不可见时沿 roll_pointer 回溯 undo log 版本链。",
+    "answerKeywords": "m_ids,min_trx_id,max_trx_id,creator_trx_id,roll_pointer",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/事务隔离级别是怎么实现的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-index-interview-03-v2",
+    "question": "索引下推具体把过滤动作提前到了哪里？它为什么能减少回表？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+    "expectedParagraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+        "paragraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+        "paragraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p5"
+      }
+    ],
+    "expectedAnswer": "索引下推会在遍历联合索引时，先利用索引中已有的字段过滤记录，再对剩余记录回表，从而减少需要访问聚簇索引的数据行数量。",
+    "answerKeywords": "索引下推,联合索引,回表,聚簇索引",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引常见面试题 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-index-interview-04-v2",
+    "question": "创建索引为什么不是越多越好？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a",
+    "expectedParagraphId": "cf6e20b60d82c4f19ccc807c3f7a70d62a770c3a:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790",
+        "paragraphId": "7825c2bb8661ea047fc85893dcfdef35ce2d4790:p4"
+      }
+    ],
+    "expectedAnswer": "索引会占用额外空间，并增加创建、维护和增删改成本；索引过多还会增加优化和写入负担。因此应结合查询条件、排序和选择性设计，而不是盲目创建。",
+    "answerKeywords": "索引,创建,维护",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引常见面试题 _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-index-loss-03-v2",
+    "question": "在索引列上调用函数，为什么可能让 MySQL 无法直接使用索引？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "13818dc13f7631f92112a53670cee1db97b35d07",
+    "expectedParagraphId": "13818dc13f7631f92112a53670cee1db97b35d07:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+        "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p4"
+      }
+    ],
+    "expectedAnswer": "如果对索引列做函数运算，例如 length(name)=6，数据库需要先对列值逐行计算函数结果，原有索引顺序不能直接对应这个条件，因此可能无法用索引定位。",
+    "answerKeywords": "length(name)=6,函数,索引",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引失效有哪些？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-index-loss-04-v2",
+    "question": "OR 条件中只有一个列有索引时，为什么整体查询可能放弃索引？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "13818dc13f7631f92112a53670cee1db97b35d07",
+    "expectedParagraphId": "13818dc13f7631f92112a53670cee1db97b35d07:p8",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "054fc7d4e180db7ebad68954c839562482470546",
+        "paragraphId": "054fc7d4e180db7ebad68954c839562482470546:p8"
+      }
+    ],
+    "expectedAnswer": "OR 连接的条件需要覆盖两边的分支。如果其中一个列没有索引，数据库可能无法高效合并两个分支，只能扫描更多数据；当 OR 两边都有合适索引时，才可能使用 index merge，仍需以执行计划为准。",
+    "answerKeywords": "OR,index merge,执行计划",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/索引失效有哪些？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-btree-03-v2",
+    "question": "B+ 树为什么适合做范围查询？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+    "expectedParagraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p3"
+      }
+    ],
+    "expectedAnswer": "B+ 树的叶子节点按索引键有序，并通过双向链表连接。定位到范围起点后可以沿叶子链表顺序遍历，不必反复从根节点查找。",
+    "answerKeywords": "叶子节点,双向链表,顺序遍历",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/为什么 MySQL 采用 B+ 树作为索引？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-btree-04-v2",
+    "question": "B+ 树的非叶子节点只保存索引，为什么能降低磁盘 I/O？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+    "expectedParagraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f66ab4d8e663e956066b39db6f76749e6068dcbb",
+        "paragraphId": "f66ab4d8e663e956066b39db6f76749e6068dcbb:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "af1ff42e767ef012688f00048f703110e3ee9f48",
+        "paragraphId": "af1ff42e767ef012688f00048f703110e3ee9f48:p5"
+      }
+    ],
+    "expectedAnswer": "非叶子节点不存完整记录，只存索引键和指针，因此同样大小的数据页能容纳更多索引项，树的扇出更大、层高更低，查询时需要访问的磁盘页更少。",
+    "answerKeywords": "非叶子节点,数据页,磁盘页",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/为什么 MySQL 采用 B+ 树作为索引？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-select-03-v2",
+    "question": "MySQL 8.0 以后为什么不再使用查询缓存？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+    "expectedParagraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p4"
+      }
+    ],
+    "expectedAnswer": "MySQL 8.0 移除了查询缓存，SELECT 执行流程不再把查询缓存作为常规阶段；后续仍要经过解析、优化并由执行器访问存储引擎。",
+    "answerKeywords": "MySQL 8.0,解析,优化,存储引擎",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/执行一条 select 语句，期间发生了什么？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-select-04-v2",
+    "question": "SELECT 执行流程中的连接器主要负责哪些工作？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+    "expectedParagraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ba99b215856a30fe3ab9bb6767e0710df05a246c",
+        "paragraphId": "ba99b215856a30fe3ab9bb6767e0710df05a246c:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4469c35533d24576a2cd571185a2067b62234b10",
+        "paragraphId": "4469c35533d24576a2cd571185a2067b62234b10:p3"
+      }
+    ],
+    "expectedAnswer": "连接器负责与客户端建立连接、进行身份认证和权限校验，并维护连接。连接建立后，SQL 才会继续进入解析、优化和执行阶段。",
+    "answerKeywords": "连接器,客户端,解析",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/执行一条 select 语句，期间发生了什么？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-count-03-v2",
+    "question": "InnoDB 统计 COUNT(*) 时，为什么可能选择最小的二级索引？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+    "expectedParagraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p8",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p8"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+        "paragraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+        "paragraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p5"
+      }
+    ],
+    "expectedAnswer": "在存在二级索引时，优化器可能选择键长度最小的二级索引扫描，因为它占用的页更少、扫描成本更低；如果没有合适的二级索引，则扫描聚簇索引。",
+    "answerKeywords": "二级索引,优化器,聚簇索引",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/count(_) 和 count(1) 有什么区别？哪个性能最好？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-count-04-v2",
+    "question": "为什么 MyISAM 的无条件 COUNT(*) 可以很快，而 InnoDB 通常需要扫描？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "1d9db0915ba669d566356de2d8b04585a0da28ff",
+    "expectedParagraphId": "1d9db0915ba669d566356de2d8b04585a0da28ff:p9",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "69eee422b125adc522bdac53c65d87482a5b18ea",
+        "paragraphId": "69eee422b125adc522bdac53c65d87482a5b18ea:p9"
+      }
+    ],
+    "expectedAnswer": "MyISAM 可以直接从元数据读取无 WHERE 条件的行数；InnoDB 支持事务和 MVCC，不同事务看到的可见行可能不同，所以通常需要扫描并判断可见记录。",
+    "answerKeywords": "MyISAM,WHERE,InnoDB",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/count(_) 和 count(1) 有什么区别？哪个性能最好？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": true
+  },
+  {
+    "id": "mysql-note-20m-03-v2",
+    "question": "按照笔记中的简化模型，三层 B+ 树大约能容纳多少行？这个估算说明了什么？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ef29ab0515f4927c0558a6abea47b23d55b03641",
+    "expectedParagraphId": "ef29ab0515f4927c0558a6abea47b23d55b03641:p7",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+        "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p7"
+      }
+    ],
+    "expectedAnswer": "在 x 约为 1280、y 约为 15、树高 z 为 3 的简化假设下，Total=(1280^2)×15=24576000，约 2457.6 万行。这只是基于页大小、主键和行大小的估算，不是硬性上限。",
+    "answerKeywords": "1280,15,24576000",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 单表不要超过 2000W 行，靠谱吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-20m-04-v2",
+    "question": "为什么行记录变大后，同样三层 B+ 树能容纳的行数会明显减少？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ef29ab0515f4927c0558a6abea47b23d55b03641",
+    "expectedParagraphId": "ef29ab0515f4927c0558a6abea47b23d55b03641:p7",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef",
+        "paragraphId": "06ecb5d811af2c1d961b12e7ba810c3847e9b8ef:p7"
+      }
+    ],
+    "expectedAnswer": "笔记用 Total=x^(z-1)×y 估算容量；叶子节点中的每行数据占用空间变大时，单页可容纳的行数 y 变少，相同层数下估算总行数也会下降。",
+    "answerKeywords": "叶子节点,每行数据,Total",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 单表不要超过 2000W 行，靠谱吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-pagination-04-v2",
+    "question": "为什么导出大量数据时更适合按递增主键分批，而不是持续增大 offset？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "9f40ec38a8370bb90b6d566ad81941d261a6d912",
+    "expectedParagraphId": "9f40ec38a8370bb90b6d566ad81941d261a6d912:p6",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e",
+        "paragraphId": "94e067cc8d75a1ce80eeb4fa5236e1793821bd5e:p6"
+      }
+    ],
+    "expectedAnswer": "持续增大 offset 会重复扫描前面的数据。笔记建议按 id 主键排序，记下本批最大 id 作为下一批筛选条件，通过主键索引继续分批读取。",
+    "answerKeywords": "offset,id,主键",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 分页有什么性能问题？怎么优化？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-row-format-03-v2",
+    "question": "InnoDB 行记录中的 trx_id 和 roll_pointer 分别记录什么？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+    "expectedParagraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p4"
+      }
+    ],
+    "expectedAnswer": "trx_id 记录最近修改该行的事务 ID，roll_pointer 指向 undo log 中的旧版本记录；两者支持 InnoDB 沿版本链读取历史版本。",
+    "answerKeywords": "trx_id,roll_pointer",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 一行记录是怎么存储的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-row-format-04-v2",
+    "question": "Compact、Dynamic 和 Compressed 行格式处理大字段溢出时有什么区别？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+    "expectedParagraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+        "paragraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917",
+        "paragraphId": "fd2c96592e026c3d765b16768b9e93d6f1f0d917:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "aaf7f494785c1a50184273ab8286570d0009429b",
+        "paragraphId": "aaf7f494785c1a50184273ab8286570d0009429b:p5"
+      }
+    ],
+    "expectedAnswer": "Compact 会在行内保留部分大字段数据，并用 20 字节指针指向溢出页；Dynamic 和 Compressed 主要在行内保存指针，把实际数据放到溢出页。",
+    "answerKeywords": "Compact,20 字节指针,溢出页,Dynamic,Compressed",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-05/MySQL 一行记录是怎么存储的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-phantom-03-v2",
+    "question": "普通快照读和 SELECT ... FOR UPDATE 解决幻读的方式有什么不同？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ac2d457c4639c42bf053e579f11323469cfd3fbf",
+    "expectedParagraphId": "ac2d457c4639c42bf053e579f11323469cfd3fbf:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+        "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ac2d457c4639c42bf053e579f11323469cfd3fbf",
+        "paragraphId": "ac2d457c4639c42bf053e579f11323469cfd3fbf:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+        "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ac2d457c4639c42bf053e579f11323469cfd3fbf",
+        "paragraphId": "ac2d457c4639c42bf053e579f11323469cfd3fbf:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "4a6b1731c285d86d9d45989c89704450f61441e7",
+        "paragraphId": "4a6b1731c285d86d9d45989c89704450f61441e7:p5"
+      }
+    ],
+    "expectedAnswer": "普通快照读通过 MVCC 使用 Read View 读取一致性版本；SELECT ... FOR UPDATE 属于当前读，通过 next-key lock 锁住记录及间隙，限制范围内的新插入。",
+    "answerKeywords": "MVCC,Read View,当前读,next-key lock",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 可重复读隔离级别，完全解决幻读了吗？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-phantom-04-v2",
+    "question": "START TRANSACTION 和 START TRANSACTION WITH CONSISTENT SNAPSHOT 在快照建立时机上有什么差别？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "ee091486687dc5e183189283c54111c774aca43d",
+    "expectedParagraphId": "ee091486687dc5e183189283c54111c774aca43d:p4",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "ee091486687dc5e183189283c54111c774aca43d",
+        "paragraphId": "ee091486687dc5e183189283c54111c774aca43d:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2531ded2715a303bbc900e521c982f0d6853a511",
+        "paragraphId": "2531ded2715a303bbc900e521c982f0d6853a511:p5"
+      }
+    ],
+    "expectedAnswer": "执行 BEGIN 或 START TRANSACTION 后，通常到第一次一致性读时事务才真正启动并建立快照；START TRANSACTION WITH CONSISTENT SNAPSHOT 会立即建立事务快照。",
+    "answerKeywords": "START TRANSACTION,WITH CONSISTENT SNAPSHOT",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=事务隔离级别是怎么实现的？ | 小林coding; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-locking-03-v2",
+    "question": "唯一索引等值查询命中已有记录时，为什么通常只需要记录锁？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+    "expectedParagraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p5",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+        "paragraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+        "paragraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p4"
+      }
+    ],
+    "expectedAnswer": "唯一索引等值条件已经唯一确定了一条存在的记录，不需要继续保护同一范围内其他可能的记录，因此锁可以退化为记录锁；未命中时则可能锁住对应间隙。",
+    "answerKeywords": "记录锁,间隙,唯一索引",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 是怎么加锁的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-locking-04-v2",
+    "question": "通过二级索引更新记录时，为什么还可能锁住对应的主键索引记录？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+    "expectedParagraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p5",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+        "paragraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "27faea75eb283d70afe9618c3c3e0680ec261d5d",
+        "paragraphId": "27faea75eb283d70afe9618c3c3e0680ec261d5d:p4"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "2b16dedb1e971660075751e0384865bd55a28bdc",
+        "paragraphId": "2b16dedb1e971660075751e0384865bd55a28bdc:p4"
+      }
+    ],
+    "expectedAnswer": "使用二级索引进行锁定读时，除了二级索引上的锁，还可能对对应的主键索引记录加锁；应同时检查两侧的锁。",
+    "answerKeywords": "二级索引,主键索引,锁",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 是怎么加锁的？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-locks-03-v2",
+    "question": "为什么 mysqldump 备份 InnoDB 时常推荐使用 --single-transaction？",
+    "caseType": "natural",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "bf138b7e294c9bca1c9665774749bf00c7506380",
+    "expectedParagraphId": "bf138b7e294c9bca1c9665774749bf00c7506380:p5",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+        "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "bf138b7e294c9bca1c9665774749bf00c7506380",
+        "paragraphId": "bf138b7e294c9bca1c9665774749bf00c7506380:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+        "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p3"
+      }
+    ],
+    "expectedAnswer": "--single-transaction 可以让 InnoDB 基于一致性读和 Read View 进行逻辑备份，通常不需要像全局读锁那样长时间阻塞业务写入。",
+    "answerKeywords": "--single-transaction,一致性读,Read View,业务写入",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 有哪些锁？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-locks-04-v2",
+    "question": "innodb_autoinc_lock_mode=2 与 statement binlog 组合为什么可能造成主从不一致？",
+    "caseType": "challenge",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "bf138b7e294c9bca1c9665774749bf00c7506380",
+    "expectedParagraphId": "bf138b7e294c9bca1c9665774749bf00c7506380:p3",
+    "additionalRelevantTargets": [
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+        "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p3"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "bf138b7e294c9bca1c9665774749bf00c7506380",
+        "paragraphId": "bf138b7e294c9bca1c9665774749bf00c7506380:p5"
+      },
+      {
+        "text": "",
+        "path": "",
+        "title": "",
+        "documentId": "f3638ecba090ec006d06e18facb1d65e7c5ce810",
+        "paragraphId": "f3638ecba090ec006d06e18facb1d65e7c5ce810:p5"
+      }
+    ],
+    "expectedAnswer": "笔记指出 innodb_autoinc_lock_mode=2 应配合 row 格式 binlog；若搭配 statement 格式，可能发生主从数据不一致。",
+    "answerKeywords": "innodb_autoinc_lock_mode=2,row,statement",
+    "shouldRefuse": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; source=TabKeep评估集构建/2026-09-06/MySQL 有哪些锁？ _ 小林coding.md; evidence=paragraph-id; audit=v2",
+    "updatedAt": "2026-09-29T00:00:00Z",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "isCore": false
+  },
+  {
+    "id": "mysql-note-pagination-measured-ms-v2",
+    "question": "这组笔记对 LIMIT 6000000,10 深分页实际测得多少毫秒？",
+    "caseType": "negative",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "",
+    "expectedParagraphId": "",
+    "additionalRelevantTargets": [],
+    "expectedAnswer": "",
+    "answerKeywords": "",
+    "shouldRefuse": true,
+    "isCore": true,
+    "note": "dataset=tabkeep-mysql-notes-v2; unsupported=资料讨论了深分页原理，但未给出该语句的实测耗时。",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "updatedAt": "2026-09-29T00:00:00Z"
+  },
+  {
+    "id": "mysql-note-autoinc-current-mode-v2",
+    "question": "当前运行的 MySQL 实例 innodb_autoinc_lock_mode 配置值是多少？",
+    "caseType": "negative",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "",
+    "expectedParagraphId": "",
+    "additionalRelevantTargets": [],
+    "expectedAnswer": "",
+    "answerKeywords": "",
+    "shouldRefuse": true,
+    "isCore": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; unsupported=资料解释配置模式，不记录当前实例的运行时配置。",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "updatedAt": "2026-09-29T00:00:00Z"
+  },
+  {
+    "id": "mysql-note-table-p95-v2",
+    "question": "笔记里那张订单表最近一次查询的实际 P95 延迟是多少毫秒？",
+    "caseType": "negative",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "",
+    "expectedParagraphId": "",
+    "additionalRelevantTargets": [],
+    "expectedAnswer": "",
+    "answerKeywords": "",
+    "shouldRefuse": true,
+    "isCore": false,
+    "note": "dataset=tabkeep-mysql-notes-v2; unsupported=资料没有订单表的真实监控 P95。",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "updatedAt": "2026-09-29T00:00:00Z"
+  },
+  {
+    "id": "mysql-note-locking-exact-keys-v2",
+    "question": "那次 SELECT ... FOR UPDATE 实际锁住了哪些具体主键值？",
+    "caseType": "negative",
+    "expectedText": "",
+    "expectedPath": "",
+    "expectedTitle": "",
+    "expectedDocumentId": "",
+    "expectedParagraphId": "",
+    "additionalRelevantTargets": [],
+    "expectedAnswer": "",
+    "answerKeywords": "",
+    "shouldRefuse": true,
+    "isCore": true,
+    "note": "dataset=tabkeep-mysql-notes-v2; unsupported=资料解释加锁规则，没有该次执行的主键值清单。",
+    "dataset": "tabkeep-mysql-notes-v2",
+    "updatedAt": "2026-09-29T00:00:00Z"
+  }
+]

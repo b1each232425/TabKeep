@@ -203,6 +203,17 @@ class KnowledgeHitTestRequest(BaseModel):
     minScore: float = 0
 
 
+class KnowledgeCitationSource(BaseModel):
+    documentId: str
+    paragraphId: str | None = None
+    chunkId: str
+    title: str
+    paragraphTitle: str | None = None
+    sourceType: str
+    url: str | None = None
+    path: str | None = None
+
+
 class KnowledgeCitation(BaseModel):
     documentId: str
     paragraphId: str | None = None
@@ -214,6 +225,7 @@ class KnowledgeCitation(BaseModel):
     path: str | None = None
     content: str
     matchedContent: str | None = None
+    duplicateSources: list[KnowledgeCitationSource] = []
     score: float = 0
     rerankScore: float | None = None
 
@@ -225,6 +237,47 @@ class KnowledgeSearchResponse(BaseModel):
     items: list[KnowledgeCitation] = []
     rerankUsed: bool = False
     rerankMessage: str | None = None
+    error: str | None = None
+
+
+class KnowledgeSkillExportRequest(BaseModel):
+    goal: str
+    documentIds: list[str] = []
+    paragraphIds: list[str] = []
+    skillName: str = "tabkeep-knowledge-skill"
+    displayName: str = "TabKeep 知识 Skill"
+    description: str = ""
+    skillVersion: str = "0.1.0"
+    triggers: list[str] = []
+    capabilities: list[str] = []
+
+
+class KnowledgeSkillDraftRequest(BaseModel):
+    goal: str
+    documentIds: list[str] = []
+    paragraphIds: list[str] = []
+
+
+class KnowledgeSkillDraftResponse(BaseModel):
+    ok: bool
+    skillName: str = ""
+    displayName: str = ""
+    description: str = ""
+    skillVersion: str = "0.1.0"
+    triggers: list[str] = []
+    capabilities: list[str] = []
+    error: str | None = None
+
+
+class KnowledgeSkillExportResponse(BaseModel):
+    ok: bool
+    fileName: str = ""
+    archiveBase64: str = ""
+    skillName: str = ""
+    skillVersion: str = ""
+    sourceCount: int = 0
+    blockCount: int = 0
+    contentHash: str = ""
     error: str | None = None
 
 
@@ -254,6 +307,99 @@ class KnowledgeHitTestResponse(BaseModel):
     error: str | None = None
 
 
+class RgbEvalImportRequest(BaseModel):
+    fileName: str
+    content: str
+
+
+class RgbEvalStatusResponse(BaseModel):
+    ok: bool = True
+    imported: bool = False
+    dataset: str = "rgb-zh-refine"
+    fileName: str = ""
+    datasetVersion: str = ""
+    importedAt: str | None = None
+    caseCount: int = 0
+    passageCount: int = 0
+    vectorCount: int = 0
+    embeddingConfigured: bool = False
+    vectorAvailable: bool = False
+    warning: str | None = None
+    error: str | None = None
+
+
+class RgbEvalRunRequest(BaseModel):
+    caseLimit: int = Field(default=10, ge=0, le=10000)
+    limit: int = Field(default=10, ge=1, le=50)
+    searchMode: str = "hybrid"
+    minScore: float = Field(default=0, ge=0)
+
+
+class RgbEvalHit(KnowledgeHitTestItem):
+    relevant: bool = False
+    knownNegative: bool = False
+
+
+class RgbEvalCaseResult(BaseModel):
+    caseId: str
+    question: str
+    positiveCount: int = 0
+    negativeCount: int = 0
+    relevantRetrieved: int = 0
+    negativeRetrieved: int = 0
+    recallAtK: float = 0
+    reciprocalRank: float = 0
+    firstRelevantRank: int | None = None
+    hits: list[RgbEvalHit] = []
+    error: str | None = None
+
+
+class RgbEvalRunResponse(BaseModel):
+    ok: bool
+    runId: str | None = None
+    dataset: str = "rgb-zh-refine"
+    datasetVersion: str = ""
+    createdAt: str | None = None
+    durationMs: int = 0
+    totalCases: int = 0
+    evaluated: int = 0
+    caseLimit: int = 0
+    passageCount: int = 0
+    limit: int = 10
+    searchMode: str = "hybrid"
+    recallAtK: float = 0
+    precisionAtK: float = 0
+    mrr: float = 0
+    top1Accuracy: float = 0
+    negativeHitRateAtK: float = 0
+    vectorAvailable: bool = False
+    results: list[RgbEvalCaseResult] = []
+    error: str | None = None
+
+
+class RgbEvalRunSummary(BaseModel):
+    runId: str
+    createdAt: str
+    durationMs: int = 0
+    totalCases: int = 0
+    evaluated: int = 0
+    caseLimit: int = 0
+    limit: int = 10
+    searchMode: str = "hybrid"
+    recallAtK: float = 0
+    precisionAtK: float = 0
+    mrr: float = 0
+    top1Accuracy: float = 0
+
+
+class RgbEvalRunRecord(BaseModel):
+    runId: str
+    createdAt: str
+    durationMs: int = 0
+    request: RgbEvalRunRequest
+    result: RgbEvalRunResponse
+
+
 class KnowledgeEvalRelevantTarget(BaseModel):
     text: str = ""
     path: str = ""
@@ -274,7 +420,9 @@ class KnowledgeEvalCaseRequest(BaseModel):
     expectedAnswer: str = ""
     answerKeywords: str = ""
     shouldRefuse: bool = False
+    isCore: bool = False
     note: str = ""
+    dataset: str = "tabkeep-mysql-notes-v2"
 
 
 class KnowledgeEvalCase(BaseModel):
@@ -290,7 +438,9 @@ class KnowledgeEvalCase(BaseModel):
     expectedAnswer: str = ""
     answerKeywords: str = ""
     shouldRefuse: bool = False
+    isCore: bool = False
     note: str = ""
+    dataset: str = "tabkeep-mysql-notes-v2"
     createdAt: str
     updatedAt: str
 
@@ -308,7 +458,7 @@ class KnowledgeEvalRunRequest(BaseModel):
     minScore: float = 0
     evaluateAnswer: bool = False
     evaluateRagas: bool = False
-    answerLimit: int = 30
+    answerLimit: int = 56
     answerTimeoutSeconds: int = 45
     ragasTimeoutSeconds: int = 120
 
@@ -340,6 +490,7 @@ class KnowledgeEvalCaseResult(BaseModel):
     ragasFaithfulness: float | None = None
     ragasFactualCorrectness: float | None = None
     ragasContextPrecision: float | None = None
+    ragasContextRecall: float | None = None
     ragasAnswerRelevance: float | None = None
     ragasError: str | None = None
     refusalOk: bool | None = None
@@ -368,6 +519,11 @@ class KnowledgeEvalTypeSummary(BaseModel):
 
 class KnowledgeEvalRunResponse(BaseModel):
     ok: bool
+    runId: str | None = None
+    dataset: str = ""
+    datasetVersion: str = ""
+    caseSetHash: str = ""
+    indexStatus: dict = Field(default_factory=dict)
     total: int = 0
     evaluated: int = 0
     retrievalEvaluated: int = 0
@@ -394,6 +550,7 @@ class KnowledgeEvalRunResponse(BaseModel):
     averageRagasFaithfulness: float | None = None
     averageRagasFactualCorrectness: float | None = None
     averageRagasContextPrecision: float | None = None
+    averageRagasContextRecall: float | None = None
     averageRagasAnswerRelevance: float | None = None
     rankDistribution: list[KnowledgeEvalRankBucket] = []
     typeSummaries: list[KnowledgeEvalTypeSummary] = []
@@ -402,6 +559,37 @@ class KnowledgeEvalRunResponse(BaseModel):
     sourceModes: dict[str, int] = {}
     results: list[KnowledgeEvalCaseResult] = []
     error: str | None = None
+
+
+class KnowledgeEvalRunSummary(BaseModel):
+    runId: str
+    createdAt: str
+    dataset: str = ""
+    datasetVersion: str = ""
+    durationMs: int = 0
+    total: int = 0
+    evaluated: int = 0
+    recallAtK: float = 0
+    precisionAtK: float = 0
+    mrr: float = 0
+    top1Accuracy: float = 0
+    answerEvaluated: int = 0
+    ragasRequested: bool = False
+    ragasEvaluated: int = 0
+    ragasFailed: int = 0
+    limit: int = 8
+    searchMode: str = "hybrid"
+    evaluateAnswer: bool = False
+    evaluateRagas: bool = False
+    answerLimit: int = 0
+
+
+class KnowledgeEvalRunRecord(BaseModel):
+    runId: str
+    createdAt: str
+    durationMs: int = 0
+    request: KnowledgeEvalRunRequest
+    result: KnowledgeEvalRunResponse
 
 
 class KnowledgeVectorColumn(BaseModel):
@@ -448,7 +636,7 @@ class KnowledgeVectorInspectResponse(BaseModel):
 class KnowledgeAskRequest(BaseModel):
     question: str
     sessionId: str | None = None
-    limit: int = 8
+    limit: int = 5
 
 
 class KnowledgeAskResponse(BaseModel):

@@ -212,6 +212,17 @@ export interface KnowledgeDocumentIndexListResponse {
   items: KnowledgeDocumentIndexStatus[]
 }
 
+export interface KnowledgeCitationSource {
+  documentId: string
+  paragraphId?: string | null
+  chunkId: string
+  title: string
+  paragraphTitle?: string | null
+  sourceType: string
+  url?: string | null
+  path?: string | null
+}
+
 export interface KnowledgeCitation {
   documentId: string
   paragraphId?: string | null
@@ -223,6 +234,7 @@ export interface KnowledgeCitation {
   path?: string | null
   content: string
   matchedContent?: string | null
+  duplicateSources?: KnowledgeCitationSource[]
   score: number
   rerankScore?: number | null
 }
@@ -356,6 +368,47 @@ export interface KnowledgeSearchResponse {
   error?: string | null
 }
 
+export interface KnowledgeSkillExportRequest {
+  goal: string
+  documentIds: string[]
+  paragraphIds: string[]
+  skillName: string
+  displayName: string
+  description: string
+  skillVersion: string
+  triggers: string[]
+  capabilities: string[]
+}
+
+export interface KnowledgeSkillDraftRequest {
+  goal: string
+  documentIds: string[]
+  paragraphIds: string[]
+}
+
+export interface KnowledgeSkillDraftResponse {
+  ok: boolean
+  skillName: string
+  displayName: string
+  description: string
+  skillVersion: string
+  triggers: string[]
+  capabilities: string[]
+  error?: string | null
+}
+
+export interface KnowledgeSkillExportResponse {
+  ok: boolean
+  fileName: string
+  archiveBase64: string
+  skillName: string
+  skillVersion: string
+  sourceCount: number
+  blockCount: number
+  contentHash: string
+  error?: string | null
+}
+
 export type KnowledgeSearchMode = "fts" | "vector" | "hybrid"
 
 export interface KnowledgeHitTestItem extends KnowledgeCitation {
@@ -408,7 +461,9 @@ export interface KnowledgeEvalCaseRequest {
   expectedAnswer: string
   answerKeywords: string
   shouldRefuse: boolean
+  isCore: boolean
   note: string
+  dataset: string
 }
 
 export interface KnowledgeEvalCase extends KnowledgeEvalCaseRequest {
@@ -462,6 +517,7 @@ export interface KnowledgeEvalCaseResult {
   ragasFaithfulness?: number | null
   ragasFactualCorrectness?: number | null
   ragasContextPrecision?: number | null
+  ragasContextRecall?: number | null
   ragasAnswerRelevance?: number | null
   ragasError?: string | null
   refusalOk?: boolean | null
@@ -490,6 +546,11 @@ export interface KnowledgeEvalTypeSummary {
 
 export interface KnowledgeEvalRunResponse {
   ok: boolean
+  runId?: string | null
+  dataset?: string
+  datasetVersion?: string
+  caseSetHash?: string
+  indexStatus?: Record<string, unknown>
   total: number
   evaluated: number
   retrievalEvaluated: number
@@ -516,6 +577,7 @@ export interface KnowledgeEvalRunResponse {
   averageRagasFaithfulness?: number | null
   averageRagasFactualCorrectness?: number | null
   averageRagasContextPrecision?: number | null
+  averageRagasContextRecall?: number | null
   averageRagasAnswerRelevance?: number | null
   rankDistribution: KnowledgeEvalRankBucket[]
   typeSummaries: KnowledgeEvalTypeSummary[]
@@ -524,6 +586,130 @@ export interface KnowledgeEvalRunResponse {
   sourceModes: Record<string, number>
   results: KnowledgeEvalCaseResult[]
   error?: string | null
+}
+
+export interface KnowledgeEvalRunSummary {
+  runId: string
+  createdAt: string
+  dataset?: string
+  datasetVersion?: string
+  durationMs: number
+  total: number
+  evaluated: number
+  recallAtK: number
+  precisionAtK: number
+  mrr: number
+  top1Accuracy: number
+  answerEvaluated: number
+  ragasRequested: boolean
+  ragasEvaluated: number
+  ragasFailed: number
+  limit: number
+  searchMode: KnowledgeSearchMode
+  evaluateAnswer: boolean
+  evaluateRagas: boolean
+  answerLimit: number
+}
+
+export interface KnowledgeEvalRunRecord {
+  runId: string
+  createdAt: string
+  durationMs: number
+  request: KnowledgeEvalRunRequest
+  result: KnowledgeEvalRunResponse
+}
+
+export interface RgbEvalImportRequest {
+  fileName: string
+  content: string
+}
+
+export interface RgbEvalStatus {
+  ok: boolean
+  imported: boolean
+  dataset: string
+  fileName: string
+  datasetVersion: string
+  importedAt?: string | null
+  caseCount: number
+  passageCount: number
+  vectorCount: number
+  embeddingConfigured: boolean
+  vectorAvailable: boolean
+  warning?: string | null
+  error?: string | null
+}
+
+export interface RgbEvalRunRequest {
+  caseLimit: number
+  limit: number
+  searchMode: KnowledgeSearchMode
+  minScore: number
+}
+
+export interface RgbEvalHit extends KnowledgeHitTestItem {
+  relevant: boolean
+  knownNegative: boolean
+}
+
+export interface RgbEvalCaseResult {
+  caseId: string
+  question: string
+  positiveCount: number
+  negativeCount: number
+  relevantRetrieved: number
+  negativeRetrieved: number
+  recallAtK: number
+  reciprocalRank: number
+  firstRelevantRank?: number | null
+  hits: RgbEvalHit[]
+  error?: string | null
+}
+
+export interface RgbEvalRunResponse {
+  ok: boolean
+  runId?: string | null
+  dataset: string
+  datasetVersion: string
+  createdAt?: string | null
+  durationMs: number
+  totalCases: number
+  evaluated: number
+  caseLimit: number
+  passageCount: number
+  limit: number
+  searchMode: KnowledgeSearchMode
+  recallAtK: number
+  precisionAtK: number
+  mrr: number
+  top1Accuracy: number
+  negativeHitRateAtK: number
+  vectorAvailable: boolean
+  results: RgbEvalCaseResult[]
+  error?: string | null
+}
+
+export interface RgbEvalRunSummary {
+  runId: string
+  createdAt: string
+  durationMs: number
+  totalCases: number
+  evaluated: number
+  caseLimit: number
+  limit: number
+  searchMode: KnowledgeSearchMode
+  recallAtK: number
+  precisionAtK: number
+  mrr: number
+  top1Accuracy: number
+}
+
+export interface RgbEvalRunRecord {
+  runId: string
+  createdAt: string
+  durationMs: number
+  request: RgbEvalRunRequest
+  result: RgbEvalRunResponse
 }
 
 // -----------------------------------------------------------------------------

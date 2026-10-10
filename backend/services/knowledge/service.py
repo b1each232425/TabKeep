@@ -5,17 +5,35 @@
 """
 
 from services.knowledge.indexing import index_document, index_saved_note, reindex_all
-from services.knowledge.evaluation import delete_eval_case, list_eval_cases, run_eval, save_eval_case
+from services.knowledge.evaluation import (
+    delete_eval_case,
+    get_eval_run,
+    list_eval_cases,
+    list_eval_run_summaries,
+    run_eval,
+    save_eval_case,
+)
 from services.knowledge.graph import get_graph, rebuild_graph
 from services.knowledge.index_health import inspect_index_health, repair_index
 from services.knowledge.qa import ask_knowledge
 from services.knowledge.retrieval import hit_test_knowledge, search_knowledge
 from services.knowledge.siyuan_sync import precheck_siyuan_sync, sync_siyuan_notes
+from services.knowledge.standalone_export import export_skill_archive, generate_skill_draft
 from services.knowledge.sync_all import list_sync_logs, sync_all_knowledge
 from services.knowledge.topics import enrich_topics, export_topic, get_topic_detail, list_topics, rebuild_topics
 from services.knowledge.vector_debug import inspect_vector_store
-from schemas.knowledge import KnowledgeDocumentIndexListResponse, KnowledgeDocumentIndexStatus
+from schemas.knowledge import (
+    KnowledgeDocumentIndexListResponse,
+    KnowledgeDocumentIndexStatus,
+    RgbEvalImportRequest,
+    RgbEvalRunRecord,
+    RgbEvalRunRequest,
+    RgbEvalRunSummary,
+    RgbEvalRunResponse,
+    RgbEvalStatusResponse,
+)
 from services.knowledge import db as knowledge_db
+from services.knowledge import rgb_benchmark
 
 
 def list_document_indexes(
@@ -46,12 +64,41 @@ def list_document_indexes(
     ]
     return KnowledgeDocumentIndexListResponse(ok=True, total=len(items), items=items)
 
+
+def get_rgb_eval_status() -> RgbEvalStatusResponse:
+    return rgb_benchmark.get_status()
+
+
+async def import_rgb_eval_dataset(request: RgbEvalImportRequest) -> RgbEvalStatusResponse:
+    return await rgb_benchmark.import_dataset(request)
+
+
+async def import_official_rgb_eval_dataset() -> RgbEvalStatusResponse:
+    return await rgb_benchmark.import_official_dataset()
+
+
+async def run_rgb_eval(request: RgbEvalRunRequest) -> RgbEvalRunResponse:
+    return await rgb_benchmark.run_evaluation(request)
+
+
+def list_rgb_eval_runs(limit: int = 20) -> list[RgbEvalRunSummary]:
+    return rgb_benchmark.list_run_summaries(limit)
+
+
+def get_rgb_eval_run(run_id: str) -> RgbEvalRunRecord | None:
+    return rgb_benchmark.get_run(run_id)
+
 __all__ = [
     "ask_knowledge",
     "delete_eval_case",
     "enrich_topics",
+    "export_skill_archive",
+    "generate_skill_draft",
     "export_topic",
     "get_graph",
+    "get_eval_run",
+    "get_rgb_eval_run",
+    "get_rgb_eval_status",
     "get_topic_detail",
     "hit_test_knowledge",
     "index_document",
@@ -60,6 +107,8 @@ __all__ = [
     "inspect_index_health",
     "list_document_indexes",
     "list_eval_cases",
+    "list_eval_run_summaries",
+    "list_rgb_eval_runs",
     "list_sync_logs",
     "list_topics",
     "precheck_siyuan_sync",
@@ -68,6 +117,9 @@ __all__ = [
     "rebuild_topics",
     "repair_index",
     "run_eval",
+    "run_rgb_eval",
+    "import_rgb_eval_dataset",
+    "import_official_rgb_eval_dataset",
     "save_eval_case",
     "search_knowledge",
     "sync_all_knowledge",

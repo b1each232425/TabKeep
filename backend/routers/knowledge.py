@@ -8,8 +8,10 @@ from schemas.knowledge import (
     KnowledgeEvalCase,
     KnowledgeEvalCaseRequest,
     KnowledgeEvalDeleteResponse,
+    KnowledgeEvalRunRecord,
     KnowledgeEvalRunRequest,
     KnowledgeEvalRunResponse,
+    KnowledgeEvalRunSummary,
     KnowledgeGraphRebuildResponse,
     KnowledgeGraphResponse,
     KnowledgeHitTestRequest,
@@ -20,6 +22,10 @@ from schemas.knowledge import (
     KnowledgeReindexResponse,
     KnowledgeSearchRequest,
     KnowledgeSearchResponse,
+    KnowledgeSkillExportRequest,
+    KnowledgeSkillExportResponse,
+    KnowledgeSkillDraftRequest,
+    KnowledgeSkillDraftResponse,
     KnowledgeSession,
     KnowledgeStats,
     KnowledgeSyncLogResponse,
@@ -34,6 +40,12 @@ from schemas.knowledge import (
     KnowledgeTopicListResponse,
     KnowledgeTopicRebuildResponse,
     KnowledgeVectorInspectResponse,
+    RgbEvalImportRequest,
+    RgbEvalRunRequest,
+    RgbEvalRunRecord,
+    RgbEvalRunResponse,
+    RgbEvalRunSummary,
+    RgbEvalStatusResponse,
 )
 from services import storage
 from services.auth import require_api_token
@@ -104,6 +116,43 @@ async def search(req: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
     return await service.search_knowledge(req.query, req.limit)
 
 
+@router.post("/skill/export", response_model=KnowledgeSkillExportResponse, summary="按目标导出独立 Skill")
+def export_skill(req: KnowledgeSkillExportRequest) -> KnowledgeSkillExportResponse:
+    try:
+        result = service.export_skill_archive(
+            goal=req.goal,
+            document_ids=req.documentIds,
+            paragraph_ids=req.paragraphIds,
+            skill_name=req.skillName,
+            display_name=req.displayName,
+            description=req.description,
+            skill_version=req.skillVersion,
+            triggers=req.triggers,
+            capabilities=req.capabilities,
+        )
+        return KnowledgeSkillExportResponse(**result)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/skill/draft", response_model=KnowledgeSkillDraftResponse, summary="根据已选知识生成 Skill 草稿")
+async def draft_skill(req: KnowledgeSkillDraftRequest) -> KnowledgeSkillDraftResponse:
+    try:
+        result = await service.generate_skill_draft(
+            goal=req.goal,
+            document_ids=req.documentIds,
+            paragraph_ids=req.paragraphIds,
+        )
+        return KnowledgeSkillDraftResponse(**result)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Skill 草稿生成失败（{type(exc).__name__}），请检查模型 API 或稍后重试",
+        ) from exc
+
+
 @router.post("/hit-test", response_model=KnowledgeHitTestResponse, summary="调试知识库检索")
 async def hit_test(req: KnowledgeHitTestRequest) -> KnowledgeHitTestResponse:
     return await service.hit_test_knowledge(req.query, req.limit, req.searchMode, req.minScore)
@@ -112,6 +161,52 @@ async def hit_test(req: KnowledgeHitTestRequest) -> KnowledgeHitTestResponse:
 @router.get("/eval/cases", response_model=list[KnowledgeEvalCase], summary="列出 RAG 评估用例")
 def eval_cases() -> list[KnowledgeEvalCase]:
     return service.list_eval_cases()
+
+
+@router.get("/eval/rgb/status", response_model=RgbEvalStatusResponse, summary="读取 RGB 独立评估语料状态")
+def rgb_eval_status() -> RgbEvalStatusResponse:
+    return service.get_rgb_eval_status()
+
+
+@router.post("/eval/rgb/import", response_model=RgbEvalStatusResponse, summary="导入 RGB zh_refine JSONL")
+async def import_rgb_eval_dataset(req: RgbEvalImportRequest) -> RgbEvalStatusResponse:
+    try:
+        return await service.import_rgb_eval_dataset(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/eval/rgb/import-official",
+    response_model=RgbEvalStatusResponse,
+    summary="自动下载并导入 RGB 官方 zh_refine 语料",
+)
+async def import_official_rgb_eval_dataset() -> RgbEvalStatusResponse:
+    try:
+        return await service.import_official_rgb_eval_dataset()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post("/eval/rgb/run", response_model=RgbEvalRunResponse, summary="运行 RGB 独立语料检索评估")
+async def run_rgb_eval(req: RgbEvalRunRequest) -> RgbEvalRunResponse:
+    try:
+        return await service.run_rgb_eval(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/eval/rgb/runs", response_model=list[RgbEvalRunSummary], summary="读取 RGB 评估历史")
+def list_rgb_eval_runs(limit: int = 20) -> list[RgbEvalRunSummary]:
+    return service.list_rgb_eval_runs(limit)
+
+
+@router.get("/eval/rgb/runs/{run_id}", response_model=RgbEvalRunRecord, summary="读取指定 RGB 评估结果")
+def get_rgb_eval_run(run_id: str) -> RgbEvalRunRecord:
+    record = service.get_rgb_eval_run(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="RGB 评估记录不存在")
+    return record
 
 
 @router.post("/eval/cases", response_model=KnowledgeEvalCase, summary="新增 RAG 评估用例")
@@ -136,6 +231,24 @@ def delete_eval_case(case_id: str) -> KnowledgeEvalDeleteResponse:
 @router.post("/eval/run", response_model=KnowledgeEvalRunResponse, summary="运行 RAG 检索评估")
 async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
     return await service.run_eval(req)
+
+
+@router.get("/eval/runs", response_model=list[KnowledgeEvalRunSummary], summary="读取 RAG 评估历史")
+def list_eval_runs(limit: int = 20) -> list[KnowledgeEvalRunSummary]:
+    return service.list_eval_run_summaries(max(1, min(limit, 20)))
+
+
+@router.get("/eval/runs/latest", response_model=KnowledgeEvalRunRecord | None, summary="读取最近一次 RAG 评估")
+def latest_eval_run() -> KnowledgeEvalRunRecord | None:
+    return service.get_eval_run()
+
+
+@router.get("/eval/runs/{run_id}", response_model=KnowledgeEvalRunRecord, summary="读取指定 RAG 评估")
+def get_eval_run(run_id: str) -> KnowledgeEvalRunRecord:
+    record = service.get_eval_run(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="评估记录不存在")
+    return record
 
 
 @router.post("/ask", response_model=KnowledgeAskResponse, summary="基于知识库问答")

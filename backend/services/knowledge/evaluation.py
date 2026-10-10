@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import re
+import time
 import unicodedata
 
 from schemas.knowledge import (
@@ -13,8 +16,10 @@ from schemas.knowledge import (
     KnowledgeEvalHit,
     KnowledgeEvalRelevantTarget,
     KnowledgeEvalRankBucket,
+    KnowledgeEvalRunRecord,
     KnowledgeEvalRunRequest,
     KnowledgeEvalRunResponse,
+    KnowledgeEvalRunSummary,
     KnowledgeEvalTypeSummary,
 )
 from services import storage
@@ -81,7 +86,7 @@ ANSWER_KEYWORD_ALIASES = {
     "ocr 结果常有断行": ("ocr", "断行", "识别文本包含错误"),
     "划词翻译依赖快捷键": ("划词翻译", "快捷键"),
 }
-DEFAULT_ANSWER_EVAL_LIMIT = 30
+DEFAULT_ANSWER_EVAL_LIMIT = 56
 DEFAULT_ANSWER_TIMEOUT_SECONDS = 45
 MAX_ANSWER_EVAL_LIMIT = 260
 MAX_ANSWER_TIMEOUT_SECONDS = 180
@@ -89,8 +94,11 @@ DEFAULT_RAGAS_TIMEOUT_SECONDS = 120
 MAX_RAGAS_TIMEOUT_SECONDS = 300
 
 
+ACTIVE_EVAL_DATASET = db.DEFAULT_EVAL_DATASET
+
+
 def list_eval_cases() -> list[KnowledgeEvalCase]:
-    return db.list_eval_cases()
+    return db.list_eval_cases(ACTIVE_EVAL_DATASET)
 
 
 def save_eval_case(req: KnowledgeEvalCaseRequest, case_id: str | None = None) -> KnowledgeEvalCase:
@@ -102,7 +110,18 @@ def delete_eval_case(case_id: str) -> KnowledgeEvalDeleteResponse:
 
 
 async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
-    cases = db.get_eval_cases(req.caseIds) if req.caseIds else db.list_eval_cases()
+    started_at = time.perf_counter()
+    cases = db.get_eval_cases(req.caseIds) if req.caseIds else db.list_eval_cases(ACTIVE_EVAL_DATASET)
+    datasets = {case.dataset for case in cases}
+    dataset = next(iter(datasets)) if len(datasets) == 1 else "mixed"
+    dataset_version = "v2" if dataset == "tabkeep-mysql-notes-v2" else ("v1" if dataset == "tabkeep-mysql-notes" else "custom")
+    case_snapshot = sorted(
+        (case.model_dump(exclude={"createdAt", "updatedAt"}) for case in cases),
+        key=lambda item: item["id"],
+    )
+    case_set_hash = hashlib.sha256(json.dumps(case_snapshot, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    index_status = db.inspect_index_health()
+    index_status["contentHashFingerprint"] = db.index_content_fingerprint()
     limit = max(1, min(req.limit, 50))
     search_mode = normalize_search_mode(req.searchMode)
     min_score = max(0, float(req.minScore or 0))
@@ -220,8 +239,12 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
     refusal_pass_count = sum(1 for result in refusal_results if result.refusalOk)
     ragas_results = [result for result in results if result.ragasEvaluated]
     ragas_failed_count = sum(1 for result in results if result.ragasError)
-    return KnowledgeEvalRunResponse(
+    response = KnowledgeEvalRunResponse(
         ok=True,
+        dataset=dataset,
+        datasetVersion=dataset_version,
+        caseSetHash=case_set_hash,
+        indexStatus=index_status,
         total=len(cases),
         evaluated=evaluated,
         retrievalEvaluated=retrieval_evaluated,
@@ -257,6 +280,10 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
             ragas_results,
             "ragasContextPrecision",
         ),
+        averageRagasContextRecall=average_optional_result_field(
+            ragas_results,
+            "ragasContextRecall",
+        ),
         averageRagasAnswerRelevance=average_optional_result_field(
             ragas_results,
             "ragasAnswerRelevance",
@@ -268,6 +295,23 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
         sourceModes=source_modes,
         results=results,
     )
+    try:
+        db.save_eval_run(
+            req,
+            response,
+            round((time.perf_counter() - started_at) * 1000),
+        )
+    except Exception as exc:
+        response.error = f"评估完成，但结果保存失败: {type(exc).__name__}: {exc}"
+    return response
+
+
+def list_eval_run_summaries(limit: int = db.EVAL_RUN_VISIBLE_LIMIT) -> list[KnowledgeEvalRunSummary]:
+    return db.list_eval_run_summaries(limit)
+
+
+def get_eval_run(run_id: str | None = None) -> KnowledgeEvalRunRecord | None:
+    return db.get_eval_run(run_id)
 
 
 async def apply_ragas_eval(
@@ -684,14 +728,15 @@ def target_matched_expectations(
     item: KnowledgeCitation,
 ) -> list[str]:
     matches: list[str] = []
-    if target.documentId.strip() and item.documentId == target.documentId.strip():
-        matches.append("documentId")
-    if target.paragraphId.strip() and (item.paragraphId or "") == target.paragraphId.strip():
-        matches.append("paragraphId")
-    if contains_metadata(target.path, item.path, item.url):
-        matches.append("path")
-    if contains_metadata(target.title, item.title, item.paragraphTitle):
-        matches.append("title")
+    for source in (item, *item.duplicateSources):
+        if target.documentId.strip() and source.documentId == target.documentId.strip():
+            matches.append("documentId")
+        if target.paragraphId.strip() and (source.paragraphId or "") == target.paragraphId.strip():
+            matches.append("paragraphId")
+        if contains_metadata(target.path, source.path, source.url):
+            matches.append("path")
+        if contains_metadata(target.title, source.title, source.paragraphTitle):
+            matches.append("title")
     if contains_text(target.text, item.content, item.matchedContent):
         matches.append("text")
     return matches

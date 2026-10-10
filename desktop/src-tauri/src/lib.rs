@@ -56,6 +56,7 @@ const STICKY_NOTIFICATION_ICON_FILE: &str = "notification-icon.png";
 const STICKY_NOTE_HOTKEY_ID: i32 = 0x544e;
 const STICKY_NOTE_TOGGLE_HOTKEY_ID: i32 = 0x544f;
 const DESKTOP_USAGE_FILE: &str = "desktop-usage-stats.json";
+const DESKTOP_API_TOKEN_FILE: &str = "desktop-api-token.txt";
 const BACKEND_SIDECAR_NAME: &str = "tabkeep-backend";
 const BACKEND_READY_ATTEMPTS: usize = 360;
 const BACKEND_READY_INTERVAL_MS: u64 = 500;
@@ -367,6 +368,9 @@ pub fn run() {
         .manage(BackendSidecar::default())
         .manage(StickyReminderTrayItem::default())
         .setup(move |app| {
+            if let Some(token) = load_api_token(&app.handle()) {
+                set_cached_token(&state, Some(token));
+            }
             if !cfg!(debug_assertions) {
                 let backend_app = app.handle().clone();
                 let health_client = state.client.clone();
@@ -433,6 +437,7 @@ pub fn run() {
             set_cached_api_token,
             clear_cached_api_token,
             backend_request,
+            write_base64_file,
             get_ocr_config,
             set_ocr_config,
             get_translate_provider_config,
@@ -1540,7 +1545,7 @@ async fn run_http_server(state: HttpState) -> anyhow::Result<()> {
 }
 
 async fn health(AxumState(state): AxumState<HttpState>, headers: HeaderMap) -> impl IntoResponse {
-    remember_token_from_headers(&state.desktop, &headers);
+    remember_token_from_headers(&state.desktop, &state.app, &headers);
     Json(status_payload(&state.desktop))
 }
 
@@ -1669,7 +1674,7 @@ async fn capture(
     headers: HeaderMap,
     Json(payload): Json<CapturePayload>,
 ) -> Response {
-    remember_token_from_headers(&state.desktop, &headers);
+    remember_token_from_headers(&state.desktop, &state.app, &headers);
     if payload.source != "tabkeep" {
         return json_response(
             StatusCode::BAD_REQUEST,
@@ -1751,7 +1756,7 @@ async fn translate(
     headers: HeaderMap,
     Json(payload): Json<TranslatePayload>,
 ) -> Response {
-    remember_token_from_headers(&state.desktop, &headers);
+    remember_token_from_headers(&state.desktop, &state.app, &headers);
 
     let text = payload.text.trim();
     if text.is_empty() {
@@ -1853,7 +1858,7 @@ async fn ocr_recognize(
     headers: HeaderMap,
     Json(payload): Json<ocr::OcrRequest>,
 ) -> Response {
-    remember_token_from_headers(&state.desktop, &headers);
+    remember_token_from_headers(&state.desktop, &state.app, &headers);
     match start_ocr_flow(state.app, state.desktop, OcrFlowMode::Recognize, payload).await {
         Ok(result) => json_response(StatusCode::OK, json!(result)),
         Err(err) => json_response(
@@ -1871,7 +1876,7 @@ async fn ocr_translate(
     headers: HeaderMap,
     Json(payload): Json<ocr::OcrRequest>,
 ) -> Response {
-    remember_token_from_headers(&state.desktop, &headers);
+    remember_token_from_headers(&state.desktop, &state.app, &headers);
     match start_ocr_flow(state.app, state.desktop, OcrFlowMode::Translate, payload).await {
         Ok(result) => json_response(StatusCode::OK, json!(result)),
         Err(err) => json_response(
@@ -2484,19 +2489,26 @@ fn get_cached_api_token(state: tauri::State<'_, DesktopState>) -> Option<String>
 #[tauri::command]
 fn set_cached_api_token(
     token: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,
 ) -> Result<(), String> {
     let token = token.trim().to_string();
     if token.is_empty() {
         return Err("API token 不能为空".to_string());
     }
+    persist_api_token(&app, Some(&token))?;
     set_cached_token(&state, Some(token));
     Ok(())
 }
 
 #[tauri::command]
-fn clear_cached_api_token(state: tauri::State<'_, DesktopState>) {
+fn clear_cached_api_token(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<(), String> {
+    persist_api_token(&app, None)?;
     set_cached_token(&state, None);
+    Ok(())
 }
 
 #[tauri::command]
@@ -2504,6 +2516,7 @@ async fn backend_request(
     method: String,
     path: String,
     body: Option<Value>,
+    app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,
 ) -> Result<BackendResponse, String> {
     if !path.starts_with('/') || path.contains("://") {
@@ -2519,6 +2532,9 @@ async fn backend_request(
         .filter(|token| !token.trim().is_empty())
     {
         set_cached_token(&state, Some(token.trim().to_string()));
+        if let Err(err) = persist_api_token(&app, Some(token.trim())) {
+            log::warn!("持久化 TabKeep API token 失败: {err}");
+        }
     }
 
     let method = Method::from_bytes(method.to_uppercase().as_bytes())
@@ -2551,6 +2567,18 @@ async fn backend_request(
         ok: status.is_success(),
         data,
     })
+}
+
+#[tauri::command]
+fn write_base64_file(path: String, content: String) -> Result<(), String> {
+    let target = PathBuf::from(path.trim());
+    if target.as_os_str().is_empty() {
+        return Err("保存路径不能为空".to_string());
+    }
+    let bytes = general_purpose::STANDARD
+        .decode(content)
+        .map_err(|err| format!("Skill 文件解码失败: {err}"))?;
+    fs::write(&target, bytes).map_err(|err| format!("Skill 文件保存失败: {err}"))
 }
 
 async fn start_ocr_flow(
@@ -3771,7 +3799,61 @@ fn usage_stats_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .join(DESKTOP_USAGE_FILE))
 }
 
-fn remember_token_from_headers(state: &DesktopState, headers: &HeaderMap) {
+fn api_token_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_local_data_dir()
+        .map_err(|err| format!("获取 API token 目录失败: {err}"))?
+        .join(DESKTOP_API_TOKEN_FILE))
+}
+
+fn load_api_token(app: &tauri::AppHandle) -> Option<String> {
+    load_backend_api_token(app).or_else(|| {
+        let path = api_token_path(app).ok()?;
+        let raw = fs::read_to_string(path).ok()?;
+        normalize_api_token(Some(raw.as_str()))
+    })
+}
+
+fn load_backend_api_token(app: &tauri::AppHandle) -> Option<String> {
+    let config_path = app
+        .path()
+        .app_local_data_dir()
+        .ok()?
+        .join("backend")
+        .join("data")
+        .join("config.json");
+    let raw = fs::read_to_string(config_path).ok()?;
+    let value = serde_json::from_str::<Value>(&raw).ok()?;
+    normalize_api_token(value.get("apiToken").and_then(Value::as_str))
+}
+
+fn normalize_api_token(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn persist_api_token(app: &tauri::AppHandle, token: Option<&str>) -> Result<(), String> {
+    let path = api_token_path(app)?;
+    match normalize_api_token(token) {
+        Some(token) => {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|err| format!("创建 API token 目录失败: {err}"))?;
+            }
+            fs::write(path, token).map_err(|err| format!("写入 API token 失败: {err}"))
+        }
+        None => match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(format!("删除 API token 失败: {err}")),
+        },
+    }
+}
+
+fn remember_token_from_headers(state: &DesktopState, app: &tauri::AppHandle, headers: &HeaderMap) {
     let Some(value) = headers
         .get("x-tabkeep-token")
         .and_then(|value| value.to_str().ok())
@@ -3781,6 +3863,9 @@ fn remember_token_from_headers(state: &DesktopState, headers: &HeaderMap) {
         return;
     };
     set_cached_token(state, Some(value.to_string()));
+    if let Err(err) = persist_api_token(app, Some(value)) {
+        log::warn!("持久化插件 API token 失败: {err}");
+    }
 }
 
 fn get_cached_token(state: &DesktopState) -> Option<String> {

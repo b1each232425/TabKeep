@@ -55,6 +55,10 @@ export async function clearCachedApiToken(): Promise<void> {
   await invoke("clear_cached_api_token")
 }
 
+export async function writeBase64File(path: string, content: string): Promise<void> {
+  await invoke("write_base64_file", { path, content })
+}
+
 export async function ensureDesktopApiToken(): Promise<string> {
   const cached = await getCachedApiToken()
   if (cached) return cached

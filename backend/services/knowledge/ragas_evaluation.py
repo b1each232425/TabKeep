@@ -16,6 +16,7 @@ RAGAS_METRIC_NAMES = {
     "ragasFaithfulness": "Faithfulness",
     "ragasFactualCorrectness": "Factual Correctness",
     "ragasContextPrecision": "Context Precision",
+    "ragasContextRecall": "Context Recall",
     "ragasAnswerRelevance": "Answer Relevancy",
 }
 
@@ -26,6 +27,7 @@ class RagasEvaluationResult:
     faithfulness: float | None = None
     factual_correctness: float | None = None
     context_precision: float | None = None
+    context_recall: float | None = None
     answer_relevance: float | None = None
     error: str | None = None
 
@@ -35,6 +37,7 @@ class RagasEvaluationResult:
             "ragasFaithfulness": self.faithfulness,
             "ragasFactualCorrectness": self.factual_correctness,
             "ragasContextPrecision": self.context_precision,
+            "ragasContextRecall": self.context_recall,
             "ragasAnswerRelevance": self.answer_relevance,
             "ragasError": self.error,
         }
@@ -106,6 +109,7 @@ def build_metric_tasks(
         from ragas.metrics.collections import (
             AnswerRelevancy,
             ContextPrecision,
+            ContextRecall,
             FactualCorrectness,
             Faithfulness,
         )
@@ -120,7 +124,12 @@ def build_metric_tasks(
         model_config.model,
         client=llm_client,
         cache=cache,
-        temperature=0,
+        # DeepSeek 等带思考过程的模型在 Ragas 的结构化输出任务中，
+        # 1024 个默认 completion tokens 容易在 JSON 输出前耗尽。
+        # 提高上限只影响评估器，不改变业务问答模型配置。
+        max_tokens=8192,
+        temperature=0.01,
+        top_p=0.1,
     )
     tasks: dict[str, Awaitable[object]] = {
         "ragasFaithfulness": Faithfulness(llm=evaluator_llm).ascore(
@@ -133,6 +142,11 @@ def build_metric_tasks(
             reference=reference,
         ),
         "ragasContextPrecision": ContextPrecision(llm=evaluator_llm).ascore(
+            user_input=question,
+            reference=reference,
+            retrieved_contexts=contexts,
+        ),
+        "ragasContextRecall": ContextRecall(llm=evaluator_llm).ascore(
             user_input=question,
             reference=reference,
             retrieved_contexts=contexts,
@@ -198,6 +212,7 @@ def build_ragas_result(
         faithfulness=scores.get("ragasFaithfulness"),
         factual_correctness=scores.get("ragasFactualCorrectness"),
         context_precision=scores.get("ragasContextPrecision"),
+        context_recall=scores.get("ragasContextRecall"),
         answer_relevance=scores.get("ragasAnswerRelevance"),
         error="；".join(errors) if errors else None,
     )

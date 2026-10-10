@@ -30,11 +30,16 @@ export function EvalResultPanel({
         <div>
           <h2 className="tk-panel-title">评估结果</h2>
           <p className="text-xs text-muted-foreground">
-            {result.hitCount}/{retrievalEvaluatedCount(result)} 检索命中 · {result.searchMode}
+            {result.datasetVersion || "历史版本"} · {result.total} 条 · {result.hitCount}/{retrievalEvaluatedCount(result)} 检索命中 · {result.searchMode}
             {result.answerEvaluated > 0
               ? ` · ${result.answerPassCount}/${result.answerEvaluated} 答案通过（${result.answerEvaluated}/${result.answerEligible} 已评估）`
               : ""}
           </p>
+          {result.caseSetHash && (
+            <p className="mt-1 text-xs text-muted-foreground" title={result.caseSetHash}>
+              用例指纹 {result.caseSetHash.slice(0, 12)} · 索引 {String(result.indexStatus?.documents ?? "?")} 篇 / {String(result.indexStatus?.paragraphs ?? "?")} 段
+            </p>
+          )}
         </div>
       </div>
       <div className="tk-panel-body space-y-3">
@@ -195,10 +200,11 @@ function RagasSummary({ result }: { result: KnowledgeEvalRunResponse }) {
           {result.ragasFailed > 0 ? ` · ${result.ragasFailed} 失败` : ""}
         </span>
       </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
         <Metric title="Faithfulness" value={formatScore(result.averageRagasFaithfulness)} />
         <Metric title="Factual Correctness" value={formatScore(result.averageRagasFactualCorrectness)} />
         <Metric title="Context Precision" value={formatScore(result.averageRagasContextPrecision)} />
+        <Metric title="Context Recall" value={formatScore(result.averageRagasContextRecall)} />
         <Metric title="Answer Relevancy" value={formatScore(result.averageRagasAnswerRelevance)} />
       </div>
       {result.ragasEvaluated === 0 && (
@@ -289,6 +295,9 @@ function AnswerEvalBox({
             </span>
             <span className="tk-badge tk-badge-success">
               Context P {formatScore(item.ragasContextPrecision)}
+            </span>
+            <span className="tk-badge tk-badge-success">
+              Context R {formatScore(item.ragasContextRecall)}
             </span>
             {item.ragasAnswerRelevance !== null && item.ragasAnswerRelevance !== undefined && (
               <span className="tk-badge tk-badge-success">

@@ -9,10 +9,17 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from schemas.config import NoteAdapterConfig
-from schemas.knowledge import KnowledgeConfig, KnowledgeSiyuanSyncRequest, KnowledgeSyncAllResponse
+from schemas.knowledge import (
+    KnowledgeCitation,
+    KnowledgeConfig,
+    KnowledgeEvalRelevantTarget,
+    KnowledgeSiyuanSyncRequest,
+    KnowledgeSyncAllResponse,
+)
 from services import storage
-from services.knowledge import db, graph, index_health, indexing, retrieval, siyuan_sync, sync_all, topics, vector_store
+from services.knowledge import db, evaluation, graph, index_health, indexing, retrieval, siyuan_sync, sync_all, topics, vector_store
 from services.knowledge.db import IndexedChunk
+from services.knowledge.rerank import RerankResult
 from services.note.base import DocNode, NotebookInfo
 from services.note.siyuan import SiYuanAdapter
 from tests.helpers import IsolatedBackendState
@@ -274,6 +281,136 @@ class KnowledgeTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn("前置背景说明", item.content)
         self.assertIn("后续上下文延展", item.content)
         self.assertGreater(len(item.content), len(item.matchedContent or ""))
+
+    def test_rrf_merge_collapses_exact_context_and_preserves_alternate_sources(self) -> None:
+        primary = KnowledgeCitation(
+            documentId="note-copy",
+            paragraphId="note-copy:p0",
+            chunkId="note-copy:p0:c0",
+            title="MySQL / 回表",
+            paragraphTitle="回表",
+            sourceType="tabkeep_note",
+            content="回表是通过二级索引找到主键后，再访问聚簇索引。",
+        )
+        mirror = KnowledgeCitation(
+            documentId="markdown-copy",
+            paragraphId="markdown-copy:p0",
+            chunkId="markdown-copy:p0:c0",
+            title="MySQL / 回表",
+            paragraphTitle="回表",
+            sourceType="markdown",
+            path="mysql.md",
+            content="回表是通过二级索引找到主键后，再访问聚簇索引。",
+        )
+        distinct = KnowledgeCitation(
+            documentId="other-note",
+            paragraphId="other-note:p0",
+            chunkId="other-note:p0:c0",
+            title="MySQL / 覆盖索引",
+            paragraphTitle="覆盖索引",
+            sourceType="markdown",
+            path="covering-index.md",
+            content="覆盖索引可以避免回表。",
+        )
+
+        merged = retrieval.deduplicate_citations(retrieval.rrf_merge([primary, mirror, distinct], [], limit=3))[:2]
+
+        self.assertEqual([item.documentId for item in merged], ["note-copy", "other-note"])
+        self.assertEqual(len(merged[0].duplicateSources), 1)
+        self.assertEqual(merged[0].duplicateSources[0].documentId, "markdown-copy")
+        self.assertEqual(merged[0].duplicateSources[0].path, "mysql.md")
+        matched = evaluation.target_matched_expectations(
+            KnowledgeEvalRelevantTarget(documentId="markdown-copy", paragraphId="markdown-copy:p0"),
+            merged[0],
+        )
+        self.assertIn("documentId", matched)
+        self.assertIn("paragraphId", matched)
+
+    async def test_hit_test_deduplicates_before_candidate_limit(self) -> None:
+        def citation(
+            document_id: str,
+            content: str,
+            path: str | None = None,
+            title: str = "重复块 / 正文",
+        ) -> KnowledgeCitation:
+            return KnowledgeCitation(
+                documentId=document_id,
+                paragraphId=f"{document_id}:p0",
+                chunkId=f"{document_id}:p0:c0",
+                title=title,
+                paragraphTitle="正文",
+                sourceType="markdown",
+                path=path,
+                content=content,
+            )
+
+        repeated = "完全相同的一段检索证据。"
+        hits = [
+            db.FtsSearchHit(citation("first", repeated), raw_rank=-3.0),
+            db.FtsSearchHit(citation("duplicate", repeated, "mirror.md"), raw_rank=-2.0),
+            db.FtsSearchHit(citation("next", "另一段不同的检索证据。", title="另一标题 / 正文"), raw_rank=-1.0),
+        ]
+        with (
+            patch.object(storage, "get_knowledge_config", return_value=KnowledgeConfig()),
+            patch.object(retrieval.vector_store, "availability", return_value=(False, None)),
+            patch.object(retrieval.db, "search_fts_hits", return_value=hits),
+            patch.object(retrieval, "embedding_config_ready", return_value=False),
+            patch.object(retrieval, "rerank_config_ready", return_value=False),
+        ):
+            result = await retrieval.hit_test_knowledge("检索证据", limit=2, search_mode="fts")
+
+        self.assertTrue(result.ok)
+        self.assertEqual(len(result.items), 2)
+        self.assertEqual(result.items[0].documentId, "first")
+        self.assertEqual(result.items[0].duplicateSources[0].documentId, "duplicate")
+        self.assertEqual(result.items[1].documentId, "next")
+
+    async def test_hit_test_deduplicates_after_rerank_without_changing_rerank_order(self) -> None:
+        def citation(document_id: str, content: str, path: str | None = None) -> KnowledgeCitation:
+            return KnowledgeCitation(
+                documentId=document_id,
+                paragraphId=f"{document_id}:p0",
+                chunkId=f"{document_id}:p0:c0",
+                title="MySQL / 正文",
+                paragraphTitle="正文",
+                sourceType="markdown",
+                path=path,
+                content=content,
+            )
+
+        repeated = "同一段上下文。"
+        first = citation("first", repeated)
+        duplicate = citation("duplicate", repeated, "mirror.md")
+        other = citation("other", "另一段上下文。")
+        last = citation("last", "第三段上下文。")
+        hits = [
+            db.FtsSearchHit(first, raw_rank=-4.0),
+            db.FtsSearchHit(duplicate, raw_rank=-3.0),
+            db.FtsSearchHit(other, raw_rank=-2.0),
+            db.FtsSearchHit(last, raw_rank=-1.0),
+        ]
+
+        async def fake_rerank(_config, _query, items):
+            by_id = {item.documentId: item for item in items}
+            return RerankResult(
+                items=[by_id["other"], by_id["first"], by_id["duplicate"], by_id["last"]],
+                used=True,
+            )
+
+        with (
+            patch.object(storage, "get_knowledge_config", return_value=KnowledgeConfig()),
+            patch.object(retrieval.vector_store, "availability", return_value=(False, None)),
+            patch.object(retrieval.db, "search_fts_hits", return_value=hits),
+            patch.object(retrieval, "embedding_config_ready", return_value=False),
+            patch.object(retrieval, "rerank_config_ready", return_value=True),
+            patch.object(retrieval, "rerank_citations", side_effect=fake_rerank),
+        ):
+            result = await retrieval.hit_test_knowledge("上下文", limit=3, search_mode="fts")
+
+        self.assertTrue(result.rerankUsed)
+        self.assertEqual([item.documentId for item in result.items], ["other", "first", "last"])
+        self.assertEqual([item.rank for item in result.items], [1, 2, 3])
+        self.assertEqual(result.items[1].duplicateSources[0].documentId, "duplicate")
 
     async def test_vector_store_migrates_old_table_schema_for_paragraph_ids(self) -> None:
         old_lance_dir = vector_store.LANCE_DIR

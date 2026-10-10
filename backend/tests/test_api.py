@@ -1,6 +1,10 @@
+import base64
+import io
+import json
 import sys
 import unittest
 import warnings
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -186,6 +190,58 @@ class ApiTestCase(unittest.TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(len(data["items"]), 1)
         self.assertEqual(data["items"][0]["sourceType"], "tabkeep_note")
+
+    def test_skill_export_uses_selected_search_results(self) -> None:
+        self.initialize_config()
+        saved = self.client.post(
+            "/notes/save",
+            json={
+                "title": "Skill 导出测试",
+                "url": "https://example.test/skill",
+                "excerpt": "MySQL 锁排查",
+                "content": "# MySQL 锁排查\n\n通过当前读和 performance_schema 判断锁等待来源。",
+                "notebook_id": "inbox",
+                "target_doc": None,
+                "mode": "summary",
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(saved.status_code, 200, saved.text)
+
+        search = self.client.post(
+            "/knowledge/search",
+            json={"query": "performance_schema 锁等待", "limit": 5},
+            headers=self.headers,
+        )
+        self.assertEqual(search.status_code, 200, search.text)
+        item = search.json()["items"][0]
+
+        exported = self.client.post(
+            "/knowledge/skill/export",
+            json={
+                "goal": "帮助我排查 MySQL 锁等待",
+                "documentIds": [item["documentId"]],
+                "paragraphIds": [item["paragraphId"]],
+                "skillName": "mysql-lock-debugging",
+                "displayName": "MySQL 锁排查",
+                "description": "基于个人笔记排查锁等待。",
+                "skillVersion": "0.1.0",
+                "triggers": ["为什么会发生锁等待？"],
+                "capabilities": ["解释锁等待排查步骤"],
+            },
+            headers=self.headers,
+        )
+        self.assertEqual(exported.status_code, 200, exported.text)
+        data = exported.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["sourceCount"], 1)
+        self.assertEqual(data["blockCount"], 1)
+        with zipfile.ZipFile(io.BytesIO(base64.b64decode(data["archiveBase64"]))) as archive:
+            names = archive.namelist()
+            self.assertIn("SKILL.md", names)
+            manifest = json.loads(archive.read("manifest.json"))
+            self.assertEqual(manifest["goal"], "帮助我排查 MySQL 锁等待")
+            self.assertEqual(manifest["selection"]["mode"], "retrieval")
 
     def test_notes_summarize_returns_structured_review_markdown(self) -> None:
         self.initialize_config()
@@ -429,6 +485,7 @@ class ApiTestCase(unittest.TestCase):
                 "question": "AlphaEvalTarget",
                 "expectedText": "AlphaEvalTarget",
                 "expectedPath": "rag-eval.md",
+                "isCore": True,
                 "note": "测试评估台",
             },
             headers=self.headers,
@@ -436,6 +493,7 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(created.status_code, 200, created.text)
         case = created.json()
         self.assertEqual(case["question"], "AlphaEvalTarget")
+        self.assertTrue(case["isCore"])
 
         listed = self.client.get("/knowledge/eval/cases", headers=self.headers)
         self.assertEqual(listed.status_code, 200, listed.text)
@@ -459,6 +517,95 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(data["results"][0]["rank"], 1)
         self.assertTrue(data["results"][0]["hits"][0]["relevant"])
         self.assertIn("text", data["results"][0]["hits"][0]["matchedExpectations"])
+        self.assertTrue(data["runId"])
+        self.assertEqual(data["dataset"], "tabkeep-mysql-notes-v2")
+        self.assertEqual(data["datasetVersion"], "v2")
+        self.assertEqual(len(data["caseSetHash"]), 64)
+        self.assertGreaterEqual(data["indexStatus"]["documents"], 1)
+        self.assertEqual(len(data["indexStatus"]["contentHashFingerprint"]), 64)
+
+        history = self.client.get("/knowledge/eval/runs", headers=self.headers)
+        self.assertEqual(history.status_code, 200, history.text)
+        self.assertEqual(len(history.json()), 1)
+        self.assertEqual(history.json()[0]["runId"], data["runId"])
+        self.assertEqual(history.json()[0]["searchMode"], "fts")
+        self.assertEqual(history.json()[0]["datasetVersion"], "v2")
+
+        latest = self.client.get("/knowledge/eval/runs/latest", headers=self.headers)
+        self.assertEqual(latest.status_code, 200, latest.text)
+        self.assertEqual(latest.json()["runId"], data["runId"])
+        self.assertEqual(latest.json()["result"]["mrr"], data["mrr"])
+        self.assertTrue(latest.json()["result"]["results"][0]["case"]["isCore"])
+
+        selected = self.client.get(
+            f"/knowledge/eval/runs/{data['runId']}",
+            headers=self.headers,
+        )
+        self.assertEqual(selected.status_code, 200, selected.text)
+        self.assertEqual(selected.json()["result"]["results"][0]["rank"], 1)
+
+    def test_knowledge_eval_defaults_to_active_dataset(self) -> None:
+        self.initialize_config()
+
+        active = self.client.post(
+            "/knowledge/eval/cases",
+            json={
+                "question": "正式集问题",
+                "expectedText": "正式集答案锚点",
+            },
+            headers=self.headers,
+        )
+        legacy = self.client.post(
+            "/knowledge/eval/cases",
+            json={
+                "question": "历史集问题",
+                "expectedText": "历史集答案锚点",
+                "dataset": "legacy",
+            },
+            headers=self.headers,
+        )
+        previous_version = self.client.post(
+            "/knowledge/eval/cases",
+            json={
+                "question": "旧版 MySQL 笔记集问题",
+                "expectedText": "旧版锚点",
+                "dataset": "tabkeep-mysql-notes",
+            },
+            headers=self.headers,
+        )
+
+        self.assertEqual(active.status_code, 200, active.text)
+        self.assertEqual(legacy.status_code, 200, legacy.text)
+        self.assertEqual(previous_version.status_code, 200, previous_version.text)
+        self.assertEqual(active.json()["dataset"], "tabkeep-mysql-notes-v2")
+        self.assertEqual(legacy.json()["dataset"], "legacy")
+
+        listed = self.client.get("/knowledge/eval/cases", headers=self.headers)
+
+        self.assertEqual(listed.status_code, 200, listed.text)
+        self.assertEqual([item["id"] for item in listed.json()], [active.json()["id"]])
+        self.assertEqual(listed.json()[0]["dataset"], "tabkeep-mysql-notes-v2")
+        self.assertEqual(len(db.list_eval_cases("legacy")), 1)
+        self.assertEqual(len(db.list_eval_cases("tabkeep-mysql-notes")), 1)
+
+        async def fake_hit_test(*_args: object, **_kwargs: object) -> KnowledgeHitTestResponse:
+            return KnowledgeHitTestResponse(
+                ok=True,
+                query="正式集问题",
+                searchMode="fts",
+                sourceMode="fts",
+                items=[],
+            )
+
+        with patch("services.knowledge.evaluation.hit_test_knowledge", side_effect=fake_hit_test):
+            result = self.client.post(
+                "/knowledge/eval/run",
+                json={"limit": 5, "searchMode": "fts"},
+                headers=self.headers,
+            )
+
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()["total"], 1)
 
     def test_knowledge_eval_calculates_precision_with_multiple_relevant_targets(self) -> None:
         self.initialize_config()
@@ -714,6 +861,7 @@ class ApiTestCase(unittest.TestCase):
                 "ragasFaithfulness": 0.91,
                 "ragasFactualCorrectness": 0.82,
                 "ragasContextPrecision": 0.73,
+                "ragasContextRecall": 0.79,
                 "ragasAnswerRelevance": 0.88,
                 "ragasError": None,
             }
@@ -746,6 +894,7 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(data["averageRagasFaithfulness"], 0.91)
         self.assertEqual(data["averageRagasFactualCorrectness"], 0.82)
         self.assertEqual(data["averageRagasContextPrecision"], 0.73)
+        self.assertEqual(data["averageRagasContextRecall"], 0.79)
         self.assertEqual(data["averageRagasAnswerRelevance"], 0.88)
         self.assertTrue(data["results"][0]["ragasEvaluated"])
 
