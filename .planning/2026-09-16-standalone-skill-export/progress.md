@@ -1,0 +1,55 @@
+# 进度记录
+
+- 2026-09-16：用户确认先实现可脱离 TabKeep 使用的 Skill 首版。
+- 2026-09-16：确定首版采用“按主题/文档范围导出段落知识块 + 独立 Skill 规则 + 相对来源索引”，不直接导出单次检索 TopK。
+- 2026-09-16：首次盘点数据时误把项目目录重复拼接，工作目录不存在；已记录并改用正确的 `TabKeep` 项目目录重试。
+- 2026-09-16：一次 PowerShell 内嵌 Python 查询因引号嵌套解析失败；改用 PowerShell here-string 传递只读查询脚本。
+- 2026-09-16：直接执行 Skill Creator 的 `.py` 脚本被 Windows 拒绝访问；后续改用 `tabkeep` 环境的 Python 解释器调用脚本，不改变脚本内容。
+- 2026-09-16：Skill 初始化因 `short_description` 少于规范要求的 25 个字符而中止；目录和模板已创建，下一步用合规描述补齐生成流程。
+- 2026-09-16：完成 `scripts/export_standalone_skill.py`，默认从 Markdown MySQL 知识生成独立包；按内容哈希去重，并把正文拆成 `references/*.md`。
+- 2026-09-16：完成关键词清洗、轻量 `index.json`、Windows `skill:export` 启动入口和 Skill 客户端元数据。
+- 2026-09-16：成功生成 `skill-exports/tabkeep-mysql-knowledge`，包含 10 篇文档、82 个知识块；`quick_validate.py` 通过，导出器单测 2/2 通过，独立目录校验通过。
+- 2026-09-16：`pnpm test:backend` 通过，73 个后端测试全部通过。
+- 2026-09-20：按用户确认改为桌面端专属“目标驱动 Skill 导出”流程；网页端不增加入口，不再默认导出整库。
+- 2026-09-20：新增 `/knowledge/skill/export`，按已确认的文档/段落生成 ZIP，并把目标、触发条件、能力、版本和选择范围写入 Skill 包。
+- 2026-09-20：桌面端知识库页面新增“创建 Skill”面板：目标描述召回候选、勾选调整、填写元数据、系统保存对话框导出。
+- 2026-09-20：后端新增导出集成测试通过；完整后端测试 74 个通过；桌面端 `pnpm build` 通过；Tauri Rust 使用项目 MSVC wrapper 执行 `cargo check` 通过。
+- 2026-09-20：裸 `cargo check` 曾因未加载 MSVC 环境缺少 `legacy_stdio_definitions.lib` / `msvcrt.lib` 失败，改用项目现有 `desktop/scripts/with-msvc.ps1` 后通过。
+- 2026-09-25：修复精确范围导出风险：UI 禁用缺少 paragraphId 的候选；后端要求非空段落 ID 列表、核验段落存在且所属文档与选择完全一致，并将显式空集合视为空选择；运行时导出不再按内容哈希替换已选文档。
+- 2026-09-25：本次未运行测试；桌面端 `pnpm build` 通过，Python AST 语法检查通过，`git diff --check` 无空白错误。
+- 2026-09-25：开始将 Skill 创建流程优化为“描述目标 → 召回并确认范围 → 按所选段落自动生成元数据 → 只读预览 → 确认导出”；本次不做高级编辑。
+- 2026-09-25：新增 `/knowledge/skill/draft`，只读取用户勾选段落（模型上下文最多 18,000 字符，单段最多 2,000 字符）生成 slug、展示名、描述、触发问题和能力；要求配置模型 API，生成失败不使用固定文案冒充生成结果。
+- 2026-09-25：桌面端移除上述元数据的手填控件，增加明确的模型数据发送提示、只读草稿预览和“确认并导出”；改变目标、重新召回或调整候选都会清除旧草稿；版本由首版固定为 0.1.0。
+- 2026-09-25：验证：`pnpm build` 通过；相关 5 个 Python 文件 AST 语法解析通过；`git diff --check` 退出码为 0。未运行测试套件。生产构建显示既有的 500KB chunk 提示。
+- 2026-09-29：开始修订首个已导出的 MySQL Skill：移除站内搜索依赖表述，补全单文件/整包输入条件，给出可核验的来源引用格式；目标是另存为 `v0.1.1`，原件保留。
+- 2026-09-29：更新生成器：能力生成 prompt 禁止写入 TabKeep 站内搜索/API/MCP 等包外能力；`SKILL.md` 使用流程改为读取索引与相对来源区块，提供 `source/paragraph_id/block_id` 引用格式，并明确通用知识需标注；兼容性说明要求完整文件夹或同时注入索引与来源片段。
+- 2026-09-29：将原始桌面 ZIP 复制修订为 `mysql-interview-notes-v0.1.1.zip`，更新 SKILL 文本和 manifest 元数据；原始 `v0.1.0` 未覆盖。读回检查确认包结构、版本、来源/知识块数量及修订内容。
+- 2026-09-29：静态验证：导出相关 Python AST 解析通过，`git diff --check` 退出码为 0；未运行测试套件。直接改写 Codex 临时解压预览文件被 Windows ACL 拒绝，改以新 ZIP 作为交付物。
+- 错误记录：初次读回检查的兼容性片段提取表达式产生 `IndexError`，改用按标题分段后检查通过；一次 manifest 修复保护条件正确拒绝不匹配重写，随后确认只需清理 manifest 的前导列表符；临时 ZIP 使用 `x` 模式与 `mkstemp` 预创建文件冲突，改用 `w` 写入自建临时 ZIP 后原子替换成功。
+- 2026-09-29：用户确认将触发条件从逐字问题改为代表性主题类别；更新生成 prompt、Skill 使用模板和桌面预览标签，准备以 v0.1.2 交付。
+- 2026-09-29：完成触发条件收敛：更新 prompt、解析器（最多 5 项、每项最多 80 字符）、桌面预览标签和通用导出模板；生成桌面版 `mysql-interview-notes-v0.1.2.zip`，旧版 v0.1.0/v0.1.1 保留。ZIP 包成员集合一致（10 项），manifest 版本与 4 个主题/意图类别一致，并验证 Skill 正文明确说明触发范围不是固定问题列表。
+- 2026-09-29：验证：桌面端 `pnpm build` 通过；两处 Python 文件 AST 语法解析通过；`git diff --check` 通过（仅有工作区现存 LF/CRLF 提示）；未运行测试套件。Vite 提示主 JS chunk 超过 500 KB。
+- 2026-09-29：开始构建 MySQL Skill 三组对照小基准。用户已确认 A（模型）/B（模型+知识包）/C（模型+知识包+SKILL.md）方案。当前会话无 codex_research/codex_plan 工具，改用本地只读检查。下一步先读取 v0.1.2 的实际索引与 reference 内容；用例基准与实际模型试跑分别记录，避免混淆。
+- 2026-09-29：完成 v0.1.2 内容审计：20 个块中 3 个 SiYuan 块为空；有内容的块主要是《图解MySQL介绍》网页介绍、受众、阅读方式和主题目录，多个块在 markdown/tabkeep_note 副本间重复。未生成虚构的 MySQL 原理题 gold answers，也未运行模型对照；需用户确认是否测现有包的资料介绍/拒答能力，或另选真实 MySQL 技术笔记后再评估。
+- 2026-09-29：用户确认重新选真实 MySQL 技术笔记。只读查询本地 SQLite 索引发现 23 个标题含 MySQL 的文档，包含多个技术主题；存在 markdown/tabkeep_note 重复副本，后续将筛选 canonical Markdown 记录并核对段落内容。
+- 2026-09-29：进一步盘点找到 16 篇标题匹配的 Markdown 文档，重复标题有不同内容版本。现有 MySQL v2 评估集含 56 条参考答案及来源 ID，下一步按文档/段落映射筛选覆盖面合适且证据有效的用例。
+- 2026-09-29：核验 v2 评估集 56 条：52 条可回答样本覆盖 15 个 source content hash，均可映射到 Markdown 文档；4 条是明确的拒答/缺失知识样本。拟用 14 篇技术 Markdown 源文档（不含介绍页）导出，并从 52 条中挑 16 条跨主题代表题 + 4 条负例，逐题核对段落/答案。
+- 2026-09-29：检查导出器 CLI：可按明确 document ID 白名单导出到新目录，默认对短段落做过滤；新版本输出目录目前不存在，既有 `skill-exports/tabkeep-mysql-knowledge` 将保留。导出器模板允许传入 triggers/capabilities，但当前 CLI 未暴露这两个参数，需通过后端导出路径或对新产物定向补齐元数据，不能覆盖其他包。
+- 2026-09-29：检查当前 model config 仅打印非敏感元数据：`deepseek-flash`、`api.deepseek.com`、API key 已配置（未读取/输出 key 明文）。浏览官方 DeepSeek 文档确认该 ID 当前有效；官方价格页打开超时，未估价、未调用模型。该服务可用于显式 prompt A/B/C，但这不等于验证外部 Agent 的自动 Skill 触发。
+- 执行错误记录：DeepSeek 官方价格页 `open` 请求超时；未重试相同 URL，价格估算暂不做。
+- 执行错误记录：首次 PowerShell 内嵌 Python 用 f-string 转义造成语法错误；调整为 `.format()` 后完成逐块审计，没有写入 ZIP 或展示任何 API 密钥。
+
+# 2026-09-29：MySQL Skill v0.2.0 与 A/B/C 评估准备
+
+- 按用户选择的方案，从 13 篇 canonical Markdown 技术笔记导出新包 `skill-exports/mysql-interview-notes-v0.2.0/`，共 113 个知识块；原有 `v0.1.x` 包保留。
+- 修复导出器 f-string 中来源引用模板占位符未转义导致的 `NameError`；为 CLI 增加重复传入的 `--trigger` / `--capability` 与 `--goal`，使 SKILL.md 和 manifest 元数据一致。
+- 新包触发类别覆盖 InnoDB 数据页/行存储、B+ 树和索引、事务/MVCC/锁、SQL/COUNT/分页；ZIP 已生成于 `skill-exports/mysql-interview-notes-v0.2.0.zip`。
+- 从现有 MySQL v2 基准筛出 16 条有来源答案并映射至新包 block_id 的用例，以及 4 条要求拒答的私有/实测数据用例；写入 `backend/evaluation/skill/mysql_skill_eval_v0.2.0.json`。
+- 新增 `scripts/run_mysql_skill_ab_eval.py`：默认 dry-run；A 是仅模型，B 是模型+证据块，C 是同证据块+SKILL.md；真实调用要求显式 `--run --confirm-rotated-key`，逐请求 checkpoint，失败不自动重试且不打印 API 错误正文/key。该对照把 gold source 段落直接注入 B/C，不测试检索召回或宿主自动触发。
+- 本地验证通过：20 个用例（16 answerable / 4 refusal），16 个来源映射全部与 Skill index 匹配；ZIP 共 16 个文件（13 references）；runner dry-run 规划 60 次请求、B/C 证据上下文累计约 43,756 字符；两个 Python 文件 AST 解析通过。未运行测试套件。
+- 安全事件：一次配置检查误将本地模型配置中的 API key 值带入工具输出。未进行任何模型调用；真实 A/B/C 请求暂停，要求先在相应平台撤销并轮换已暴露的 DeepSeek 与 SiliconFlow key，再更新本地配置。
+- 失败/修正记录：一次 PowerShell `foreach` 直接接管道触发解析错误，改为先捕获结果再序列化；此前成本页浏览超时，不据此做价格估算。
+- 用户确认 API 配置后开始真实 A/B/C：安全读取到模型字段短名 `Xing4.0-29B`、SiliconFlow host、Key 已配置、thinking 开启；评估时通过 `--model-override XingChenAGI/Xing4.0-29B` 使用完整 API ID，不写回设置文件。
+- 首次运行完成 5/60 个唯一 case-arm 输出后，第 6 个请求超时；新增续跑和 180 秒超时后该请求成功，并恢复同一结果文件。后续第 8 个请求在 180 秒后超时；改为 300 秒续跑后，第 8 项成功，第 9 个请求再次超时。
+- 当前部分记录：`backend/evaluation/skill/results/mysql_skill_ab_v0.2.0_20260929-172851.json`，包含 7 条唯一成功输出和 1 条未恢复的 APITimeoutError；无后台评估进程。未运行语义裁判或修改用户持久模型配置。
+- 由于 SiliconFlow Xing 模型对部分请求等待超过 180–300 秒，已暂停请求以避免盲目重试/额度消耗。恢复选项：保持当前 thinking 参数续跑（结果同配置可比但可能很慢），或统一调整 thinking 设置并从头另跑一份（会增加调用且不再代表当前设置）。等待用户选择。

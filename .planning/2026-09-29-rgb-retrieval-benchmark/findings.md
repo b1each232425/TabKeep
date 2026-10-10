@@ -1,0 +1,23 @@
+# Findings — RGB Retrieval Benchmark
+
+- The repo's working tree has extensive existing modifications in the knowledge router/schema/database/evaluation/retrieval UI and tests. These are user-owned and must be preserved.
+- Main index paths are currently global: SQLite `backend/data/knowledge.db`; LanceDB `backend/data/knowledge.lance`, table `chunks`.
+- `db.search_fts_hits()` reads global `chunk_fts`; `vector_store.search()` reads global `chunks` table.
+- `retrieval.hit_test_knowledge()` uses global FTS/vector functions and current embedding/rerank config. Add explicit profile routing at this boundary.
+- `evaluation.run_eval()` currently loads `ACTIVE_EVAL_DATASET` or selected case IDs and evaluates against the main retrieval path. The normal eval UI is already modified and must be inspected before patching.
+- `storage.DATA_DIR` honors `TABKEEP_DATA_DIR`; the isolated RGB corpus should live under that data directory, not in source control.
+- RGB records are provided by the user from local official JSONL. In `zh_refine`, positive and negative texts are query-specific; ground truth must therefore be attached by stable passage IDs per case.
+- RGB official data is not bundled; this feature reports custom retrieval-adaptation metrics only.
+- Existing user changes add `rag_eval_runs` persistence and query-time Ragas Context Recall; extend that path without changing existing record semantics.
+- Current run history is globally listed from the primary `knowledge.db`. To keep RGB history isolated, add an explicit benchmark discriminator to run records/API, or store RGB run history inside the RGB SQLite database; prefer the latter for full corpus/history separation.
+- Eval UI currently has one `EvalWorkbench` flow and `/knowledge/eval/cases`; an isolated RGB panel can be added as a mode/view without changing the current notes default.
+- `TABKEEP_DATA_DIR` is the user data root; RGB data/index should be stored below a dedicated `evaluation/rgb` directory.
+- Existing dirty diffs include prior Ragas run persistence, `dataset` on note cases, skill export UI/API, and unrelated model config changes. These must remain intact.
+- The desktop already depends on `@tauri-apps/plugin-dialog`; the Eval UI can use a normal browser file input and upload file text through the existing JSON bridge, avoiding new filesystem permissions or native commands.
+- The selected RGB design is retrieval-only `zh_refine` for v1. Store run history in the RGB database, so the existing note eval history list remains unchanged.
+- Follow-up approved: make RGB the selected benchmark by default and auto-fetch/import/index official `zh_refine.json` on first use; leave notes evaluation available as a tab and never auto-run an evaluation. User explicitly approved automatic vector indexing even though it may call the configured Embedding API and incur cost.
+- The desktop Tauri CSP currently permits only local API connections, so fetch the official corpus through a token-protected local backend endpoint rather than adding an external host to the desktop CSP.
+- First-use import should be idempotent and single-flight on the backend; if the network download fails, keep the existing local-file import path available as recovery.
+- Vector embeddings are currently requested per retrieval query in the shared evaluator; full RGB runs can therefore be expensive. Expose a case-count limit in the RGB run form and keep small-sample runs possible.
+- Embedding configuration can change after a vector index is imported. Record a non-secret fingerprint of the embedding base URL/model; if it no longer matches, report the RGB vector index as stale and disable vector retrieval until reimported.
+- Planning note: first attempt to update this file used a stale patch context and made no changes; reread current file before applying the corrected patch.

@@ -1,0 +1,44 @@
+# Progress — RGB Retrieval Benchmark
+
+## 2026-09-29
+- Read required brainstorming, writing-plans, planning-with-files, and verification skill instructions.
+- Confirmed the user approved a separate RGB corpus/index for TabKeep retrieval testing.
+- `codex_research` and `codex_plan` are not exposed in the current tool set; proceeding with transparent manual inspection/plan fallback.
+- Inspected current storage/retrieval/eval/UI structure and worktree status; no product code changed yet.
+- Created this task's isolated planning files; existing `.planning` task folders left untouched.
+- Reviewed current dirty diffs in knowledge router/schema/db/evaluation/service and eval desktop UI; confirmed existing persistent-run and Ragas changes that need preserving.
+- Confirmed the main evaluator uses a fixed active dataset and the retrieval service is hard-wired to the global FTS/LanceDB stores.
+- A planning-file patch initially failed on stale context; reread the actual file and will record the corrected findings without touching prior plans.
+- Confirmed the existing Tauri file dialog plugin and JSON backend bridge; a browser file input can import JSONL without adding filesystem permissions.
+- Narrowed v1 to retrieval-only `zh_refine`; independent case/corpus/run history; optional vector creation when embedding configuration is ready; case-count control to avoid an unexpectedly long full run.
+- No production files changed yet.
+- One read-only inspection command used the parent workspace as cwd and could not resolve TabKeep-relative paths; corrected by setting the repository cwd explicitly. No files were affected.
+- Added RGB v1 request/response models and `rgb_benchmark.py` with local JSON/JSONL parsing, per-question positive/negative passage IDs, dedicated FTS/LanceDB paths, separate run persistence, and retrieval metrics.
+- Added a `corpus_profile` selector to hit-test retrieval and RGB status/import/run/history routes; notes behavior remains the default.
+- Next: focused backend tests and desktop integration; review for regressions after those changes.
+- First syntax-check attempt could not start Python because the Windows Store alias resolves to a missing executable; locate the project's Conda interpreter and retry rather than repeating the same command.
+- Located the repository's Conda environment through `scripts/dev.ps1`; syntax compilation passes under `conda run -n tabkeep`.
+- First focused RGB unit run: 2/3 passed; the end-to-end test revealed retrieval labels/metrics did not match the expected positive. Investigating before UI work.
+- Diagnosis: the synthetic query had terms absent from its gold passage, and the shared FTS implementation applies AND-style token matching. Adjusted the test fixture to isolate routing/math; focused suite now passes 3/3.
+- Added desktop TypeScript contracts and API calls, a dedicated RGB import/status/run/history panel, and a benchmark switch that leaves the notes evaluator as the default view.
+- During diagnostics, one patch referenced an extra `TabKeep` path segment and failed read-only; corrected immediately without changing any file.
+- Focused backend suite including API integration now passes 4/4.
+- `pnpm build` completed successfully (TypeScript and Vite); Vite emitted the existing-style bundle-size advisory for a 690 kB JS chunk, but no build errors.
+- Added a vector-mode routing test that proves RGB queries use the RGB vector adapter and never call the main vector store; focused suite now passes 5/5.
+- Routed RGB endpoints through the existing `services.knowledge.service` facade to preserve the project's router/service boundary.
+- Added an integration test using real LanceDB with mocked Embedding output; verified the RGB vector table is created separately while the primary LanceDB table stays absent. Focused RGB suite now passes 6/6.
+- A phase-status patch initially targeted a line from the findings file rather than the task plan; re-read the plan and will update only the correct phase lines.
+- Hardened the UI so an empty sample-count field falls back to 10 rather than accidentally selecting the expensive `0=all` run; explicitly warns that enabled Embedding sends passage text to the configured provider.
+- Final design review found vector-index/model drift after Embedding configuration changes; adding a non-secret config fingerprint so stale RGB vectors cannot silently be evaluated against a different query embedding space.
+- Stored an Embedding baseURL/model fingerprint with RGB vectors; status and vector retrieval now mark a mismatched vector index stale, with a regression test.
+- Final verification: all backend tests pass (80/80), desktop `pnpm build` passes, Python compileall passes, and `git diff --check` reports no whitespace errors. Vite still reports its advisory that the JS bundle is over 500 kB.
+- No commit made; all pre-existing user modifications and untracked assets remain untouched.
+- Follow-up request: user approved defaulting the eval workbench to RGB and automatic download/import/index on first use. Implementation is limited to the existing RGB panel/workbench path; preserve notes benchmark and do not auto-run evaluations.
+- Confirmed the production Tauri CSP blocks direct GitHub fetches. Use a backend-proxied download endpoint, with explicit loading/error feedback and the existing file-upload recovery option.
+- Added an idempotent backend first-use importer for the official RGB `zh_refine.json`; it bounds download size, handles HTTP/UTF-8 errors, serializes concurrent imports, and reuses the existing FTS/vector indexing path.
+- Added a protected `/knowledge/eval/rgb/import-official` API, desktop API client method, RGB-first tab default, backend-readiness gating, loading/error status, and retained manual file import as fallback. The operation never runs an evaluation automatically.
+- Added tests for importing the official corpus once and for the protected API route. The new tests initially failed because the importer/route were absent; after implementation, focused RGB tests pass (8/8).
+- Full backend suite passes (82/82); desktop TypeScript/Vite build passes; Python module compilation and targeted `git diff --check` pass. Vite reports the existing 500 kB bundle-size advisory; build output does not include the standalone `eval.html` entry, though TypeScript checks all TSX sources.
+- No commit made; pre-existing modifications remain in place.
+- The standard desktop build only includes `index.html`, not the ignored standalone `eval.html`; a direct eval-dev-server check initially hit an occupied 5175 port, so I will avoid disturbing that process and use a separate port if needed.
+- Retried the standalone eval page check on port 5190; Vite returned HTTP 200 for `eval.html`, `EvalWorkbench.tsx`, and `RgbBenchmarkPanel.tsx`. Stopped only the temporary server started for this check; left the existing 5175 listener untouched.
