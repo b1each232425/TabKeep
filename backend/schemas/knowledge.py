@@ -304,6 +304,8 @@ class KnowledgeHitTestResponse(BaseModel):
     vectorMessage: str | None = None
     rerankUsed: bool = False
     rerankMessage: str | None = None
+    queryRewriteAttempted: bool = False
+    queryRewriteUsed: bool = False
     error: str | None = None
 
 
@@ -456,6 +458,7 @@ class KnowledgeEvalRunRequest(BaseModel):
     limit: int = 8
     searchMode: str = "hybrid"
     minScore: float = 0
+    queryRewrite: bool = False
     evaluateAnswer: bool = False
     evaluateRagas: bool = False
     answerLimit: int = 56
@@ -476,6 +479,13 @@ class KnowledgeEvalCaseResult(BaseModel):
     reciprocalRank: float = 0
     relevantHitCount: int = 0
     precisionAtK: float = 0
+    retrievalDurationMs: int = 0
+    queryRewriteAttempted: bool = False
+    queryRewriteUsed: bool = False
+    queryRewriteInput: str | None = None
+    queryRewriteOutput: str | None = None
+    queryRewriteVectorQueryBefore: str | None = None
+    queryRewriteVectorQueryAfter: str | None = None
     hits: list[KnowledgeEvalHit] = []
     issueType: str = "ok"
     issueMessage: str = ""
@@ -556,6 +566,10 @@ class KnowledgeEvalRunResponse(BaseModel):
     typeSummaries: list[KnowledgeEvalTypeSummary] = []
     limit: int = 8
     searchMode: str = "hybrid"
+    queryRewriteEnabled: bool = False
+    queryRewriteCalls: int = 0
+    queryRewriteUses: int = 0
+    averageRetrievalDurationMs: int = 0
     sourceModes: dict[str, int] = {}
     results: list[KnowledgeEvalCaseResult] = []
     error: str | None = None
@@ -579,6 +593,10 @@ class KnowledgeEvalRunSummary(BaseModel):
     ragasFailed: int = 0
     limit: int = 8
     searchMode: str = "hybrid"
+    queryRewriteEnabled: bool = False
+    queryRewriteCalls: int = 0
+    queryRewriteUses: int = 0
+    averageRetrievalDurationMs: int = 0
     evaluateAnswer: bool = False
     evaluateRagas: bool = False
     answerLimit: int = 0

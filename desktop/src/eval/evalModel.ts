@@ -67,7 +67,10 @@ export function formatEvalStatus(result: KnowledgeEvalRunResponse): string {
   const ragas = result.ragasRequested
     ? `，Ragas ${result.ragasEvaluated}/${result.ragasEligible}${result.ragasFailed > 0 ? `（失败 ${result.ragasFailed}）` : ""}`
     : ""
-  return `RAG 评估完成：${retrieval}${answer}${ragas}，Recall@${result.limit} ${formatPercent(result.recallAtK)}，Precision@${result.limit} ${formatPercent(result.precisionAtK)}，Top1 ${formatPercent(result.top1Accuracy)}，MRR ${formatScore(result.mrr)}`
+  const queryRewrite = result.queryRewriteEnabled
+    ? `，Query Rewrite 调用 ${result.queryRewriteCalls} 次、采用 ${result.queryRewriteUses} 次`
+    : ""
+  return `RAG 评估完成：${retrieval}${answer}${ragas}${queryRewrite}，平均检索 ${result.averageRetrievalDurationMs} ms，Recall@${result.limit} ${formatPercent(result.recallAtK)}，Precision@${result.limit} ${formatPercent(result.precisionAtK)}，Top1 ${formatPercent(result.top1Accuracy)}，MRR ${formatScore(result.mrr)}`
 }
 
 export function retrievalEvaluatedCount(result: KnowledgeEvalRunResponse): number {

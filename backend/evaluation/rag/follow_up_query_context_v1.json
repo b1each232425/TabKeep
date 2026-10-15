@@ -1,0 +1,279 @@
+{
+  "id": "tabkeep-follow-up-query-context-v1",
+  "purpose": "评估同一问答会话中的追问上下文补全对知识检索的影响。",
+  "sourceDataset": "tabkeep-mysql-notes-v2",
+  "targetReferenceField": "targetCaseId",
+  "referenceQueryNote": "referenceQuery 是人工编写的语义参考，不要求模型逐字输出。",
+  "cases": [
+    {
+      "id": "followup-001-data-page-size",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "InnoDB 为什么要把相邻数据页连接起来？" },
+        { "role": "assistant", "content": "相邻页通过 File Header 中的前后指针形成双向链表，便于按主键顺序遍历并支持范围查询。" }
+      ],
+      "question": "它默认多大？",
+      "shouldContextualize": true,
+      "referenceQuery": "InnoDB 数据页默认大小",
+      "targetCaseId": "mysql-note-data-page-01-v2",
+      "coverage": ["代词指代", "省略主题"]
+    },
+    {
+      "id": "followup-002-page-directory",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "InnoDB 数据页里怎么组织记录？" },
+        { "role": "assistant", "content": "记录按主键顺序组成链表，页目录把记录分组，每个槽指向组内最大的记录。" }
+      ],
+      "question": "那个目录是怎么加快查找的？",
+      "shouldContextualize": true,
+      "referenceQuery": "InnoDB 数据页目录通过槽定位记录的方式",
+      "targetCaseId": "mysql-note-data-page-02-v2",
+      "coverage": ["代词指代", "承接问题"]
+    },
+    {
+      "id": "followup-003-read-view-timing",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "读提交和可重复读为什么可能看到不同版本？" },
+        { "role": "assistant", "content": "它们生成和复用 Read View 的时机不同，因此同一事务中的一致性读可能看到不同版本。" }
+      ],
+      "question": "它们各自什么时候生成？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL InnoDB 读提交与可重复读生成 Read View 的时机",
+      "targetCaseId": "mysql-note-transaction-isolation-01-v2",
+      "coverage": ["代词指代", "多实体消歧"]
+    },
+    {
+      "id": "followup-004-roll-pointer",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "InnoDB 的 MVCC 怎么沿版本链读取旧版本？" },
+        { "role": "assistant", "content": "记录中的 trx_id 标识最近修改事务，roll_pointer 指向上一个历史版本；InnoDB 可以配合 undo log 沿版本链查找。" }
+      ],
+      "question": "那个指针具体指向哪里？",
+      "shouldContextualize": true,
+      "referenceQuery": "InnoDB MVCC roll_pointer 指向的历史版本和 undo log",
+      "targetCaseId": "mysql-note-transaction-isolation-02-v2",
+      "coverage": ["代词指代", "专有名词保留"]
+    },
+    {
+      "id": "followup-005-covering-index",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "二级索引查到主键后，为什么还要回到聚簇索引？" },
+        { "role": "assistant", "content": "二级索引叶子节点通常只有索引列和主键；查询还需要的其他列时，要按主键取完整行，这一步叫回表。" }
+      ],
+      "question": "那怎么避免这一步？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 覆盖索引包含查询所需列以避免回表",
+      "targetCaseId": "mysql-note-index-interview-01-v2",
+      "coverage": ["承接问题", "省略主题"]
+    },
+    {
+      "id": "followup-006-composite-index-range",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "联合索引为什么遵循最左匹配原则？" },
+        { "role": "assistant", "content": "联合索引按最左列排序，再按后续列排序。查询遇到一般范围条件后，后续列通常不能继续用于确定扫描范围。" }
+      ],
+      "question": "范围条件之后，后面的索引列还有什么限制？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 联合索引遇到范围条件后后续索引列的作用",
+      "targetCaseId": "mysql-note-index-interview-02-v2",
+      "coverage": ["承接词", "术语恢复"]
+    },
+    {
+      "id": "followup-007-like-leading-wildcard",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "LIKE '林%' 和 LIKE '%林' 对索引有什么影响？" },
+        { "role": "assistant", "content": "前缀匹配可以利用有序索引定位范围；通配符放在开头时通常无法按索引前缀定位。" }
+      ],
+      "question": "那它前面加百分号呢？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL LIKE '%林' 前置通配符导致索引难以使用的原因",
+      "targetCaseId": "mysql-note-index-loss-01-v2",
+      "coverage": ["承接词", "符号与 SQL 片段"]
+    },
+    {
+      "id": "followup-008-implicit-cast-reverse",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "字符串索引列 phone 和数字比较会有什么问题？" },
+        { "role": "assistant", "content": "MySQL 可能对字符串列做隐式数值转换，逐行计算后再比较，导致索引难以直接定位。" }
+      ],
+      "question": "这种情况下，数字列和数字字符串比较又怎样？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 数字索引列与数字字符串比较时的隐式转换和索引使用",
+      "targetCaseId": "mysql-note-index-loss-02-v2",
+      "coverage": ["承接词", "比较方向消歧"]
+    },
+    {
+      "id": "followup-009-btree-range-scan",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "MySQL 为什么常用 B+ 树做索引？" },
+        { "role": "assistant", "content": "B+ 树的叶子节点按键值有序并相连，层高较低，适合减少查找 I/O。" }
+      ],
+      "question": "那它做范围查询时怎么继续往后找？",
+      "shouldContextualize": true,
+      "referenceQuery": "B+ 树范围查询从起点沿有序叶子节点链表继续遍历",
+      "targetCaseId": "mysql-note-btree-03-v2",
+      "coverage": ["代词指代", "承接问题"]
+    },
+    {
+      "id": "followup-010-explain-optimizer",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "执行 SELECT 时，MySQL 大致会经过哪些阶段？" },
+        { "role": "assistant", "content": "连接器之后会解析和优化 SQL，再由执行器调用存储引擎读取记录。优化器会选择执行计划。" }
+      ],
+      "question": "它怎么选索引，计划从哪看？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 优化器基于成本选择索引及通过 EXPLAIN 查看执行计划",
+      "targetCaseId": "mysql-note-select-02-v2",
+      "coverage": ["代词指代", "两个关联问题"]
+    },
+    {
+      "id": "followup-011-innodb-count",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "为什么 InnoDB 的 COUNT(*) 不能总是直接读一个固定总数？" },
+        { "role": "assistant", "content": "事务和 MVCC 会让不同事务看到的可见行数不同，因此精确统计通常要扫描可见记录。" }
+      ],
+      "question": "COUNT(*) 在大表上还有什么更快的估算方法？",
+      "shouldContextualize": true,
+      "referenceQuery": "InnoDB 大表 COUNT(*) 行数估算与替代方案",
+      "targetCaseId": "mysql-note-count-02-v2",
+      "coverage": ["承接词", "问题细化"]
+    },
+    {
+      "id": "followup-012-keyset-pagination",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "为什么 LIMIT offset, size 的深分页会变慢？" },
+        { "role": "assistant", "content": "数据库要读过前面的 offset 行再丢弃它们，offset 越大，无效扫描越多。" }
+      ],
+      "question": "那批量导出时，怎么避免它一直变大？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 大批量导出使用递增主键分批避免深分页 offset 增大",
+      "targetCaseId": "mysql-note-pagination-02-v2",
+      "coverage": ["代词指代", "承接问题"]
+    },
+    {
+      "id": "followup-013-extent-pages",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "InnoDB 的表空间、段、区、页和行之间是什么关系？" },
+        { "role": "assistant", "content": "表空间包含段，段由区组成，区由多个页组成，行记录存放在页里。" }
+      ],
+      "question": "那它具体包含多少页？",
+      "shouldContextualize": true,
+      "referenceQuery": "InnoDB 一个区包含的页数和大小",
+      "targetCaseId": "mysql-note-row-format-01-v2",
+      "coverage": ["承接问题", "数字保留"]
+    },
+    {
+      "id": "followup-014-snapshot-read-phantom",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "可重复读下的当前读怎样降低幻读风险？" },
+        { "role": "assistant", "content": "SELECT ... FOR UPDATE 等当前读会读取最新版本，并可通过 next-key lock 锁住索引记录及间隙。" }
+      ],
+      "question": "那为什么普通快照读的行为不同？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 可重复读下普通快照读通过 MVCC 和 Read View 处理幻读",
+      "targetCaseId": "mysql-note-phantom-01-v2",
+      "coverage": ["承接词", "读类型对比", "SQL 片段保留"]
+    },
+    {
+      "id": "followup-015-unique-index-gap-lock",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "唯一索引等值查询命中已有记录时，为什么通常只加记录锁？" },
+        { "role": "assistant", "content": "唯一索引等值条件已经确定唯一存在的记录，不需要保护同一范围内的其他记录。" }
+      ],
+      "question": "那为什么唯一索引等值查询没命中时可能会锁间隙？",
+      "shouldContextualize": true,
+      "referenceQuery": "InnoDB 唯一索引等值查询未命中时可能加间隙锁",
+      "targetCaseId": "mysql-note-locking-03-v2",
+      "coverage": ["承接词", "否定条件保留"]
+    },
+    {
+      "id": "followup-016-query-cache-version",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "旧版本 MySQL 的查询缓存为什么容易失效？" },
+        { "role": "assistant", "content": "查询缓存会受表数据变化影响；MySQL 8.0 已移除查询缓存。" }
+      ],
+      "question": "那 8.0 以后它还存在吗？",
+      "shouldContextualize": true,
+      "referenceQuery": "MySQL 8.0 移除查询缓存",
+      "targetCaseId": "mysql-note-select-03-v2",
+      "coverage": ["代词指代", "版本号保留"]
+    },
+    {
+      "id": "followup-017-myisam-count",
+      "kind": "follow_up",
+      "history": [
+        { "role": "user", "content": "MyISAM 和 InnoDB 统计 COUNT(*) 为什么不一样？" },
+        { "role": "assistant", "content": "MyISAM 可以在无 WHERE 条件时从元数据读取行数；InnoDB 要考虑事务可见性，通常需要扫描。" }
+      ],
+      "question": "它为什么可以直接拿到总数？",
+      "shouldContextualize": true,
+      "referenceQuery": "MyISAM 无条件 COUNT(*) 从元数据直接读取行数的原因",
+      "targetCaseId": "mysql-note-count-04-v2",
+      "coverage": ["代词指代", "相似实体消歧"]
+    },
+    {
+      "id": "control-001-no-history",
+      "kind": "standalone_control",
+      "history": [],
+      "question": "联合索引为什么遵循最左匹配原则？范围条件会影响后续列吗？",
+      "shouldContextualize": false,
+      "referenceQuery": null,
+      "targetCaseId": "mysql-note-index-interview-02-v2",
+      "coverage": ["无历史时不调用改写模型"]
+    },
+    {
+      "id": "control-002-complete-question-with-history",
+      "kind": "standalone_control",
+      "history": [
+        { "role": "user", "content": "B+ 树为什么适合范围查询？" },
+        { "role": "assistant", "content": "它的叶子节点按索引键有序并相连。" }
+      ],
+      "question": "COUNT(*)、COUNT(1) 和 COUNT(字段) 的语义有什么区别？",
+      "shouldContextualize": false,
+      "referenceQuery": null,
+      "targetCaseId": "mysql-note-count-01-v2",
+      "coverage": ["有历史但问题完整时不调用改写模型"]
+    },
+    {
+      "id": "control-003-complete-question-with-history",
+      "kind": "standalone_control",
+      "history": [
+        { "role": "user", "content": "InnoDB 的 MVCC 怎么读取历史版本？" },
+        { "role": "assistant", "content": "InnoDB 会结合 Read View 判断版本可见性。" }
+      ],
+      "question": "MySQL 8.0 以后为什么不再使用查询缓存？",
+      "shouldContextualize": false,
+      "referenceQuery": null,
+      "targetCaseId": "mysql-note-select-03-v2",
+      "coverage": ["有历史但问题完整时不调用改写模型"]
+    },
+    {
+      "id": "control-004-complete-question-with-history",
+      "kind": "standalone_control",
+      "history": [
+        { "role": "user", "content": "SELECT ... FOR UPDATE 属于哪种读？" },
+        { "role": "assistant", "content": "它属于当前读，会读取最新版本。" }
+      ],
+      "question": "InnoDB 默认使用哪个事务隔离级别？",
+      "shouldContextualize": false,
+      "referenceQuery": null,
+      "targetCaseId": "mysql-note-transaction-isolation-03-v2",
+      "coverage": ["有历史但问题完整时不调用改写模型"]
+    }
+  ]
+}

@@ -51,6 +51,12 @@ export function EvalResultPanel({
           <Metric title="检索命中" value={`${result.hitCount}/${retrievalEvaluatedCount(result)}`} />
           <Metric title="检索模式" value={result.searchMode} />
         </div>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <Metric title="Query Rewrite" value={result.queryRewriteEnabled ? "已启用" : "未启用"} />
+          <Metric title="改写调用次数" value={String(result.queryRewriteCalls)} />
+          <Metric title="实际采用次数" value={String(result.queryRewriteUses)} />
+          <Metric title="平均检索耗时" value={`${result.averageRetrievalDurationMs} ms`} />
+        </div>
         {result.answerEvaluated > 0 ? (
           <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
             <Metric title="答案通过率" value={formatPercent(result.answerAccuracy)} />
@@ -99,6 +105,18 @@ export function EvalResultPanel({
                     P@{result.limit} {formatPercent(item.precisionAtK)}
                   </span>
                   <span className="tk-badge">相关 {item.relevantHitCount}</span>
+                  {item.retrievalDurationMs > 0 && (
+                    <span className="tk-badge">检索 {item.retrievalDurationMs} ms</span>
+                  )}
+                  {result.queryRewriteEnabled && (
+                    <span className={`tk-badge ${item.queryRewriteUsed ? "tk-badge-success" : ""}`}>
+                      {item.queryRewriteUsed
+                        ? "采用改写"
+                        : item.queryRewriteAttempted
+                          ? "已调用，回退原查询"
+                          : "未调用改写"}
+                    </span>
+                  )}
                   {issueType !== "ok" && (
                     <span className="tk-badge tk-badge-warning">{formatIssueType(issueType)}</span>
                   )}

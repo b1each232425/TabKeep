@@ -20,6 +20,7 @@ export function EvalCaseListPanel({
   searchMode,
   limit,
   minScore,
+  queryRewrite,
   evaluateAnswer,
   evaluateRagas,
   ragasReadyCount,
@@ -29,6 +30,7 @@ export function EvalCaseListPanel({
   onSearchModeChange,
   onLimitChange,
   onMinScoreChange,
+  onQueryRewriteChange,
   onEvaluateAnswerChange,
   onEvaluateRagasChange,
   onAnswerLimitChange,
@@ -45,6 +47,7 @@ export function EvalCaseListPanel({
   searchMode: KnowledgeSearchMode
   limit: string
   minScore: string
+  queryRewrite: boolean
   evaluateAnswer: boolean
   evaluateRagas: boolean
   ragasReadyCount: number
@@ -54,6 +57,7 @@ export function EvalCaseListPanel({
   onSearchModeChange: (value: KnowledgeSearchMode) => void
   onLimitChange: (value: string) => void
   onMinScoreChange: (value: string) => void
+  onQueryRewriteChange: (value: boolean) => void
   onEvaluateAnswerChange: (value: boolean) => void
   onEvaluateRagasChange: (value: boolean) => void
   onAnswerLimitChange: (value: string) => void
@@ -157,6 +161,18 @@ export function EvalCaseListPanel({
         </div>
       </div>
       <div className="tk-panel-body">
+        <label className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-border bg-white/75 px-3 py-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={queryRewrite}
+            disabled={running}
+            onChange={(event) => onQueryRewriteChange(event.target.checked)}
+          />
+          启用 Query Rewrite
+          <span className="text-xs leading-5 text-muted-foreground">
+            仅自然语言问句且向量检索可用时调用模型；每题最多一次。
+          </span>
+        </label>
         {answerReadyCount === 0 && (
           <div className="mb-3 rounded-md border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs leading-5 text-amber-800">
             当前没有答案评估用例；只会显示 Recall/Precision/MRR/Top1。填写预期答案、答案关键词或应拒答后，才会出现答案通过率、上下文支撑和拒答指标。

@@ -6,6 +6,7 @@ import json
 import re
 import time
 import unicodedata
+from collections.abc import Awaitable, Callable
 
 from schemas.knowledge import (
     KnowledgeCitation,
@@ -27,6 +28,7 @@ from services.knowledge import db
 from services.knowledge.qa import build_rag_messages, clean_llm_output, rag_contexts
 from services.knowledge.ragas_evaluation import evaluate_ragas_answer
 from services.knowledge.retrieval import hit_test_knowledge, normalize_search_mode
+from services.knowledge.query_rewrite import rewrite_query_for_retrieval, should_rewrite_query
 from services.llm import chat_completion
 
 
@@ -128,18 +130,58 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
     answer_limit = normalized_answer_limit(req.answerLimit)
     answer_timeout = normalized_answer_timeout(req.answerTimeoutSeconds)
     ragas_timeout = normalized_ragas_timeout(req.ragasTimeoutSeconds)
+    rewrite_model_config = storage.get_model_config() if req.queryRewrite else None
     answer_eval_ids = selected_answer_eval_case_ids(cases, answer_limit) if req.evaluateAnswer else set()
     results: list[KnowledgeEvalCaseResult] = []
     source_modes: dict[str, int] = {}
 
     for case in cases:
+        retrieval_started = time.perf_counter()
+        retrieval_duration_ms = 0
+        retrieval_finished = False
+        query_rewrite_attempted = False
+        query_rewrite_used = False
+        query_rewrite_input: str | None = None
+        query_rewrite_output: str | None = None
+        query_rewrite_vector_query_before: str | None = None
+        query_rewrite_vector_query_after: str | None = None
+        query_rewriter: Callable[[], Awaitable[str | None]] | None = None
+        if (
+            rewrite_model_config
+            and rewrite_model_config.model
+            and rewrite_model_config.baseURL
+            and rewrite_model_config.apiKey
+            and should_rewrite_query(case.question)
+        ):
+            case_model_config = rewrite_model_config
+
+            async def run_case_query_rewrite() -> str | None:
+                nonlocal query_rewrite_attempted, query_rewrite_input, query_rewrite_output
+                query_rewrite_attempted = True
+                query_rewrite_input = case.question.strip()
+                query_rewrite_output = await rewrite_query_for_retrieval(case.question, case_model_config)
+                return query_rewrite_output
+
+            query_rewriter = run_case_query_rewrite
+
+        def record_query_rewrite_vector_queries(before: str, after: str) -> None:
+            nonlocal query_rewrite_vector_query_before, query_rewrite_vector_query_after
+            query_rewrite_vector_query_before = before
+            query_rewrite_vector_query_after = after
+
         try:
             search_result = await hit_test_knowledge(
                 case.question,
                 limit=limit,
                 search_mode=search_mode,
                 min_score=min_score,
+                query_rewriter=query_rewriter,
+                query_rewrite_observer=record_query_rewrite_vector_queries,
             )
+            retrieval_duration_ms = round((time.perf_counter() - retrieval_started) * 1000)
+            retrieval_finished = True
+            query_rewrite_attempted = query_rewrite_attempted or search_result.queryRewriteAttempted
+            query_rewrite_used = search_result.queryRewriteUsed
             source_modes[search_result.sourceMode] = source_modes.get(search_result.sourceMode, 0) + 1
             if not search_result.ok:
                 issue_type, issue_message = explain_case_result(
@@ -151,6 +193,13 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
                     KnowledgeEvalCaseResult(
                         case=case,
                         ok=False,
+                        retrievalDurationMs=retrieval_duration_ms,
+                        queryRewriteAttempted=query_rewrite_attempted,
+                        queryRewriteUsed=query_rewrite_used,
+                        queryRewriteInput=query_rewrite_input,
+                        queryRewriteOutput=query_rewrite_output,
+                        queryRewriteVectorQueryBefore=query_rewrite_vector_query_before,
+                        queryRewriteVectorQueryAfter=query_rewrite_vector_query_after,
                         issueType=issue_type,
                         issueMessage=issue_message,
                         error=issue_message,
@@ -204,6 +253,13 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
                 reciprocalRank=round(1 / first_rank, 6) if first_rank else 0,
                 relevantHitCount=relevant_hit_count,
                 precisionAtK=round(relevant_hit_count / limit, 6),
+                retrievalDurationMs=retrieval_duration_ms,
+                queryRewriteAttempted=query_rewrite_attempted,
+                queryRewriteUsed=query_rewrite_used,
+                queryRewriteInput=query_rewrite_input,
+                queryRewriteOutput=query_rewrite_output,
+                queryRewriteVectorQueryBefore=query_rewrite_vector_query_before,
+                queryRewriteVectorQueryAfter=query_rewrite_vector_query_after,
                 hits=eval_hits,
                 issueType=issue_type,
                 issueMessage=issue_message,
@@ -214,12 +270,21 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
                     await apply_ragas_eval(result, case, eval_hits, limit, ragas_timeout)
             results.append(result)
         except Exception as exc:
+            if not retrieval_finished:
+                retrieval_duration_ms = round((time.perf_counter() - retrieval_started) * 1000)
             error = f"{type(exc).__name__}: {exc}"
             issue_type, issue_message = explain_case_result(rank=None, hits=[], error=error)
             results.append(
                 KnowledgeEvalCaseResult(
                     case=case,
                     ok=False,
+                    retrievalDurationMs=retrieval_duration_ms,
+                    queryRewriteAttempted=query_rewrite_attempted,
+                    queryRewriteUsed=query_rewrite_used,
+                    queryRewriteInput=query_rewrite_input,
+                    queryRewriteOutput=query_rewrite_output,
+                    queryRewriteVectorQueryBefore=query_rewrite_vector_query_before,
+                    queryRewriteVectorQueryAfter=query_rewrite_vector_query_after,
                     issueType=issue_type,
                     issueMessage=issue_message,
                     error=error,
@@ -292,6 +357,10 @@ async def run_eval(req: KnowledgeEvalRunRequest) -> KnowledgeEvalRunResponse:
         typeSummaries=type_summaries(results),
         limit=limit,
         searchMode=search_mode,
+        queryRewriteEnabled=req.queryRewrite,
+        queryRewriteCalls=sum(1 for result in results if result.queryRewriteAttempted),
+        queryRewriteUses=sum(1 for result in results if result.queryRewriteUsed),
+        averageRetrievalDurationMs=round(average_result_field(results, "retrievalDurationMs")),
         sourceModes=source_modes,
         results=results,
     )

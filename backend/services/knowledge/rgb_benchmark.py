@@ -94,6 +94,8 @@ def init_db() -> None:
                 title,
                 content
             );
+            CREATE VIRTUAL TABLE IF NOT EXISTS rgb_passage_fts_vocab
+            USING fts5vocab(rgb_passage_fts, 'row');
             CREATE TABLE IF NOT EXISTS rgb_eval_runs (
                 id TEXT PRIMARY KEY,
                 request_json TEXT NOT NULL,
@@ -506,6 +508,48 @@ def search_fts_hits(query: str, limit: int) -> list[db.FtsSearchHit]:
         )
         for index, row in enumerate(rows)
     ]
+
+
+def get_fts_correction_candidates(terms: list[str]) -> dict[str, list[tuple[str, int]]]:
+    """Return indexed RGB terms near query terms for conservative correction."""
+    clean_terms = sorted(
+        {
+            term.casefold()
+            for term in terms
+            if term and term[0].isascii() and term[0].isalpha()
+        }
+    )
+    if not clean_terms:
+        return {}
+
+    init_db()
+    candidates_by_term: dict[str, list[tuple[str, int]]] = {}
+    with _connection() as conn:
+        for term in clean_terms:
+            exact_row = conn.execute(
+                "SELECT term, doc FROM rgb_passage_fts_vocab WHERE term = ?",
+                (term,),
+            ).fetchone()
+            if exact_row:
+                candidates_by_term[term] = [(str(exact_row["term"]), int(exact_row["doc"]))]
+                continue
+
+            first_char = term[0]
+            rows = conn.execute(
+                """
+                SELECT term, doc
+                FROM rgb_passage_fts_vocab
+                WHERE term >= ? AND term < ? AND length(term) BETWEEN ? AND ?
+                ORDER BY doc DESC, term
+                LIMIT 301
+                """,
+                (first_char, chr(ord(first_char) + 1), max(5, len(term) - 1), len(term) + 1),
+            ).fetchall()
+            if len(rows) > 300:
+                candidates_by_term[term] = []
+                continue
+            candidates_by_term[term] = [(str(row["term"]), int(row["doc"])) for row in rows]
+    return candidates_by_term
 
 
 def vector_rows_to_citation_map(rows: list[dict[str, Any]]) -> dict[str, KnowledgeCitation]:

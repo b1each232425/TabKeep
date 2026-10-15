@@ -140,6 +140,9 @@ def init_db() -> None:
                 content
             );
 
+            CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts_vocab
+            USING fts5vocab(chunk_fts, 'row');
+
             CREATE TABLE IF NOT EXISTS graph_nodes (
                 id TEXT PRIMARY KEY,
                 kind TEXT NOT NULL,
@@ -841,6 +844,48 @@ def search_fts_hits(query: str, limit: int) -> list[FtsSearchHit]:
     ]
 
 
+def get_fts_correction_candidates(terms: list[str]) -> dict[str, list[tuple[str, int]]]:
+    """Return indexed English terms near query terms for conservative correction."""
+    clean_terms = sorted(
+        {
+            term.casefold()
+            for term in terms
+            if term and term[0].isascii() and term[0].isalpha()
+        }
+    )
+    if not clean_terms:
+        return {}
+
+    init_db()
+    candidates_by_term: dict[str, list[tuple[str, int]]] = {}
+    with connection() as conn:
+        for term in clean_terms:
+            exact_row = conn.execute(
+                "SELECT term, doc FROM chunk_fts_vocab WHERE term = ?",
+                (term,),
+            ).fetchone()
+            if exact_row:
+                candidates_by_term[term] = [(str(exact_row["term"]), int(exact_row["doc"]))]
+                continue
+
+            first_char = term[0]
+            rows = conn.execute(
+                """
+                SELECT term, doc
+                FROM chunk_fts_vocab
+                WHERE term >= ? AND term < ? AND length(term) BETWEEN ? AND ?
+                ORDER BY doc DESC, term
+                LIMIT 301
+                """,
+                (first_char, chr(ord(first_char) + 1), max(5, len(term) - 1), len(term) + 1),
+            ).fetchall()
+            if len(rows) > 300:
+                candidates_by_term[term] = []
+                continue
+            candidates_by_term[term] = [(str(row["term"]), int(row["doc"])) for row in rows]
+    return candidates_by_term
+
+
 def get_chunks_by_ids(chunk_ids: list[str]) -> dict[str, KnowledgeCitation]:
     if not chunk_ids:
         return {}
@@ -1214,6 +1259,37 @@ def list_messages(session_id: str) -> list[KnowledgeMessage]:
     ]
 
 
+def list_recent_messages(session_id: str, limit: int = 6) -> list[KnowledgeMessage]:
+    """按时间顺序读取当前会话最近的有限条消息。"""
+    normalized_limit = max(0, min(int(limit), 6))
+    if not session_id.strip() or normalized_limit == 0:
+        return []
+
+    init_db()
+    with connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, session_id, role, content, created_at
+            FROM rag_messages
+            WHERE session_id = ?
+            ORDER BY rowid DESC
+            LIMIT ?
+            """,
+            (session_id, normalized_limit),
+        ).fetchall()
+    rows.reverse()
+    return [
+        KnowledgeMessage(
+            id=row["id"],
+            sessionId=row["session_id"],
+            role=row["role"],
+            content=row["content"],
+            createdAt=row["created_at"],
+        )
+        for row in rows
+    ]
+
+
 def list_eval_cases(dataset: str | None = None) -> list[KnowledgeEvalCase]:
     init_db()
     where = ""
@@ -1413,6 +1489,10 @@ def list_eval_run_summaries(
                     ragasFailed=result.ragasFailed,
                     limit=result.limit,
                     searchMode=result.searchMode,
+                    queryRewriteEnabled=result.queryRewriteEnabled or request.queryRewrite,
+                    queryRewriteCalls=result.queryRewriteCalls,
+                    queryRewriteUses=result.queryRewriteUses,
+                    averageRetrievalDurationMs=result.averageRetrievalDurationMs,
                     evaluateAnswer=request.evaluateAnswer,
                     evaluateRagas=request.evaluateRagas,
                     answerLimit=result.answerLimit,

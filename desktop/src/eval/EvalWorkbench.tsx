@@ -51,6 +51,7 @@ export default function EvalWorkbench() {
   const [limit, setLimit] = useState("10")
   const [searchMode, setSearchMode] = useState<KnowledgeSearchMode>("hybrid")
   const [minScore, setMinScore] = useState("0")
+  const [queryRewrite, setQueryRewrite] = useState(false)
   const [evaluateAnswer, setEvaluateAnswer] = useState(false)
   const [evaluateRagas, setEvaluateRagas] = useState(false)
   const [answerLimit, setAnswerLimit] = useState("56")
@@ -91,6 +92,7 @@ export default function EvalWorkbench() {
     setLimit(String(record.request.limit ?? 10))
     setSearchMode(record.request.searchMode ?? "hybrid")
     setMinScore(String(record.request.minScore ?? 0))
+    setQueryRewrite(Boolean(record.request.queryRewrite))
     setEvaluateAnswer(Boolean(record.request.evaluateAnswer))
     setEvaluateRagas(Boolean(record.request.evaluateRagas))
     setAnswerLimit(String(record.request.answerLimit ?? 56))
@@ -253,6 +255,7 @@ export default function EvalWorkbench() {
         limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 10,
         searchMode,
         minScore: Number.isFinite(parsedMinScore) && parsedMinScore > 0 ? parsedMinScore : 0,
+        queryRewrite,
         evaluateAnswer,
         evaluateRagas,
         answerLimit: evalScope === "core" ? coreCases.length : evaluateAnswer && Number.isFinite(parsedAnswerLimit) && parsedAnswerLimit > 0 ? parsedAnswerLimit : cases.length,
@@ -372,6 +375,7 @@ export default function EvalWorkbench() {
                 searchMode={searchMode}
                 limit={limit}
                 minScore={minScore}
+                queryRewrite={queryRewrite}
                 evaluateAnswer={evaluateAnswer}
                 evaluateRagas={evaluateRagas}
                 ragasReadyCount={selectedCases.filter((item) => !item.shouldRefuse && Boolean(item.expectedAnswer.trim())).length}
@@ -381,6 +385,7 @@ export default function EvalWorkbench() {
                 onSearchModeChange={setSearchMode}
                 onLimitChange={setLimit}
                 onMinScoreChange={setMinScore}
+                onQueryRewriteChange={setQueryRewrite}
                 onEvaluateAnswerChange={(value) => {
                   setEvaluateAnswer(value)
                   if (!value) setEvaluateRagas(false)
@@ -406,5 +411,6 @@ function formatRunHistoryLabel(item: KnowledgeEvalRunSummary): string {
   const time = new Date(item.createdAt).toLocaleString()
   const mode = item.evaluateRagas ? "Ragas" : item.evaluateAnswer ? "答案" : "检索"
   const version = item.datasetVersion || "旧版"
-  return `${time} · ${version} · ${item.total} 条 · ${mode} · MRR ${formatScore(item.mrr)}`
+  const rewrite = item.queryRewriteEnabled ? "改写" : "原查询"
+  return `${time} · ${version} · ${item.total} 条 · ${rewrite} · ${mode} · MRR ${formatScore(item.mrr)}`
 }

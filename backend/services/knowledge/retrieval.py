@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import unicodedata
+from collections.abc import Awaitable, Callable
 
 from schemas.knowledge import (
     KnowledgeCitation,
@@ -12,29 +14,64 @@ from schemas.knowledge import (
 from services import storage
 from services.knowledge import db, vector_store
 from services.knowledge.embeddings import embed_texts, embedding_config_ready
+from services.knowledge.query_normalization import normalize_query
 from services.knowledge.rerank import rerank_citations, rerank_config_from_embedding, rerank_config_ready
 from logger import logger
 
 VALID_SEARCH_MODES = {"fts", "vector", "hybrid"}
 RRF_K = 60
+QueryRewriter = Callable[[], Awaitable[str | None]]
+QueryRewriteObserver = Callable[[str, str], None]
 
 
-async def search_knowledge(query: str, limit: int = 8) -> KnowledgeSearchResponse:
+async def search_knowledge(
+    query: str,
+    limit: int = 8,
+    *,
+    query_rewriter: QueryRewriter | None = None,
+    use_rewritten_query_for_rerank: bool = False,
+) -> KnowledgeSearchResponse:
     clean_query = query.strip()
     if not clean_query:
         return KnowledgeSearchResponse(ok=False, query=query, sourceMode="fts", error="请输入搜索内容")
+    retrieval_query = normalize_query(clean_query, db.get_fts_correction_candidates)
+    if not retrieval_query:
+        return KnowledgeSearchResponse(ok=False, query=clean_query, sourceMode="fts", error="请输入搜索内容")
 
     limit = max(1, min(limit, 20))
     config = storage.get_knowledge_config()
     rerank_config = rerank_config_from_embedding(config.embedding)
     candidate_limit = max(limit, min(int(rerank_config.topN or 20), 50)) if rerank_config_ready(rerank_config) else limit
-    fts_items = db.search_fts(clean_query, candidate_limit * 2)
+    vector_available = embedding_config_ready(config.embedding) and vector_store.availability()[0]
+    vector_query = retrieval_query
+    if query_rewriter and vector_available:
+        async def run_query_rewriter() -> str | None:
+            try:
+                return await query_rewriter()
+            except Exception as exc:
+                logger.warning(f"查询改写失败，回退原查询: {type(exc).__name__}")
+                return None
+
+        rewrite_task = asyncio.create_task(run_query_rewriter())
+        try:
+            fts_items = await asyncio.to_thread(db.search_fts, retrieval_query, candidate_limit * 2)
+            rewritten_query = await rewrite_task
+        finally:
+            if not rewrite_task.done():
+                rewrite_task.cancel()
+        if rewritten_query:
+            normalized_rewrite = normalize_query(rewritten_query, db.get_fts_correction_candidates)
+            if normalized_rewrite:
+                vector_query = normalized_rewrite
+    else:
+        fts_items = db.search_fts(retrieval_query, candidate_limit * 2)
+
     vector_items: list[KnowledgeCitation] = []
     vector_used = False
 
-    if embedding_config_ready(config.embedding) and vector_store.availability()[0]:
+    if vector_available:
         try:
-            vectors = await embed_texts(config.embedding, [clean_query])
+            vectors = await embed_texts(config.embedding, [vector_query])
             vector_rows = vector_store.search(vectors[0], candidate_limit * 2)
             vector_items = vector_rows_to_citations(vector_rows)
             vector_used = bool(vector_items)
@@ -46,7 +83,8 @@ async def search_knowledge(query: str, limit: int = 8) -> KnowledgeSearchRespons
     rerank_message = None
     if rerank_config_ready(rerank_config) and merged:
         try:
-            reranked = await rerank_citations(rerank_config, clean_query, merged)
+            rerank_query = vector_query if use_rewritten_query_for_rerank else retrieval_query
+            reranked = await rerank_citations(rerank_config, rerank_query, merged)
             merged = reranked.items
             rerank_used = reranked.used
             rerank_message = reranked.message
@@ -71,6 +109,9 @@ async def hit_test_knowledge(
     search_mode: str = "hybrid",
     min_score: float = 0,
     corpus_profile: str = "notes",
+    *,
+    query_rewriter: QueryRewriter | None = None,
+    query_rewrite_observer: QueryRewriteObserver | None = None,
 ) -> KnowledgeHitTestResponse:
     clean_query = query.strip()
     normalized_mode = normalize_search_mode(search_mode)
@@ -98,6 +139,16 @@ async def hit_test_knowledge(
         from services.knowledge import rgb_benchmark
 
         rgb_corpus = rgb_benchmark
+    term_lookup = rgb_corpus.get_fts_correction_candidates if rgb_corpus else db.get_fts_correction_candidates
+    retrieval_query = normalize_query(clean_query, term_lookup)
+    if not retrieval_query:
+        return KnowledgeHitTestResponse(
+            ok=False,
+            query=clean_query,
+            searchMode=normalized_mode,
+            sourceMode="fts",
+            error="请输入搜索内容",
+        )
 
     config = storage.get_knowledge_config()
     if rgb_corpus:
@@ -112,20 +163,63 @@ async def hit_test_knowledge(
     rerank_config = rerank_config_from_embedding(config.embedding)
     rerank_ready = rerank_config_ready(rerank_config)
     candidate_limit = max(limit, min(int(rerank_config.topN or 20), 50)) if rerank_ready else limit
-    if normalized_mode in {"fts", "hybrid"}:
-        fts_hits = (
-            rgb_corpus.search_fts_hits(clean_query, candidate_limit * 3)
+    query_rewrite_attempted = False
+    query_rewrite_used = False
+    vector_query = retrieval_query
+
+    def search_fts() -> list[db.FtsSearchHit]:
+        return (
+            rgb_corpus.search_fts_hits(retrieval_query, candidate_limit * 3)
             if rgb_corpus
-            else db.search_fts_hits(clean_query, candidate_limit * 3)
+            else db.search_fts_hits(retrieval_query, candidate_limit * 3)
         )
+
+    can_rewrite_query = bool(
+        query_rewriter
+        and vector_ready
+        and normalized_mode in {"vector", "hybrid"}
+    )
+    if normalized_mode in {"fts", "hybrid"}:
+        if can_rewrite_query:
+            fts_task = asyncio.create_task(asyncio.to_thread(search_fts))
+        else:
+            fts_hits = search_fts()
     else:
         fts_hits = []
+
+    if can_rewrite_query and query_rewriter:
+        query_rewrite_attempted = True
+
+        async def run_query_rewriter() -> str | None:
+            try:
+                return await query_rewriter()
+            except Exception as exc:
+                logger.warning(f"查询改写失败，回退原查询: {type(exc).__name__}")
+                return None
+
+        rewrite_task = asyncio.create_task(run_query_rewriter())
+        try:
+            if normalized_mode == "hybrid":
+                fts_hits, rewritten_query = await asyncio.gather(fts_task, rewrite_task)
+            else:
+                rewritten_query = await rewrite_task
+        finally:
+            if not rewrite_task.done():
+                rewrite_task.cancel()
+        if rewritten_query:
+            normalized_rewrite = normalize_query(rewritten_query, term_lookup)
+            if normalized_rewrite and normalized_rewrite != retrieval_query:
+                vector_query = normalized_rewrite
+                query_rewrite_used = True
+                if query_rewrite_observer:
+                    query_rewrite_observer(retrieval_query, normalized_rewrite)
+
     vector_rows: list[dict] = []
     vector_error: str | None = None
     if normalized_mode in {"vector", "hybrid"}:
         if vector_ready:
             try:
-                vectors = await embed_texts(config.embedding, [clean_query])
+                vectors = await embed_texts(config.embedding, [vector_query])
                 vector_rows = (
                     rgb_corpus.search_vectors(vectors[0], candidate_limit * 3)
                     if rgb_corpus
@@ -142,6 +236,8 @@ async def hit_test_knowledge(
                 sourceMode="vector",
                 vectorAvailable=False,
                 vectorMessage=vector_message,
+                queryRewriteAttempted=query_rewrite_attempted,
+                queryRewriteUsed=query_rewrite_used,
                 error=vector_message or "向量检索不可用",
             )
 
@@ -217,7 +313,7 @@ async def hit_test_knowledge(
     rerank_message = None
     if rerank_ready and result_items:
         try:
-            reranked = await rerank_citations(rerank_config, clean_query, result_items)
+            reranked = await rerank_citations(rerank_config, retrieval_query, result_items)
             rerank_used = reranked.used
             rerank_message = reranked.message
             if reranked.used:
@@ -256,6 +352,8 @@ async def hit_test_knowledge(
         vectorMessage=vector_error or vector_message,
         rerankUsed=rerank_used,
         rerankMessage=rerank_message,
+        queryRewriteAttempted=query_rewrite_attempted,
+        queryRewriteUsed=query_rewrite_used,
     )
 
 

@@ -473,6 +473,8 @@ export interface KnowledgeHitTestResponse {
   vectorMessage?: string | null
   rerankUsed: boolean
   rerankMessage?: string | null
+  queryRewriteAttempted?: boolean
+  queryRewriteUsed?: boolean
   error?: string | null
 }
 
@@ -522,6 +524,7 @@ export interface KnowledgeEvalRunRequest {
   limit?: number
   searchMode?: KnowledgeSearchMode
   minScore?: number
+  queryRewrite?: boolean
   evaluateAnswer?: boolean
   evaluateRagas?: boolean
   answerLimit?: number
@@ -542,6 +545,9 @@ export interface KnowledgeEvalCaseResult {
   reciprocalRank: number
   relevantHitCount: number
   precisionAtK: number
+  retrievalDurationMs: number
+  queryRewriteAttempted: boolean
+  queryRewriteUsed: boolean
   hits: KnowledgeEvalHit[]
   issueType: "ok" | "late_hit" | "missed" | "no_results" | "error" | string
   issueMessage: string
@@ -622,6 +628,10 @@ export interface KnowledgeEvalRunResponse {
   typeSummaries: KnowledgeEvalTypeSummary[]
   limit: number
   searchMode: KnowledgeSearchMode
+  queryRewriteEnabled: boolean
+  queryRewriteCalls: number
+  queryRewriteUses: number
+  averageRetrievalDurationMs: number
   sourceModes: Record<string, number>
   results: KnowledgeEvalCaseResult[]
   error?: string | null
@@ -645,6 +655,10 @@ export interface KnowledgeEvalRunSummary {
   ragasFailed: number
   limit: number
   searchMode: KnowledgeSearchMode
+  queryRewriteEnabled: boolean
+  queryRewriteCalls: number
+  queryRewriteUses: number
+  averageRetrievalDurationMs: number
   evaluateAnswer: boolean
   evaluateRagas: boolean
   answerLimit: number
