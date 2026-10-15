@@ -8,7 +8,8 @@ TabKeep 是一个本地优先的浏览器与桌面知识工作流工具：从浏
 
 - **浏览器扩展**：按域名整理 Chrome/Edge 标签页；可用配置的 LLM 按自定义类别分组；提取网页正文并收藏链接、全文或摘要；自动同步 Chrome 和 Edge 116+ 的原生标签组到桌面端归档。
 - **笔记集成**：将收藏保存到本地 Markdown、Obsidian/Markdown 目录或思源笔记。
-- **桌面端**：集中管理模型、分组、笔记和知识库设置；提供翻译、截图 OCR、区域翻译、便签、提醒和知识图谱等功能。
+- **资讯采集与阅读**：从桌面端侧栏打开本地资讯网页，在网页中管理 RSSHub、RSS/Atom、贴吧和小黑盒游戏新闻来源，刷新来源、按来源浏览并打开原文；采集内容保存在本机，贴吧来源采集公开热门主题帖及其首屏回复。
+- **桌面端**：集中管理模型、分组、笔记和知识库设置；提供资讯网页入口、翻译、截图 OCR、区域翻译、便签、提醒和知识图谱等功能。
 - **知识库**：同步 Markdown/Obsidian 目录、思源笔记和 TabKeep 收藏；用 SQLite/FTS 与可选 LanceDB 向量索引进行检索，再以配置的模型生成带引用的回答。
 - **评估工具**：独立页面用于检查知识检索效果和 RAG 样本。
 
@@ -16,7 +17,7 @@ TabKeep 是一个本地优先的浏览器与桌面知识工作流工具：从浏
 
 extension/ 是 Chrome MV3 扩展，支持 Chrome 和 Edge 116+，负责浏览器标签页和网页内容采集。它向本机 FastAPI 服务 38471 发送分类、配置、笔记和标签组归档请求；桌面能力可选地通过 38472 本机服务调用。
 
-desktop/ 使用 Tauri 2、React 和 Rust。React 提供主要界面，Rust 负责桌面窗口、托盘、快捷键、截图等系统集成。发布版桌面端会启动单独打包的 FastAPI 后端 sidecar。
+desktop/ 使用 Tauri 2、React 和 Rust。React 提供主要界面，Rust 负责桌面窗口、托盘、快捷键、截图等系统集成。资讯阅读页使用独立的 Vite 入口，开发时运行在 5176；发布版由 FastAPI 在 `/reader/` 提供静态页面。发布版桌面端会启动单独打包的 FastAPI 后端 sidecar。
 
 backend/ 保存配置和笔记，运行知识同步、索引、检索、RAG 与 OCR 模型 API。知识库数据默认存放在本机；模型调用由用户配置的 API 提供方执行。
 
@@ -66,7 +67,7 @@ cd ..
 
 ## 启动开发环境
 
-一键启动后端、扩展和桌面端：
+一键启动后端、扩展、桌面端和资讯阅读页：
 
 ~~~powershell
 pnpm dev:app
@@ -84,17 +85,23 @@ pnpm dev
 pnpm dev:backend
 pnpm dev:extension
 pnpm dev:desktop
+pnpm dev:news-reader
 pnpm dev:eval
 ~~~
 
-开发启动器会为服务打开独立 PowerShell 窗口。它使用 Conda 环境 tabkeep 运行后端。手动启动后端时，可在 backend/ 目录运行 python main.py。桌面 Tauri 开发构建还需要 Windows MSVC 工具链。
+开发启动器会为桌面端和资讯阅读页在后台隐藏启动进程，日志保存在 `.tmp/dev-logs/desktop.stdout.log`、`.tmp/dev-logs/desktop.stderr.log`、`.tmp/dev-logs/news-reader.stdout.log` 和 `.tmp/dev-logs/news-reader.stderr.log`；其他服务仍使用独立 PowerShell 窗口。它使用 Conda 环境 tabkeep 运行后端。手动启动后端时，可在 backend/ 目录运行 python main.py。桌面 Tauri 开发构建还需要 Windows MSVC 工具链。
 
 | 服务 | 默认地址 | 说明 |
 | --- | --- | --- |
 | FastAPI 后端 | http://127.0.0.1:38471 | 配置、笔记、知识库、检索和问答 |
 | Tauri 本机服务 | http://127.0.0.1:38472 | 桌面翻译、截图/OCR 和扩展桌面集成 |
 | 扩展开发服务 | http://localhost:3000 | Plasmo 开发页面 |
+| 资讯阅读页 | http://127.0.0.1:5176 | 开发版阅读页；安装版由后端提供 `/reader/` |
 | RAG 评估页面 | http://127.0.0.1:5175/eval.html | 独立的检索评估工作台 |
+
+### 打开资讯阅读页
+
+在 TabKeep 桌面端侧栏点击“资讯”，阅读页会在系统默认浏览器的新标签打开。开发时用 `pnpm dev:app` 启动后端和阅读页；单独运行 `pnpm dev:news-reader` 只启动网页开发服务器，仍需要后端运行。安装版由本机 FastAPI 提供阅读页，不会开放到局域网。若网页提示服务或会话已断开，请确认 TabKeep 正在运行，再从桌面端重新点击“资讯”。
 
 ## 首次配置
 
@@ -109,7 +116,8 @@ pnpm dev:eval
 
 ## 数据与限制
 
-- 源码运行时，后端默认数据目录是 backend/data/；可用 TABKEEP_DATA_DIR 更改。安装版由桌面端放入操作系统的 TabKeep 应用数据目录。配置、知识库数据库、向量索引和本地 Markdown 笔记保存在该数据目录下。
+- 源码运行时，后端默认数据目录是 backend/data/；可用 TABKEEP_DATA_DIR 更改。安装版由桌面端放入操作系统的 TabKeep 应用数据目录。配置、资讯采集数据库、知识库数据库、向量索引和本地 Markdown 笔记保存在该数据目录下。
+- 资讯网页通过一次性短时授权票据建立仅限资讯 API 的本机浏览器会话；API Token 不会保存到网页 URL 或浏览器存储。关闭桌面主窗口会隐藏到托盘，后端继续运行；从托盘退出 TabKeep 后，阅读页会提示本机服务已断开。
 - 配置文件可能含模型 API Key、思源 Token 和本机 API Token。请勿把运行数据、密钥、日志、网页内容或截图提交到仓库。
 - 标签快照在扩展端缓存到 IndexedDB；后端 /tabs 接口当前仅使用内存，后端重启后数据会清空，它不是持久化的标签历史。
 - 标签归档只记录 Chrome/Edge 普通窗口中的用户原生标签组，包括组名、颜色、折叠状态和网页 URL/标题/图标；扩展自动创建的域名/AI 分组不纳入归档。数据保存在本机 SQLite。关闭浏览器中的标签组不会删除归档；恢复会按 URL 重新加载页面，不保存网页正文、滚动位置或表单状态。浏览器重启后原生组 ID 会变化；TabKeep 仅在来源浏览器实例、组名、颜色和标签 URL 能唯一匹配时续接归档或离线删除命令。若有多个相同候选组，会保留为独立记录，不自动关闭。
@@ -118,7 +126,7 @@ pnpm dev:eval
 
 ## 构建与验证
 
-桌面 Web UI 和扩展构建：
+桌面 UI、资讯阅读页和扩展构建：
 
 ~~~powershell
 cd desktop
@@ -135,7 +143,7 @@ cd backend
 python -m unittest discover -s tests
 ~~~
 
-根目录 pnpm test:backend 目前固定使用开发机上的 Python 绝对路径，不适合作为通用测试命令。跨端发布前还要在目标操作系统检查桌面系统能力和扩展连接状态。
+desktop 的 pnpm build 会同时构建资讯阅读页到 backend/web_static；发布后端时会把这些静态资源打入 sidecar。根目录 pnpm test:backend 目前固定使用开发机上的 Python 绝对路径，不适合作为通用测试命令。跨端发布前还要在目标操作系统检查桌面系统能力和扩展连接状态。
 
 ## 发布平台
 

@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vite",
     "dev:eval": "vite --host 127.0.0.1 --port 5175 --open /eval.html",
-    "build": "tsc -b && vite build",
+    "dev:news-reader": "vite --config vite.news-reader.config.ts",
+    "build:news-reader": "vite build --config vite.news-reader.config.ts",
+    "build": "tsc -b && vite build && pnpm build:news-reader",
     "preview": "vite preview",
     "tauri": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri",
     "tauri:dev": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri dev",
     "tauri:build": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build",
-    "tauri:build:release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build --config src-tauri/tauri.release.conf.json"
+    "tauri:build:release": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build --config src-tauri/tauri.release.conf.json",
+    "tauri:build:nsis": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/with-msvc.ps1 tauri build --config src-tauri/tauri.release.conf.json --bundles nsis"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

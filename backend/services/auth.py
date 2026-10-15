@@ -1,8 +1,8 @@
 """
 本地 API token 校验。
 
-TabKeep 后端只监听 127.0.0.1,但浏览器网页也可能尝试请求本机端口。
-默认保留 `X-TabKeep-Token` 校验;开发环境可通过 TABKEEP_DISABLE_AUTH=1 关闭。
+TabKeep 后端只监听 127.0.0.1。API 默认校验 `X-TabKeep-Token`；资讯网页使用
+仅限 `/news/*` 的短时 HttpOnly 会话 Cookie。开发环境可通过 TABKEEP_DISABLE_AUTH=1 关闭校验。
 """
 import os
 

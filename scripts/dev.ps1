@@ -1,5 +1,5 @@
-param(
-  [ValidateSet("all", "backend", "extension", "desktop", "eval")]
+﻿param(
+  [ValidateSet("all", "backend", "extension", "desktop", "news-reader", "eval")]
   [string] $Only = "all",
   [switch] $NoBackend,
   [switch] $NoExtension,
@@ -36,6 +36,14 @@ $AllTargets = @(
     Name = "TabKeep :38472"
     WorkingDirectory = Join-Path $Root.Path "desktop"
     Command = "pnpm tauri:dev"
+    Hidden = $true
+  },
+  @{
+    Id = "news-reader"
+    Name = "TabKeep News Reader :5176"
+    WorkingDirectory = Join-Path $Root.Path "desktop"
+    Command = "pnpm dev:news-reader"
+    Hidden = $true
   },
   @{
     Id = "eval"
@@ -159,7 +167,7 @@ Write-Host "Temp directory: $TempDir"
 Write-Host "Command: $Command"
 Write-Host ""
 try {
-  if ("$($Target.Id)" -eq "extension" -or "$($Target.Id)" -eq "desktop" -or "$($Target.Id)" -eq "eval") {
+  if ("$($Target.Id)" -eq "extension" -or "$($Target.Id)" -eq "desktop" -or "$($Target.Id)" -eq "news-reader" -or "$($Target.Id)" -eq "eval") {
     Assert-PnpmReady
   }
 
@@ -183,9 +191,27 @@ try {
 
   $EncodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ChildScript))
 
-  Start-Process -FilePath "powershell.exe" `
-    -ArgumentList @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $EncodedCommand) `
-    -WorkingDirectory $WorkingDirectory.Path
+  $StartArguments = @{
+    FilePath = "powershell.exe"
+    ArgumentList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $EncodedCommand)
+    WorkingDirectory = $WorkingDirectory.Path
+  }
+
+  if ($Target.Hidden) {
+    $LogDir = Join-Path $TempDir "dev-logs"
+    New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+    $StartArguments.WindowStyle = "Hidden"
+    $StartArguments.RedirectStandardOutput = Join-Path $LogDir "$($Target.Id).stdout.log"
+    $StartArguments.RedirectStandardError = Join-Path $LogDir "$($Target.Id).stderr.log"
+  } else {
+    $StartArguments.ArgumentList = @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $EncodedCommand)
+  }
+
+  Start-Process @StartArguments | Out-Null
+
+  if ($Target.Hidden) {
+    Write-Output "[$Name] 已在后台隐藏启动；日志位于 $LogDir。"
+  }
 }
 
 Write-Output "TabKeep dev launcher"
@@ -209,5 +235,5 @@ if ($StartedCount -eq 0) {
 
 if (-not $DryRun) {
   Write-Output ""
-  Write-Output "已启动 $StartedCount 个开发进程。每个服务会在独立 PowerShell 窗口中显示日志。"
+  Write-Output "已启动 $StartedCount 个开发进程。桌面端和资讯阅读页在后台隐藏运行，其他服务使用独立 PowerShell 窗口。"
 }

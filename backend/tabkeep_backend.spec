@@ -4,8 +4,17 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metada
 
 
 BACKEND_DIR = Path(SPEC).resolve().parent
+NEWS_WEB_DIR = BACKEND_DIR / "web_static"
 
-datas = []
+if not NEWS_WEB_DIR.is_dir():
+    raise FileNotFoundError(
+        f"资讯网页静态文件不存在: {NEWS_WEB_DIR}，请先运行 desktop 的 build:news-reader。"
+    )
+
+datas = [
+    (str(NEWS_WEB_DIR), "web_static"),
+    (str(BACKEND_DIR / "services" / "news" / "THIRD_PARTY_NOTICES.md"), "services/news"),
+]
 binaries = []
 hiddenimports = []
 

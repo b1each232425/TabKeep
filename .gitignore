@@ -15,6 +15,8 @@ desktop/.env*
 !desktop/.env.example
 desktop/*.local
 desktop/vite.config.js
+desktop/vite.news-reader.config.js
+desktop/vite.news-reader.config.d.ts
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/tsconfig*.tsbuildinfo
@@ -32,6 +34,7 @@ backend/.env*
 # === 后端运行时数据（config.json 含明文 apiKey/token，不提交） ===
 backend/data/
 backend/logs/
+backend/web_static/
 .release/
 desktop/src-tauri/binaries/*.exe
 

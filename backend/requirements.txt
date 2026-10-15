@@ -4,6 +4,8 @@ websockets
 loguru
 openai
 httpx
+feedparser>=6.0,<7
+aiotieba>=4.7.1,<4.8
 lancedb
 manga-ocr==0.1.14
 transformers<5

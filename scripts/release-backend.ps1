@@ -121,8 +121,17 @@ function Invoke-BackendSmokeTest {
       $stderrTail = Get-Content -LiteralPath $stderrPath -Tail 20 -ErrorAction SilentlyContinue
       throw "The backend executable did not pass its health check within $TimeoutSeconds seconds.`n$stderrTail"
     }
+
+    $readerResponse = Invoke-WebRequest -Uri "http://127.0.0.1:$smokePort/reader/" -TimeoutSec 10 -UseBasicParsing
+    $readerScriptMatch = [regex]::Match($readerResponse.Content, 'src="(/reader/assets/[^"]+\.js)"')
+    if ($readerResponse.StatusCode -ne 200 -or -not $readerScriptMatch.Success) {
+      throw "The backend executable did not serve the packaged news reader at /reader/."
+    }
+    $readerScriptPath = $readerScriptMatch.Groups[1].Value
+    $null = Invoke-WebRequest -Uri "http://127.0.0.1:$smokePort$readerScriptPath" -TimeoutSec 10 -UseBasicParsing
+
     $elapsedSeconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
-    Write-Host "Backend smoke test passed: version=$($response.version), startup=${elapsedSeconds}s" -ForegroundColor Green
+    Write-Host "Backend smoke test passed: version=$($response.version), reader=/reader/, startup=${elapsedSeconds}s" -ForegroundColor Green
   } finally {
     $stopwatch.Stop()
     if ($process -and -not $process.HasExited) {
@@ -136,6 +145,12 @@ function Invoke-BackendSmokeTest {
 
 $Python = Resolve-TabKeepPython
 Write-Host "[TabKeep] Python: $Python" -ForegroundColor Cyan
+
+Write-Host "[TabKeep] Building local news reader assets..." -ForegroundColor Cyan
+& pnpm --dir (Join-Path $Root.Path "desktop") build:news-reader
+if ($LASTEXITCODE -ne 0) {
+  throw "News reader frontend build failed."
+}
 
 if ($InstallDependencies) {
   & $Python -m pip install -r (Join-Path $BackendDir "requirements-build.txt")

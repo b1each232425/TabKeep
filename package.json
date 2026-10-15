@@ -7,6 +7,7 @@
     "dev:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only backend",
     "dev:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only extension",
     "dev:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only desktop",
+    "dev:news-reader": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only news-reader",
     "dev:eval": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only eval",
     "mcp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tabkeep-mcp.ps1",
     "skill:export": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-standalone-skill.ps1",

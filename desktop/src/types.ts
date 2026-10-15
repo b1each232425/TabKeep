@@ -1189,3 +1189,66 @@ export interface SelectionTranslateResult {
   x: number
   y: number
 }
+
+export interface NewsSource {
+  id: string
+  url: string
+  title: string
+  iconUrl?: string | null
+  sourceType: "rss" | "tieba" | "xiaoheihe"
+  isActive: boolean
+  createdAt: string
+  lastCheckedAt?: string | null
+  lastSuccessAt?: string | null
+  lastError?: string | null
+  itemCount: number
+}
+
+export interface NewsItem {
+  id: string
+  sourceId: string
+  sourceTitle: string
+  title: string
+  url?: string | null
+  content: string
+  imageUrl?: string | null
+  sourceIconUrl?: string | null
+  author?: string | null
+  publishedAt?: string | null
+  fetchedAt: string
+}
+
+export interface NewsSourceListResponse {
+  items: NewsSource[]
+  totalItemCount: number
+}
+
+export interface NewsItemListResponse {
+  items: NewsItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface NewsSourceMutationResponse {
+  source: NewsSource
+  newItems: number
+  notModified: boolean
+}
+
+export interface NewsSourceRefreshResult {
+  sourceId: string
+  sourceTitle: string
+  newItems: number
+  notModified: boolean
+  error?: string | null
+}
+
+export interface NewsRefreshAllResponse {
+  items: NewsSourceRefreshResult[]
+  newItems: number
+}
+
+export interface NewsSourceDeleteResponse {
+  ok: boolean
+}

@@ -10,11 +10,14 @@ FastAPI 应用入口。
   6. uvicorn 启动入口(`python main.py` 也能跑)
 """
 import os
-from contextlib import asynccontextmanager
+import asyncio
+from pathlib import Path
+from contextlib import asynccontextmanager, suppress
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 # 三个业务路由模块
 from routers.tabs import router as tabs_router      # /tabs  —— 标签页同步
@@ -23,9 +26,13 @@ from routers.notes import router as notes_router    # /notes/* —— 笔记集�
 from routers.knowledge import router as knowledge_router  # /knowledge/* —— 本地知识库 + RAG
 from routers.ocr import router as ocr_router          # /ocr/* —— 本地 OCR 模型
 from routers.tab_groups import router as tab_groups_router  # /tab-groups —— 标签归档
+from routers.news import router as news_router  # /news —— 本地资讯订阅采集
 
 # 跨域 + 启动钩子
 from services import storage
+from services.news import collector as news_collector
+from services.news import db as news_db
+from services.news import web_sessions
 
 
 # ─────────────────────────────────────────────────────────────
@@ -35,8 +42,15 @@ from services import storage
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # 启动:从 data/config.json 把 modelConfig / tabCategories / noteAdapter 读进内存
     storage.init()
+    news_db.init_db()
+    news_task = asyncio.create_task(news_collector.run_scheduler(), name="tabkeep-news-poller")
     yield  # 应用运行中
-    # 关闭:loguru 自动 flush,无需手动保存
+    news_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await news_task
+    news_collector.clear_source_locks()
+    web_sessions.clear_sessions()
+    # 关闭:loguru 自动 flush,SQLite 由连接上下文提交
 
 
 # ─────────────────────────────────────────────────────────────
@@ -77,6 +91,12 @@ app.include_router(notes_router)
 app.include_router(knowledge_router)
 app.include_router(ocr_router)
 app.include_router(tab_groups_router)
+app.include_router(news_router)
+app.mount(
+    "/reader",
+    StaticFiles(directory=Path(__file__).parent / "web_static", html=True, check_dir=False),
+    name="news-reader",
+)
 
 
 # ─────────────────────────────────────────────────────────────

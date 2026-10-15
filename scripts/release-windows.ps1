@@ -33,7 +33,7 @@ Write-Host "[TabKeep] Building backend sidecar..." -ForegroundColor Cyan
 Write-Host "[TabKeep] Building Windows desktop installer..." -ForegroundColor Cyan
 Push-Location (Join-Path $Root.Path "desktop")
 try {
-  & pnpm tauri:build:release
+  & pnpm tauri:build:nsis
   if ($LASTEXITCODE -ne 0) {
     throw "Tauri desktop build failed."
   }

@@ -11,6 +11,7 @@ import {
   KeyRound,
   Languages,
   LayoutDashboard,
+  Newspaper,
   PlugZap,
   RefreshCw,
   Settings2,
@@ -23,12 +24,14 @@ import {
   backendRequest,
   checkBackendHealth,
   clearCachedApiToken,
+  createNewsBrowserSession,
   createStickyNoteWindow,
   getCachedApiToken,
   getDesktopStatus,
   listStickyNotes,
   loadBackendConfig,
   openStickyNoteWindow,
+  openExternalTarget,
   setCachedApiToken,
 } from "./api"
 import type {
@@ -52,6 +55,7 @@ import {
   SelectionPanelWindow,
 } from "./sections/OcrWindows"
 import { OverviewSection } from "./sections/OverviewSection"
+import { NewsLauncherSection } from "./sections/NewsLauncherSection"
 import { SettingsSection } from "./sections/SettingsSections"
 import { StickyNotesSection } from "./sections/StickyNotesSection"
 import { TabGroupArchivesSection } from "./sections/TabGroupArchivesSection"
@@ -62,6 +66,7 @@ import tabkeepIcon from "./assets/tabkeep-icon.png"
 
 type Section =
   | "overview"
+  | "news"
   | "tabArchives"
   | "stickyNotes"
   | "translate"
@@ -99,6 +104,36 @@ function DesktopApp() {
   const [noteAdapter, setNoteAdapter] = useState<NoteAdapterConfig>(DEFAULT_NOTE_ADAPTER)
   const [tokenInput, setTokenInput] = useState("")
   const [stickyReminderFocusKey, setStickyReminderFocusKey] = useState(0)
+  const [openingNewsReader, setOpeningNewsReader] = useState(false)
+  const [newsReaderMessage, setNewsReaderMessage] = useState("")
+  const [newsReaderError, setNewsReaderError] = useState("")
+
+  const openNewsReader = async () => {
+    setSection("news")
+    setOpeningNewsReader(true)
+    setNewsReaderError("")
+    setNewsReaderMessage("")
+    let ticketCreated = false
+    try {
+      const { ticket } = await createNewsBrowserSession()
+      ticketCreated = true
+      const readerBaseUrl =
+        importMetaEnv?.DEV === true
+          ? "http://127.0.0.1:5176/"
+          : "http://127.0.0.1:38471/reader/"
+      await openExternalTarget(`${readerBaseUrl}#ticket=${encodeURIComponent(ticket)}`)
+      setNewsReaderMessage("资讯阅读页已在浏览器中打开。")
+    } catch (error) {
+      const recovery = ticketCreated
+        ? "请检查系统默认浏览器设置后重试。"
+        : error instanceof BackendRequestError && error.status === 401
+          ? "请检查设置中的本机 API Token 后重试。"
+          : "请确认本机后端正在运行后重试。"
+      setNewsReaderError(`${errorMessage(error)}。${recovery}`)
+    } finally {
+      setOpeningNewsReader(false)
+    }
+  }
 
   const refreshAll = async () => {
     setRefreshing(true)
@@ -238,6 +273,7 @@ function DesktopApp() {
 
   const navItems: { id: Section; label: string; icon: LucideIcon }[] = [
     { id: "overview", label: "概览", icon: LayoutDashboard },
+    { id: "news", label: "资讯", icon: Newspaper },
     { id: "tabArchives", label: "标签归档", icon: Archive },
     { id: "stickyNotes", label: "便签", icon: StickyNote },
     { id: "translate", label: "翻译", icon: Languages },
@@ -289,7 +325,14 @@ function DesktopApp() {
               <button
                 key={item.id}
                 className={`tk-nav-item ${active ? "tk-nav-item-active" : ""}`}
-                onClick={() => setSection(item.id)}>
+                disabled={item.id === "news" && openingNewsReader}
+                onClick={() => {
+                  if (item.id === "news") {
+                    void openNewsReader()
+                  } else {
+                    setSection(item.id)
+                  }
+                }}>
                 <Icon className="h-4 w-4" />
                 <span>{item.label}</span>
               </button>
@@ -337,6 +380,14 @@ function DesktopApp() {
             connectionError={connectionError}
             onRefresh={refreshAll}
             refreshing={refreshing}
+          />
+        )}
+        {section === "news" && (
+          <NewsLauncherSection
+            opening={openingNewsReader}
+            message={newsReaderMessage}
+            error={newsReaderError}
+            onOpen={() => void openNewsReader()}
           />
         )}
         {section === "tabArchives" && <TabGroupArchivesSection />}
