@@ -30,7 +30,7 @@ export function KnowledgeGraphCanvas({
   onSelectEdge: (edge: GraphFlowEdge) => void
 }) {
   return (
-    <div className="h-[620px] overflow-hidden rounded-md border border-slate-200 bg-[#f8fafc]">
+    <div className="h-[620px] overflow-hidden rounded-md border border-slate-200 bg-[#f1f8ff]">
       {graphData.nodes.length > 0 ? (
         <ReactFlow<GraphFlowNode, GraphFlowEdge>
           key={`${graphData.nodes.length}:${graphData.edges.length}:${graphDepth}:${selectedGraphNode?.id ?? ""}`}

@@ -415,8 +415,8 @@ export function StickyNotesSection({ reminderFocusKey = 0 }: { reminderFocusKey?
                 <span className="min-w-0 flex-1">
                   <span className="tk-sticky-list-title">
                     {note.systemKind === "dailyPoetry"
-                      ? <Quote className="h-3.5 w-3.5 text-emerald-600" />
-                      : note.pinned && <StickyNoteIcon className="h-3.5 w-3.5 text-emerald-500" />}
+                      ? <Quote className="h-3.5 w-3.5 text-blue-600" />
+                      : note.pinned && <StickyNoteIcon className="h-3.5 w-3.5 text-blue-600" />}
                     {stickyNoteTitle(note)}
                   </span>
                   <span className="tk-sticky-list-preview">{stickyNotePreview(note.content)}</span>

@@ -376,7 +376,7 @@ function DebugRecordCard({ record }: { record: OcrDebugRecord }) {
                   {region.id} · {region.direction === "vertical" ? "竖排" : "横排"} · 顺序 {region.readingOrder + 1}
                 </div>
                 <div>{region.sourceText}</div>
-                {region.translatedText && <div className="mt-1 text-emerald-700">→ {region.translatedText}</div>}
+                {region.translatedText && <div className="mt-1 text-blue-700">→ {region.translatedText}</div>}
               </div>
             ))}
           </div>

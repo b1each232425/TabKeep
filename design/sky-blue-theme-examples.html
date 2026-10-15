@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TabKeep 天蓝配色样例</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+        color: #203246;
+        background: #f2f6fa;
+        font-synthesis: none;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 360px; padding: 32px; }
+      button, select { font: inherit; }
+      .page { width: min(1440px, 100%); margin: 0 auto; }
+      .page-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin: 0 0 22px; }
+      .eyebrow { margin: 0 0 7px; color: #49728f; font-size: 12px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+      h1 { margin: 0; color: #172b3f; font-size: 26px; letter-spacing: -.025em; }
+      .page-intro { max-width: 610px; margin: 8px 0 0; color: #5b6e80; font-size: 14px; line-height: 1.6; }
+      .demo-label { flex: 0 0 auto; border: 1px solid #d5e1ea; border-radius: 999px; background: #fff; padding: 8px 12px; color: #53697c; font-size: 12px; }
+      .theme-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+      .theme-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 76px; padding: 12px 14px; border: 1px solid #d9e3eb; border-radius: 12px; background: #fff; color: #23394d; text-align: left; cursor: pointer; transition: border-color .18s, box-shadow .18s, transform .18s; }
+      .theme-option:hover { border-color: #8ebde2; transform: translateY(-1px); }
+      .theme-option:focus-visible { outline: 3px solid #79baf0; outline-offset: 2px; }
+      .theme-option[aria-pressed="true"] { border-color: #388fc9; box-shadow: 0 0 0 3px rgb(56 143 201 / .13); }
+      .swatches { display: flex; flex: 0 0 auto; gap: 4px; }
+      .swatches i { width: 15px; height: 32px; border: 1px solid rgb(28 67 97 / .1); border-radius: 6px; }
+      .option-copy { display: grid; gap: 4px; min-width: 0; }
+      .option-copy strong { font-size: 14px; }
+      .option-copy span { color: #617589; font-size: 12px; line-height: 1.4; }
+      .screen-frame { overflow: hidden; border: 1px solid #d6e0e8; border-radius: 15px; background: #fff; box-shadow: 0 18px 48px rgb(30 55 78 / .12); }
+      .window-bar { display: flex; align-items: center; justify-content: space-between; height: 38px; padding: 0 14px; background: var(--titlebar); color: var(--titlebar-text); }
+      .window-brand { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 650; }
+      .brand-mark { display: grid; width: 18px; height: 18px; place-items: center; border: 1px solid rgb(255 255 255 / .38); border-radius: 5px; background: var(--primary); color: #fff; font-size: 10px; font-weight: 800; }
+      .window-actions { display: flex; align-items: center; gap: 16px; color: var(--titlebar-muted); font-size: 15px; }
+      .app-shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 670px; background: var(--canvas); color: var(--text); }
+      .sidebar { display: flex; flex-direction: column; gap: 26px; padding: 20px 14px 14px; border-right: 1px solid var(--border); background: var(--sidebar); }
+      .brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px; color: var(--text); font-size: 18px; font-weight: 700; letter-spacing: -.03em; }
+      .brand .brand-mark { width: 28px; height: 28px; border: 0; border-radius: 8px; font-size: 13px; box-shadow: 0 4px 10px var(--primary-shadow); }
+      .brand-name span { color: var(--primary); }
+      .nav { display: grid; gap: 5px; }
+      .nav-item { display: flex; align-items: center; gap: 11px; min-height: 40px; padding: 0 11px; border-radius: 8px; color: var(--muted-text); font-size: 13px; font-weight: 550; }
+      .nav-item svg { width: 17px; height: 17px; flex: 0 0 auto; stroke: currentColor; stroke-width: 1.7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .nav-item.active { background: var(--nav-active); color: var(--primary-ink); font-weight: 650; }
+      .sidebar-bottom { display: grid; gap: 12px; margin-top: auto; padding-top: 15px; border-top: 1px solid var(--border); }
+      .connection { display: flex; align-items: center; gap: 8px; padding: 0 5px; color: var(--muted-text); font-size: 12px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #35aa75; box-shadow: 0 0 0 3px rgb(53 170 117 / .12); }
+      .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 0 13px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--card); color: var(--text); font-size: 12px; font-weight: 600; }
+      .button.primary { border-color: var(--primary); background: var(--primary); color: #fff; box-shadow: 0 3px 8px var(--primary-shadow); }
+      .button svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .main { min-width: 0; padding: 26px 30px 30px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+      .topbar h2 { margin: 0; font-size: 23px; letter-spacing: -.03em; }
+      .topbar p { margin: 5px 0 0; color: var(--muted-text); font-size: 12px; }
+      .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+      .status-card, .panel, .usage { border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+      .status-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 14px 13px; }
+      .status-icon { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; border-radius: 9px; background: var(--icon-bg); color: var(--primary-ink); }
+      .status-icon svg { width: 17px; height: 17px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .status-text { min-width: 0; }
+      .status-text span { display: block; overflow: hidden; color: var(--muted-text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+      .status-text strong { display: block; margin-top: 5px; color: var(--text); font-size: 13px; font-weight: 650; }
+      .usage { display: flex; align-items: center; gap: 28px; margin-top: 14px; padding: 14px 17px; background: var(--usage-bg); }
+      .usage-item { display: flex; align-items: center; gap: 10px; min-width: 0; }
+      .usage-item svg { width: 18px; height: 18px; color: var(--primary-ink); stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .usage-copy span { display: block; color: var(--muted-text); font-size: 11px; }
+      .usage-copy strong { display: block; margin-top: 3px; font-size: 15px; }
+      .usage-copy strong small { margin-left: 4px; color: var(--muted-text); font-size: 11px; font-weight: 500; }
+      .usage-date { margin-left: auto; padding-left: 22px; border-left: 1px solid var(--border); color: var(--muted-text); font-size: 11px; line-height: 1.6; }
+      .usage-date strong { display: block; color: var(--text); font-size: 12px; font-weight: 600; }
+      .content-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(290px, .92fr); gap: 15px; margin-top: 18px; }
+      .panel { overflow: hidden; }
+      .panel-head { display: flex; align-items: center; justify-content: space-between; min-height: 50px; padding: 0 17px; border-bottom: 1px solid var(--border); }
+      .panel-head h3 { margin: 0; font-size: 13px; font-weight: 650; }
+      .local-tag { padding: 4px 8px; border-radius: 999px; background: var(--nav-active); color: var(--primary-ink); font-size: 10px; font-weight: 600; }
+      .panel-body { padding: 17px; }
+      .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .field-label { display: block; margin-bottom: 7px; color: var(--muted-text); font-size: 11px; }
+      .select { display: flex; align-items: center; justify-content: space-between; min-height: 37px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--card); color: var(--text); font-size: 12px; }
+      .checks { display: grid; gap: 10px; margin: 18px 0; }
+      .check { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 12px; }
+      .checkmark { display: grid; width: 16px; height: 16px; place-items: center; border: 1px solid var(--primary); border-radius: 4px; background: var(--nav-active); color: var(--primary-ink); font-size: 10px; }
+      .panel-actions { display: flex; align-items: center; gap: 9px; padding: 12px 17px; border-top: 1px solid var(--border); background: var(--subtle); }
+      .button.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--muted-text); }
+      .domain-list { display: grid; gap: 8px; }
+      .domain-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font-size: 12px; }
+      .domain-row strong { font-weight: 600; }
+      .domain-row span { color: var(--muted-text); font-size: 11px; }
+      .footnote { margin: 10px 2px 0; color: var(--muted-text); font-size: 10px; }
+      .theme-caption { display: flex; justify-content: space-between; gap: 14px; padding: 11px 3px 0; color: #5e7184; font-size: 11px; }
+      .theme-caption strong { color: #314b62; }
+
+      [data-theme="cloud"] {
+        --primary: #2576b4; --primary-ink: #1d679f; --primary-shadow: rgb(37 118 180 / .16);
+        --canvas: #f7fbff; --sidebar: #ffffff; --card: #ffffff; --subtle: #fbfdff;
+        --text: #203246; --muted-text: #607387; --border: #e1ebf3; --border-strong: #d2e0eb;
+        --nav-active: #eaf5ff; --icon-bg: #eff7fe; --usage-bg: #fbfdff;
+        --titlebar: #fdfefe; --titlebar-text: #42576b; --titlebar-muted: #738599;
+      }
+      [data-theme="sky"] {
+        --primary: #176eb1; --primary-ink: #176ba9; --primary-shadow: rgb(23 110 177 / .17);
+        --canvas: #f1f8ff; --sidebar: #fafdff; --card: #ffffff; --subtle: #f5faff;
+        --text: #1d3449; --muted-text: #5e7488; --border: #d8e8f5; --border-strong: #c9dfef;
+        --nav-active: #e1f1ff; --icon-bg: #eaf5ff; --usage-bg: #f8fcff;
+        --titlebar: #f8fcff; --titlebar-text: #304c66; --titlebar-muted: #6d8498;
+      }
+      [data-theme="glacier"] {
+        --primary: #126a98; --primary-ink: #11668f; --primary-shadow: rgb(18 106 152 / .15);
+        --canvas: #f3fafc; --sidebar: #edf8fc; --card: #ffffff; --subtle: #f7fbfd;
+        --text: #1d3544; --muted-text: #5d7480; --border: #d8eaf0; --border-strong: #c5e0e9;
+        --nav-active: #dff2f8; --icon-bg: #e6f5fa; --usage-bg: #f8fcfd;
+        --titlebar: #f4fafc; --titlebar-text: #2f4b5a; --titlebar-muted: #6d8793;
+      }
+
+      @media (max-width: 980px) {
+        body { padding: 20px; }
+        .app-shell { grid-template-columns: 185px minmax(0, 1fr); }
+        .main { padding: 22px; }
+        .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .content-grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 650px) {
+        body { padding: 15px; }
+        .page-heading { align-items: start; flex-direction: column; gap: 12px; }
+        .theme-options { grid-template-columns: 1fr; }
+        .app-shell { grid-template-columns: 60px minmax(0, 1fr); }
+        .sidebar { align-items: center; padding: 16px 6px; }
+        .brand { padding: 0; }
+        .brand-name, .nav-item span, .sidebar-bottom .connection, .sidebar-bottom .button { display: none; }
+        .nav-item { justify-content: center; width: 42px; padding: 0; }
+        .main { padding: 17px 13px; }
+        .cards { gap: 7px; }
+        .status-card { gap: 7px; padding: 10px 7px; }
+        .status-icon { width: 28px; height: 28px; }
+        .status-text strong { font-size: 11px; }
+        .usage { flex-wrap: wrap; gap: 12px; }
+        .usage-date { margin-left: 0; padding-left: 0; border-left: 0; }
+        .field-row { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="page-heading">
+        <div>
+          <p class="eyebrow">TabKeep · 视觉方向预览</p>
+          <h1>天蓝色，浅色清爽</h1>
+          <p class="page-intro">同一张桌面端概览页，切换三种天蓝配色。页面内容沿用现有导航和功能，只比较主色、背景与侧栏层次。</p>
+        </div>
+        <span class="demo-label">静态样例 · 演示数据</span>
+      </header>
+
+      <section class="theme-options" aria-label="选择配色样例">
+        <button class="theme-option" type="button" data-choice="cloud" aria-pressed="false">
+          <span class="swatches" aria-hidden="true"><i style="background:#f7fbff"></i><i style="background:#eaf5ff"></i><i style="background:#2576b4"></i></span>
+          <span class="option-copy"><strong>01 · 云朵蓝</strong><span>最轻柔，白色空间更多，蓝色只做轻点缀</span></span>
+        </button>
+        <button class="theme-option" type="button" data-choice="sky" aria-pressed="true">
+          <span class="swatches" aria-hidden="true"><i style="background:#f1f8ff"></i><i style="background:#e1f1ff"></i><i style="background:#176eb1"></i></span>
+          <span class="option-copy"><strong>02 · 晴空蓝</strong><span>蓝色识别度更清楚，整体仍然明亮克制</span></span>
+        </button>
+        <button class="theme-option" type="button" data-choice="glacier" aria-pressed="false">
+          <span class="swatches" aria-hidden="true"><i style="background:#f3fafc"></i><i style="background:#dff2f8"></i><i style="background:#126a98"></i></span>
+          <span class="option-copy"><strong>03 · 冰川蓝</strong><span>略偏青蓝，清凉、安静，侧栏区分更明显</span></span>
+        </button>
+      </section>
+
+      <section class="screen-frame" data-theme="sky" aria-label="TabKeep 桌面端概览页样例">
+        <div class="window-bar">
+          <div class="window-brand"><span class="brand-mark">T</span><span>TabKeep</span></div>
+          <div class="window-actions" aria-hidden="true"><span>—</span><span>□</span><span>×</span></div>
+        </div>
+        <div class="app-shell">
+          <aside class="sidebar">
+            <div class="brand"><span class="brand-mark">T</span><span class="brand-name">Tab<span>Keep</span></span></div>
+            <nav class="nav" aria-label="主导航">
+              <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>概览</span></div>
+              <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><span>标签归档</span></div>
+              <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg><span>便签</span></div>
+              <div class="nav-item"><svg viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M13 17h6"/></svg><span>翻译</span></div>
+              <div class="nav-item"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7"/></svg><span>知识库</span></div>
+              <div class="nav-item"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="12" cy="18" r="2"/><path d="m8 7 8-1M7 8l4 8m6-7-4 8"/></svg><span>知识图谱</span></div>
+              <div class="nav-item"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.8-.7a8 8 0 0 1-1.7 1l-.3 1.9h-2.8l-.3-1.9a8 8 0 0 1-1.7-1l-1.8.7-1.4-2.4 1.5-1.1a7 7 0 0 1 0-2l-1.5-1.1 1.4-2.4 1.8.7a8 8 0 0 1 1.7-1l.3-1.9h2.8l.3 1.9a8 8 0 0 1 1.7 1l1.8-.7 1.4 2.4-1.5 1.1a7 7 0 0 1 0 2Z" transform="translate(-1 -1) scale(1.08)"/></svg><span>设置</span></div>
+            </nav>
+            <div class="sidebar-bottom">
+              <div class="connection"><span class="dot"></span><span>服务已连接</span></div>
+              <button class="button" type="button"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.5 9A6.5 6.5 0 0 1 18 7l2 5M4 12l2 5a6.5 6.5 0 0 0 11.5-2"/></svg>刷新</button>
+            </div>
+          </aside>
+
+          <section class="main">
+            <header class="topbar"><div><h2>概览</h2><p>本地知识工作流 · 今日概况</p></div><button class="button" type="button"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.5 9A6.5 6.5 0 0 1 18 7l2 5M4 12l2 5a6.5 6.5 0 0 0 11.5-2"/></svg>刷新</button></header>
+            <div class="cards">
+              <article class="status-card"><span class="status-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span class="status-text"><span>桌面端</span><strong>在线</strong></span></article>
+              <article class="status-card"><span class="status-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6"/></svg></span><span class="status-text"><span>后端连接</span><strong>已连接</strong></span></article>
+              <article class="status-card"><span class="status-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h4"/></svg></span><span class="status-text"><span>扩展连接</span><strong>凭据已获取</strong></span></article>
+              <article class="status-card"><span class="status-icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg></span><span class="status-text"><span>标签页</span><strong>18 个</strong></span></article>
+            </div>
+
+            <div class="usage">
+              <div class="usage-item"><svg viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M13 17h6"/></svg><div class="usage-copy"><span>今日翻译</span><strong>12<small>次</small></strong></div></div>
+              <div class="usage-item"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H4zM8 20h8M12 16v4M8 8h8M8 12h5"/></svg><div class="usage-copy"><span>今日 OCR</span><strong>4<small>次</small></strong></div></div>
+              <div class="usage-date">统计日期<strong>今天</strong></div>
+            </div>
+
+            <div class="content-grid">
+              <article class="panel">
+                <div class="panel-head"><h3>标签分组样式</h3><span class="local-tag">本地设置</span></div>
+                <div class="panel-body">
+                  <div class="field-row"><label><span class="field-label">颜色模式</span><span class="select">按域名随机 <span>⌄</span></span></label><label><span class="field-label">统一颜色</span><span class="select">蓝色 <span>⌄</span></span></label></div>
+                  <div class="checks"><div class="check"><span class="checkmark">✓</span>使用域名作为分组标题</div><div class="check"><span class="checkmark"></span>默认折叠分组</div></div>
+                </div>
+                <div class="panel-actions"><button class="button primary" type="button">保存设置</button><button class="button ghost" type="button">重置</button></div>
+              </article>
+              <article class="panel">
+                <div class="panel-head"><h3>域名分布</h3><span class="local-tag">3 组</span></div>
+                <div class="panel-body"><div class="domain-list"><div class="domain-row"><strong>github.com</strong><span>8 个 · 可分组</span></div><div class="domain-row"><strong>zhihu.com</strong><span>5 个 · 可分组</span></div><div class="domain-row"><strong>developer.mozilla.org</strong><span>3 个 · 可分组</span></div></div><p class="footnote">演示数据 · 当前可分组标签：16 个</p></div>
+              </article>
+            </div>
+          </section>
+        </div>
+      </section>
+      <footer class="theme-caption" aria-live="polite"><span><strong id="current-name">晴空蓝</strong> — 蓝色在导航与主要操作上更清楚，工作区仍以白色为主。</span><span>点上方选项切换</span></footer>
+    </main>
+    <script>
+      const frame = document.querySelector(".screen-frame")
+      const buttons = Array.from(document.querySelectorAll("[data-choice]"))
+      const currentName = document.querySelector("#current-name")
+      const summaries = {
+        cloud: ["云朵蓝", "蓝色只轻轻点缀，整体最柔和、最接近纯白。"],
+        sky: ["晴空蓝", "蓝色在导航与主要操作上更清楚，工作区仍以白色为主。"],
+        glacier: ["冰川蓝", "蓝中带一点青，侧栏更有层次，整体偏安静清凉。"],
+      }
+      for (const button of buttons) {
+        button.addEventListener("click", () => {
+          const key = button.dataset.choice
+          frame.dataset.theme = key
+          currentName.textContent = summaries[key][0]
+          document.querySelector(".theme-caption span:first-child").innerHTML = `<strong>${summaries[key][0]}</strong> — ${summaries[key][1]}`
+          for (const option of buttons) option.setAttribute("aria-pressed", String(option === button))
+        })
+      }
+    </script>
+  </body>
+</html>

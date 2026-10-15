@@ -157,9 +157,9 @@ export function TopicMapPanel({
         </div>
       </div>
 
-      <div className="tk-panel-body bg-[rgb(235_243_240/0.52)]">
+      <div className="tk-panel-body bg-[rgb(241_248_255/0.68)]">
         <div className="grid items-start gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="sticky top-4 space-y-3 rounded-md border border-white/70 bg-[rgb(247_250_248)] p-3 shadow-[0_14px_34px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
+          <aside className="sticky top-4 space-y-3 rounded-md border border-white/70 bg-[rgb(250_253_255)] p-3 shadow-[0_14px_34px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-slate-950">主题列表</h3>
               <span className="tk-badge">{topicResult?.topics.length ?? 0}</span>
@@ -186,15 +186,15 @@ export function TopicMapPanel({
                 topicResult.topics.map((topic) => (
                   <button
                     key={topic.id}
-                    className={`group relative overflow-hidden rounded-md border bg-[rgb(250_252_250)] px-3 py-3 text-left transition-colors ${
+                    className={`group relative overflow-hidden rounded-md border bg-white px-3 py-3 text-left transition-colors ${
                       selectedTopicId === topic.id
-                        ? "border-emerald-300 bg-emerald-50/45 ring-2 ring-emerald-100"
-                        : "border-white/70 ring-1 ring-slate-900/5 hover:border-emerald-200/80 hover:bg-emerald-50/25"
+                        ? "border-blue-300 bg-blue-50/70 ring-2 ring-blue-100"
+                        : "border-white/70 ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-blue-50/50"
                     }`}
                     onClick={() => selectTopic(topic)}>
                     <span
                       className={`absolute inset-y-0 left-0 w-1 ${
-                        selectedTopicId === topic.id ? "bg-emerald-500" : "bg-transparent group-hover:bg-emerald-200"
+                        selectedTopicId === topic.id ? "bg-blue-500" : "bg-transparent group-hover:bg-blue-200"
                       }`}
                     />
                     <div className="flex items-start justify-between gap-2">
@@ -206,7 +206,7 @@ export function TopicMapPanel({
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{topic.summary}</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {topic.keywords.slice(0, 4).map((keyword) => (
-                        <span key={keyword} className="rounded-md bg-[rgb(241_247_244)] px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
+                        <span key={keyword} className="rounded-md bg-[rgb(245_250_255)] px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200/70">
                           {keyword}
                         </span>
                       ))}
@@ -221,7 +221,7 @@ export function TopicMapPanel({
             </div>
           </aside>
 
-          <main className="space-y-4 rounded-md border border-white/70 bg-[rgb(249_251_249)] p-4 shadow-[0_16px_38px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
+          <main className="space-y-4 rounded-md border border-white/70 bg-[rgb(250_253_255)] p-4 shadow-[0_16px_38px_rgb(15_23_42/0.045)] ring-1 ring-slate-900/5">
             {selectedTopic ? (
               <>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -242,11 +242,11 @@ export function TopicMapPanel({
                   </Button>
                 </div>
 
-                <div className="rounded-md border border-white/70 bg-[rgb(238_245_242)] p-3 ring-1 ring-slate-900/5">
+                <div className="rounded-md border border-white/70 bg-[rgb(245_250_255)] p-3 ring-1 ring-slate-900/5">
                   <div className="mb-2 text-xs font-semibold text-slate-700">目录关键词</div>
                   <div className="flex flex-wrap gap-2">
                     {selectedTopic.keywords.map((keyword) => (
-                      <span key={keyword} className="rounded-md border border-white/70 bg-[rgb(250_252_250)] px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5">
+                      <span key={keyword} className="rounded-md border border-white/70 bg-white px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-900/5">
                         {keyword}
                       </span>
                     ))}
@@ -302,7 +302,7 @@ export function TopicMapPanel({
                       {formatTopicSnippet(selectedTopicDocument)}
                     </div>
                     {selectedTopicDocument.anchor && (
-                      <div className="mt-3 rounded-md border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900">
+                      <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
                         打开时会尽量定位到标题：{selectedTopicDocument.anchor}
                       </div>
                     )}
@@ -338,16 +338,16 @@ function TopicDocumentCard({
     <div
       className={`group relative rounded-md border p-3 pl-12 text-left transition-colors ${
         active
-          ? "border-emerald-300 bg-emerald-50/50 ring-2 ring-emerald-100"
-          : "border-white/70 bg-[rgb(250_252_250)] ring-1 ring-slate-900/5 hover:border-emerald-200/80 hover:bg-emerald-50/25"
+          ? "border-blue-300 bg-blue-50/70 ring-2 ring-blue-100"
+          : "border-white/70 bg-white ring-1 ring-slate-900/5 hover:border-blue-200/80 hover:bg-blue-50/50"
       }`}
       onDoubleClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}>
-      <div className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-md bg-[rgb(238_245_242)] text-xs font-semibold text-slate-700 ring-1 ring-slate-200/80">
+      <div className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-md bg-[rgb(245_250_255)] text-xs font-semibold text-slate-700 ring-1 ring-slate-200/80">
         {String(index + 1).padStart(2, "0")}
       </div>
       <div className="mb-1 flex items-center gap-2">
         <button
-          className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900 hover:text-emerald-700"
+          className="min-w-0 flex-1 truncate text-left text-sm font-semibold text-slate-900 hover:text-blue-700"
           title="查看这篇笔记的关键片段"
           onClick={onSelect}>
           {document.title}
@@ -355,7 +355,7 @@ function TopicDocumentCard({
         <span className="tk-badge">{formatSourceType(document.sourceType)}</span>
         {document.anchor && <span className="tk-badge">可定位</span>}
         <button
-          className="tk-icon-button h-7 w-7 bg-white/80 ring-1 ring-slate-200/70 group-hover:text-emerald-700"
+          className="tk-icon-button h-7 w-7 bg-white/80 ring-1 ring-slate-200/70 group-hover:text-blue-700"
           title={formatTopicOpenTitle(document, noteAdapter)}
           onClick={() => openTopicDocumentSource(document, onStatus, noteAdapter)}
           disabled={!topicDocumentOpenTarget(document, noteAdapter)}>
