@@ -8,6 +8,7 @@
     "dev:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only extension",
     "dev:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only desktop",
     "dev:eval": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1 -Only eval",
+    "mcp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tabkeep-mcp.ps1",
     "skill:export": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-standalone-skill.ps1",
     "release:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-backend.ps1",
     "release:desktop": "pnpm --dir desktop tauri:build:release",
