@@ -1291,9 +1291,6 @@ fn sticky_notification_icon_path(app: &tauri::AppHandle) -> Result<PathBuf, Stri
         .app_local_data_dir()
         .map_err(|err| format!("获取通知图标目录失败: {err}"))?
         .join(STICKY_NOTIFICATION_ICON_FILE);
-    if path.is_file() {
-        return Ok(path);
-    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("创建通知图标目录失败: {err}"))?;
     }
