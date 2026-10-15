@@ -8,7 +8,6 @@ LLM 调用统一封装。
   - 上游 caller 需要在解析前用 _THINK_RE 去除 <think> 部分
 - 统一捕获鉴权 / 限流 / 网络 / API 错误,让上层用 try/except 处理
 """
-import json
 import time
 from urllib.parse import urlparse
 
@@ -61,7 +60,7 @@ async def chat_completion(config: ModelConfig, messages: list[dict]) -> str:
     - RateLimitError → 限流,直接 raise
     - APIConnectionError / APIError → 网络或服务端问题,直接 raise
     """
-    logger.info(f"LLM input:\n{json.dumps(messages, ensure_ascii=False, indent=2)}")
+    logger.info(f"LLM input omitted from logs; message_count={len(messages)}")
     client = AsyncOpenAI(
         api_key=config.apiKey,
         base_url=config.baseURL,
