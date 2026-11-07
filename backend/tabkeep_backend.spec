@@ -18,7 +18,7 @@ datas = [
 binaries = []
 hiddenimports = []
 
-for package in ("lancedb", "manga_ocr"):
+for package in ("jieba", "lancedb", "manga_ocr", "playwright", "qrcode"):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)
     datas += package_datas
     binaries += package_binaries
@@ -39,6 +39,7 @@ hiddenimports += [
     "pyarrow",
     "torch",
     "transformers",
+    "qrcode",
 ]
 hiddenimports += collect_submodules("uvicorn.protocols.websockets")
 hiddenimports += collect_submodules("websockets")

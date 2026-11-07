@@ -4,27 +4,50 @@ import {
   ArrowUpRight,
   Check,
   Clock3,
+  Gamepad2,
+  History as HistoryIcon,
   ImageOff,
   LoaderCircle,
   Newspaper,
   Plus,
   RefreshCw,
   Rss,
+  Search,
+  Sparkles,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react"
 
-import type { NewsItem, NewsSource } from "../../src/types"
+import type { NewsItem, NewsItemListResponse, NewsSource } from "../../src/types"
+import { ProviderDialog } from "./ProviderDialog"
+import { TopicSearchPanel } from "./TopicSearchPanel"
 import {
   addNewsSource,
   exchangeNewsWebSession,
   listNewsItems,
+  listNewsReadingHistory,
   listNewsSources,
   NewsApiError,
   refreshAllNewsSources,
   refreshNewsSource,
   deleteNewsSource,
+  recordArticleFeedback,
+  recordOriginalOpened,
 } from "./api"
 
 const PAGE_SIZE = 50
+const CONTENT_PREVIEW_CHARACTERS = 500
+
+function previewContent(content: string): { text: string; truncated: boolean } {
+  const characters = Array.from(content)
+  if (characters.length <= CONTENT_PREVIEW_CHARACTERS) {
+    return { text: content, truncated: false }
+  }
+  return {
+    text: `${characters.slice(0, CONTENT_PREVIEW_CHARACTERS).join("")}…`,
+    truncated: true,
+  }
+}
 
 function CachedImage({
   src,
@@ -54,14 +77,22 @@ function CachedImage({
   )
 }
 
-function SourceIcon({ src, label }: { src?: string | null; label: string }) {
+function SourceIcon({
+  src,
+  label,
+  sourceType,
+}: {
+  src?: string | null
+  label: string
+  sourceType?: NewsSource["sourceType"]
+}) {
   return (
     <span className="reader-source-icon" title={label} aria-hidden="true">
       <CachedImage
         src={src}
         alt=""
         className="reader-source-icon-image"
-        fallback={<Newspaper />}
+        fallback={sourceType === "xiaoheihe" ? <Gamepad2 /> : <Newspaper />}
       />
     </span>
   )
@@ -97,6 +128,16 @@ function isSafeWebUrl(value: string | null | undefined): value is string {
   }
 }
 
+function isXiaoheiheHomepage(value: string): boolean {
+  try {
+    const url = new URL(value.trim())
+    return ["xiaoheihe.cn", "www.xiaoheihe.cn"].includes(url.hostname.toLowerCase())
+      && url.pathname.replace(/\/$/, "") === ""
+  } catch {
+    return false
+  }
+}
+
 function ticketFromLocation(): string | null {
   return new URLSearchParams(window.location.hash.slice(1)).get("ticket")
 }
@@ -111,18 +152,26 @@ export function NewsReader() {
   const [sources, setSources] = useState<NewsSource[]>([])
   const [allItemCount, setAllItemCount] = useState(0)
   const [items, setItems] = useState<NewsItem[]>([])
+  const [expandedContentIds, setExpandedContentIds] = useState<Set<string>>(() => new Set())
   const [total, setTotal] = useState(0)
+  const [selectedView, setSelectedView] = useState<"latest" | "recommended" | "history">("latest")
+  const [topicSearchOpen, setTopicSearchOpen] = useState(false)
+  const [recommendationState, setRecommendationState] = useState<"not_applicable" | "ready" | "warming_up" | "no_matches" | "keyword_fallback">("not_applicable")
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   const [feedUrl, setFeedUrl] = useState("")
+  const [xiaoheiheSection, setXiaoheiheSection] = useState<"news" | "discount">("news")
+  const [xiaoheihePlatform, setXiaoheihePlatform] = useState<"pc" | "switch" | "psn" | "xbox">("pc")
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [busySourceId, setBusySourceId] = useState<string | null>(null)
+  const [feedbackPendingItemId, setFeedbackPendingItemId] = useState<string | null>(null)
   const [pageError, setPageError] = useState("")
   const [serviceDisconnected, setServiceDisconnected] = useState(false)
   const [notice, setNotice] = useState("")
   const [reloadVersion, setReloadVersion] = useState(0)
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -157,7 +206,9 @@ export function NewsReader() {
     setPageError("")
     Promise.all([
       listNewsSources(),
-      listNewsItems({ sourceId: selectedSourceId, limit: PAGE_SIZE, offset: 0 }),
+      selectedView === "history"
+        ? listNewsReadingHistory({ limit: PAGE_SIZE, offset: 0 })
+        : listNewsItems({ sourceId: selectedSourceId, view: selectedView, limit: PAGE_SIZE, offset: 0 }),
     ])
       .then(([sourceResponse, itemResponse]) => {
         if (cancelled) return
@@ -166,6 +217,9 @@ export function NewsReader() {
         setAllItemCount(sourceResponse.totalItemCount)
         setItems(itemResponse.items)
         setTotal(itemResponse.total)
+        setRecommendationState(selectedView === "history"
+          ? "not_applicable"
+          : (itemResponse as NewsItemListResponse).recommendationState)
       })
       .catch((error: unknown) => {
         if (cancelled) return
@@ -183,7 +237,7 @@ export function NewsReader() {
     return () => {
       cancelled = true
     }
-  }, [reloadVersion, selectedSourceId, sessionState])
+  }, [reloadVersion, selectedSourceId, selectedView, sessionState])
 
   const activeSourceCount = sources.filter((source) => source.isActive).length
   const itemCount = allItemCount
@@ -210,8 +264,10 @@ export function NewsReader() {
     setPageError("")
     setNotice("")
     try {
-      const result = await addNewsSource(cleanUrl)
+      const result = await addNewsSource(cleanUrl, xiaoheiheSection, xiaoheihePlatform)
       setFeedUrl("")
+      setXiaoheiheSection("news")
+      setXiaoheihePlatform("pc")
       setSelectedSourceId(result.source.id)
       setNotice(
         result.source.lastError
@@ -281,17 +337,42 @@ export function NewsReader() {
     }
   }
 
+  async function handleArticleFeedback(
+    item: NewsItem,
+    feedback: "like" | "not_interested",
+  ): Promise<void> {
+    if (item.userFeedback === feedback || feedbackPendingItemId !== null) return
+    setFeedbackPendingItemId(item.id)
+    setPageError("")
+    try {
+      await recordArticleFeedback(item.id, feedback)
+      setItems((current) => current.map((currentItem) =>
+        currentItem.id === item.id ? { ...currentItem, userFeedback: feedback } : currentItem,
+      ))
+    } catch (error) {
+      handleApiError(error)
+    } finally {
+      setFeedbackPendingItemId(null)
+    }
+  }
+
   async function handleLoadMore(): Promise<void> {
     setLoadingMore(true)
     setPageError("")
     try {
-      const result = await listNewsItems({
-        sourceId: selectedSourceId,
-        limit: PAGE_SIZE,
-        offset: items.length,
-      })
+      const result = selectedView === "history"
+        ? await listNewsReadingHistory({ limit: PAGE_SIZE, offset: items.length })
+        : await listNewsItems({
+          sourceId: selectedSourceId,
+          view: selectedView,
+          limit: PAGE_SIZE,
+          offset: items.length,
+        })
       setItems((current) => [...current, ...result.items])
       setTotal(result.total)
+      setRecommendationState(selectedView === "history"
+        ? "not_applicable"
+        : (result as NewsItemListResponse).recommendationState)
     } catch (error) {
       handleApiError(error)
     } finally {
@@ -363,18 +444,55 @@ export function NewsReader() {
               <span>{submitting ? "正在添加" : "添加并采集"}</span>
             </button>
           </div>
+          {isXiaoheiheHomepage(feedUrl) && (
+            <div className="reader-provider-options">
+              <label>
+                <span>小黑盒区块</span>
+                <select
+                  value={xiaoheiheSection}
+                  onChange={(event) => setXiaoheiheSection(event.target.value as "news" | "discount")}
+                >
+                  <option value="news">游戏新闻</option>
+                  <option value="discount">游戏折扣</option>
+                </select>
+              </label>
+              {xiaoheiheSection === "discount" && (
+                <label>
+                  <span>游戏平台</span>
+                  <select
+                    value={xiaoheihePlatform}
+                    onChange={(event) => setXiaoheihePlatform(event.target.value as typeof xiaoheihePlatform)}
+                  >
+                    <option value="pc">PC</option>
+                    <option value="switch">Switch</option>
+                    <option value="psn">PSN</option>
+                    <option value="xbox">Xbox</option>
+                  </select>
+                </label>
+              )}
+            </div>
+          )}
           <p id="reader-feed-help">
-            支持小黑盒主页（如 https://www.xiaoheihe.cn/）、贴吧主页 URL、RSSHub 和 RSS/Atom。微博请填写 RSSHub 用户路由（/weibo/user/UID）；TabKeep 只读取订阅地址，上游授权需自行确认。采集内容只保存在本机。
+            支持小黑盒游戏新闻与游戏折扣、贴吧主页 URL、RSSHub 和 RSS/Atom。微博请填写 RSSHub 用户路由（/weibo/user/UID）；TabKeep 只读取订阅地址，上游授权需自行确认。采集内容只保存在本机。
           </p>
         </form>
 
         <section className="reader-heading">
           <div>
             <p className="reader-eyebrow">PERSONAL FEED</p>
-            <h1>今天有什么新鲜事</h1>
-            <p className="reader-subtitle">订阅社区和博客，把值得回看的内容留在本地。</p>
+            <h1>{topicSearchOpen ? "话题搜索" : selectedView === "history" ? "浏览记录" : "今天有什么新鲜事"}</h1>
+            <p className="reader-subtitle">
+              {topicSearchOpen
+                ? "输入一个话题，搜索本地资讯和可公开访问的平台结果。"
+                : selectedView === "history"
+                ? "点击过阅读原文的文章会留在这里，方便回来继续阅读。"
+                : "订阅社区和博客，把值得回看的内容留在本地。"}
+            </p>
           </div>
-          <div className="reader-count"><strong>{itemCount}</strong><span>条已收集</span></div>
+          {!topicSearchOpen && <div className="reader-count">
+            <strong>{selectedView === "history" ? total : itemCount}</strong>
+            <span>{selectedView === "history" ? "篇已打开" : "条已收集"}</span>
+          </div>}
         </section>
 
         {pageError && (
@@ -402,15 +520,77 @@ export function NewsReader() {
           <aside className="reader-sidebar" aria-label="资讯筛选和订阅源">
             <div className="reader-sidebar-heading">
               <h2>订阅</h2>
-              <span>{activeSourceCount} 个启用</span>
+              <div className="reader-sidebar-heading-actions">
+                <span>{activeSourceCount} 个启用</span>
+                <button
+                  type="button"
+                  className="reader-icon-button reader-sidebar-add"
+                  aria-label="添加特殊订阅源"
+                  aria-haspopup="dialog"
+                  onClick={() => setProviderDialogOpen(true)}
+                >
+                  <Plus aria-hidden="true" />
+                </button>
+              </div>
             </div>
+            <nav className="reader-view-list" aria-label="资讯列表类型">
+              <button
+                type="button"
+                className={`reader-source-row ${selectedView === "latest" && !topicSearchOpen ? "is-selected" : ""}`}
+                aria-pressed={selectedView === "latest" && !topicSearchOpen}
+                onClick={() => { setTopicSearchOpen(false); setSelectedView("latest") }}
+              >
+                <Clock3 aria-hidden="true" />
+                <span className="reader-source-name">最新</span>
+              </button>
+              <button
+                type="button"
+                className={`reader-source-row ${selectedView === "recommended" && !topicSearchOpen ? "is-selected" : ""}`}
+                aria-pressed={selectedView === "recommended" && !topicSearchOpen}
+                onClick={() => { setTopicSearchOpen(false); setSelectedView("recommended") }}
+              >
+                <Sparkles aria-hidden="true" />
+                <span className="reader-source-name">推荐</span>
+              </button>
+              <button
+                type="button"
+                className={`reader-source-row ${selectedView === "history" && !topicSearchOpen ? "is-selected" : ""}`}
+                aria-pressed={selectedView === "history" && !topicSearchOpen}
+                onClick={() => {
+                  setTopicSearchOpen(false)
+                  setSelectedSourceId(null)
+                  setSelectedView("history")
+                }}
+              >
+                <HistoryIcon aria-hidden="true" />
+                <span className="reader-source-name">浏览记录</span>
+                <span className="reader-source-count">{selectedView === "history" ? total : ""}</span>
+              </button>
+              <button
+                type="button"
+                className={`reader-source-row ${topicSearchOpen ? "is-selected" : ""}`}
+                aria-pressed={topicSearchOpen}
+                onClick={() => {
+                  setSelectedSourceId(null)
+                  setTopicSearchOpen(true)
+                }}
+              >
+                <Search aria-hidden="true" />
+                <span className="reader-source-name">话题搜索</span>
+              </button>
+            </nav>
+            <div className="reader-sidebar-section-label">订阅源</div>
             <button
               type="button"
-              className={`reader-source-row ${selectedSourceId === null ? "is-selected" : ""}`}
-              aria-pressed={selectedSourceId === null}
-              onClick={() => setSelectedSourceId(null)}>
+              className={`reader-source-row ${selectedSourceId === null && selectedView !== "history" && !topicSearchOpen ? "is-selected" : ""}`}
+              aria-pressed={selectedSourceId === null && selectedView !== "history" && !topicSearchOpen}
+              onClick={() => {
+                setTopicSearchOpen(false)
+                setSelectedSourceId(null)
+                setSelectedView("latest")
+              }}>
               <SourceIcon label="全部资讯" />
-              <span className="reader-source-name">全部资讯</span>
+              <span className="reader-source-name">全部来源</span>
               <span className="reader-source-count">{itemCount}</span>
             </button>
             <div className="reader-source-list">
@@ -423,8 +603,12 @@ export function NewsReader() {
                       className="reader-source-main"
                       type="button"
                       aria-pressed={selectedSourceId === source.id}
-                      onClick={() => setSelectedSourceId(source.id)}>
-                      <SourceIcon src={source.iconUrl} label={source.title} />
+                      onClick={() => {
+                        setTopicSearchOpen(false)
+                        setSelectedView("latest")
+                        setSelectedSourceId(source.id)
+                      }}>
+                      <SourceIcon src={source.iconUrl} label={source.title} sourceType={source.sourceType} />
                       <span className="reader-source-name">{source.title}</span>
                       <span className="reader-source-count">{source.itemCount}</span>
                     </button>
@@ -453,11 +637,26 @@ export function NewsReader() {
             )}
           </aside>
 
-          <section className="reader-feed" aria-label="资讯列表">
+          {topicSearchOpen ? (
+            <TopicSearchPanel onUnauthorized={(message) => {
+              setSessionError(message)
+              setSessionState("expired")
+            }} />
+          ) : <section className="reader-feed" aria-label="资讯列表">
             <div className="reader-feed-heading">
               <div>
-                <h2>{selectedSource?.title ?? "最近采集"}</h2>
-                <p>共 {total} 条已保存</p>
+                <h2>{selectedView === "history" ? "浏览记录" : selectedSource?.title ?? (selectedView === "latest" ? "最新" : "推荐")}</h2>
+                <p>
+                  {selectedView === "history"
+                    ? `共 ${total} 篇曾打开的文章`
+                    : selectedView === "recommended" && recommendationState === "warming_up"
+                    ? `兴趣信号较少，暂按最新顺序展示（${total} 条）`
+                    : selectedView === "recommended" && recommendationState === "keyword_fallback"
+                    ? `语义排序不可用，暂按关键词推荐（${total} 条）`
+                    : selectedView === "recommended" && recommendationState === "no_matches"
+                      ? "当前兴趣关键词没有匹配到已采集内容"
+                      : `共 ${total} 条${selectedView === "recommended" ? "匹配内容" : "已保存"}`}
+                </p>
               </div>
               {loading && <LoaderCircle aria-label="正在加载资讯" className="reader-spinner reader-spinner-small" />}
             </div>
@@ -465,8 +664,32 @@ export function NewsReader() {
             {!loading && items.length === 0 ? (
               <div className="reader-empty">
                 <span><Rss aria-hidden="true" /></span>
-                <h3>{sources.length === 0 ? "先添加一个订阅源" : "这里暂时没有资讯"}</h3>
-                <p>新采集的帖子和文章会按时间排列，之后可以随时回来查看。</p>
+                <h3>
+                  {selectedView === "history"
+                    ? "还没有浏览记录"
+                    : sources.length === 0
+                    ? "先添加一个订阅源"
+                    : selectedView === "recommended" && recommendationState === "warming_up"
+                      ? "还没有足够的兴趣信号"
+                      : selectedView === "recommended" && recommendationState === "keyword_fallback"
+                        ? "语义排序暂不可用"
+                      : selectedView === "recommended" && recommendationState === "no_matches"
+                        ? "暂时没有匹配内容"
+                        : "这里暂时没有资讯"}
+                </h3>
+                <p>
+                  {selectedView === "history"
+                    ? "点击资讯中的“阅读原文”后，文章会出现在这里。"
+                    : sources.length === 0
+                    ? "添加 RSS、贴吧或小黑盒订阅源后，资讯会出现在这里。"
+                    : selectedView === "recommended" && recommendationState === "warming_up"
+                    ? "阅读原文或导入浏览历史后，推荐列表会根据本地兴趣记录生成。"
+                    : selectedView === "recommended" && recommendationState === "keyword_fallback"
+                    ? "当前按关键词排序展示已采集内容。配置并启用 embedding 后，推荐会使用 RRF 融合关键词与正文语义排序。"
+                    : selectedView === "recommended" && recommendationState === "no_matches"
+                      ? "当前已采集文章中没有匹配兴趣关键词的内容。"
+                      : "新采集的帖子和文章会按时间排列，之后可以随时回来查看。"}
+                </p>
               </div>
             ) : (
               <div className="reader-item-list">
@@ -477,15 +700,77 @@ export function NewsReader() {
                         <SourceIcon src={item.sourceIconUrl} label={item.sourceTitle} />
                         <span className="reader-item-source">{item.sourceTitle}</span>
                         {item.author && <span>{item.author}</span>}
-                        <time dateTime={item.publishedAt ?? item.fetchedAt}>{formatTime(item.publishedAt ?? item.fetchedAt)}</time>
+                        {selectedView === "history" && (item.openCount ?? 0) > 1 && (
+                          <span>打开 {item.openCount} 次</span>
+                        )}
+                        <time dateTime={selectedView === "history" ? item.lastOpenedAt ?? item.fetchedAt : item.publishedAt ?? item.fetchedAt}>
+                          {selectedView === "history" ? "最近打开 " : ""}
+                          {formatTime(selectedView === "history" ? item.lastOpenedAt ?? item.fetchedAt : item.publishedAt ?? item.fetchedAt)}
+                        </time>
                       </div>
                       <h3>{item.title}</h3>
-                      {item.content && <p className="reader-item-content">{item.content}</p>}
-                      {isSafeWebUrl(item.url) && (
-                        <a className="reader-item-link" href={item.url} target="_blank" rel="noopener noreferrer">
-                          阅读原文 <ArrowUpRight aria-hidden="true" />
-                        </a>
-                      )}
+                      {item.recommendationReason && <p className="reader-recommendation-reason">{item.recommendationReason}</p>}
+                      {item.content && (() => {
+                        const preview = previewContent(item.content)
+                        const expanded = expandedContentIds.has(item.id)
+                        return (
+                          <>
+                            <p className="reader-item-content">{expanded ? item.content : preview.text}</p>
+                            {preview.truncated && (
+                              <button
+                                type="button"
+                                className="reader-content-toggle"
+                                aria-expanded={expanded}
+                                onClick={() => setExpandedContentIds((current) => {
+                                  const next = new Set(current)
+                                  if (next.has(item.id)) next.delete(item.id)
+                                  else next.add(item.id)
+                                  return next
+                                })}
+                              >
+                                {expanded ? "收起" : "展开全部"}
+                              </button>
+                            )}
+                          </>
+                        )
+                      })()}
+                      <div className="reader-item-actions">
+                        <div className="reader-feedback-actions" aria-label="资讯反馈">
+                          <button
+                            type="button"
+                            className={`reader-feedback-button ${item.userFeedback === "like" ? "is-selected" : ""}`}
+                            aria-label={`赞：${item.title}`}
+                            aria-pressed={item.userFeedback === "like"}
+                            disabled={feedbackPendingItemId !== null}
+                            onClick={() => void handleArticleFeedback(item, "like")}
+                          >
+                            <ThumbsUp aria-hidden="true" />
+                            <span>{item.userFeedback === "like" ? "已赞" : "赞"}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`reader-feedback-button ${item.userFeedback === "not_interested" ? "is-selected" : ""}`}
+                            aria-label={`踩：${item.title}`}
+                            aria-pressed={item.userFeedback === "not_interested"}
+                            disabled={feedbackPendingItemId !== null}
+                            onClick={() => void handleArticleFeedback(item, "not_interested")}
+                          >
+                            <ThumbsDown aria-hidden="true" />
+                            <span>{item.userFeedback === "not_interested" ? "已踩" : "踩"}</span>
+                          </button>
+                        </div>
+                        {isSafeWebUrl(item.url) && (
+                          <a
+                            className="reader-item-link"
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => void recordOriginalOpened(item.id).catch(() => undefined)}
+                          >
+                            {selectedView === "history" ? "再次阅读原文" : "阅读原文"} <ArrowUpRight aria-hidden="true" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                     {item.imageUrl && (
                       <div className="reader-item-thumbnail">
@@ -514,10 +799,20 @@ export function NewsReader() {
                 </button>
               </div>
             )}
-          </section>
+          </section>}
         </div>
       </main>
       <footer className="reader-footer"><span>内容保存在本机</span><span>TabKeep 资讯</span></footer>
+      <ProviderDialog
+        open={providerDialogOpen}
+        onClose={() => setProviderDialogOpen(false)}
+        onSubscribed={(addedSources, newItems) => {
+          const lastAdded = addedSources.at(-1)
+          if (lastAdded) setSelectedSourceId(lastAdded.id)
+          setNotice(`已添加 ${addedSources.length} 个小黑盒话题，新增 ${newItems} 条资讯。`)
+          setReloadVersion((version) => version + 1)
+        }}
+      />
     </div>
   )
 }

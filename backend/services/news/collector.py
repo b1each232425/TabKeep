@@ -16,7 +16,7 @@ import httpx
 
 from services.news import db
 from services.news import images
-from services.news import tieba, xiaoheihe
+from services.news import tieba, xiaoheihe, xiaoheihe_auth
 from logger import logger
 
 POLL_INTERVAL_SECONDS = 60 * 60
@@ -456,6 +456,10 @@ async def _cache_source_icon(
 
 
 def _error_message(error: Exception, source_type: str = "rss") -> str:
+    if isinstance(error, xiaoheihe_auth.XiaoheiheCredentialsExpiredError):
+        return "小黑盒登录已失效，请从左侧平台入口重新扫码"
+    if isinstance(error, xiaoheihe_auth.XiaoheiheAuthError):
+        return str(error)
     if isinstance(error, ModuleNotFoundError) and error.name == "aiotieba":
         return "贴吧采集组件未安装，请重新安装 TabKeep 后端依赖"
     if isinstance(error, (asyncio.TimeoutError, TimeoutError)) and source_type == "tieba":
@@ -464,11 +468,11 @@ def _error_message(error: Exception, source_type: str = "rss") -> str:
         return str(error)
     if isinstance(error, httpx.HTTPStatusError):
         if source_type == "xiaoheihe":
-            return f"小黑盒新闻接口返回 HTTP {error.response.status_code}"
+            return f"小黑盒数据接口返回 HTTP {error.response.status_code}"
         return f"订阅服务器返回 HTTP {error.response.status_code}"
     if isinstance(error, httpx.TimeoutException):
         if source_type == "xiaoheihe":
-            return "连接小黑盒新闻接口超时，请稍后重试"
+            return "连接小黑盒数据接口超时，请稍后重试"
         return "连接订阅源超时，请检查地址或稍后重试"
     if isinstance(error, httpx.TooManyRedirects):
         return "订阅地址重定向次数过多"
@@ -516,9 +520,17 @@ async def _refresh_xiaoheihe_source(
     source: dict[str, object],
     source_title: str,
 ) -> RefreshResult:
-    """抓取小黑盒游戏新闻列表，并缓存本次返回的图片。"""
+    """按来源配置抓取小黑盒区块，并缓存本次返回的图片。"""
+    section, platform = xiaoheihe.source_config(str(source["url"]))
+    topic_id = xiaoheihe.topic_id_from_source_url(str(source["url"])) if section == "topic" else None
+    resolved_title = str(source["title"]) if section == "topic" else xiaoheihe.source_title(section, platform)
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=False) as client:
-        candidates = await xiaoheihe.fetch_news_list(client)
+        if section == "news":
+            candidates = await xiaoheihe.fetch_news_list(client)
+        elif section == "discount":
+            candidates = await xiaoheihe.fetch_discount_list(client, platform)
+        else:
+            candidates = await xiaoheihe_auth.auth_service.fetch_topic(topic_id or "")
         entries = [candidate["entry"] for candidate in candidates]
         await _cache_entry_images(client, entries)
         await _cache_source_icon(
@@ -532,7 +544,7 @@ async def _refresh_xiaoheihe_source(
     new_items = await asyncio.to_thread(
         db.complete_fetch,
         source_id,
-        "小黑盒游戏新闻",
+        resolved_title,
         None,
         None,
         timestamp,
@@ -540,7 +552,7 @@ async def _refresh_xiaoheihe_source(
     )
     return {
         "sourceId": source_id,
-        "sourceTitle": source_title,
+        "sourceTitle": resolved_title or source_title,
         "newItems": new_items,
         "notModified": False,
         "error": None,

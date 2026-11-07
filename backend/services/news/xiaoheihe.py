@@ -1,4 +1,4 @@
-"""小黑盒公开游戏新闻接口采集。"""
+"""小黑盒公开游戏新闻与价格列表采集。"""
 
 import hashlib
 import re
@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from html.parser import HTMLParser
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import httpx
@@ -18,9 +18,19 @@ from services.news.images import normalize_image_url
 API_BASE_URL = "https://api.xiaoheihe.cn"
 HOMEPAGE_URL = "https://www.xiaoheihe.cn/"
 NEWS_LIST_PATH = "/bbs/app/feeds/news"
+DISCOUNT_LIST_PATH = "/game/get_game_list_v3/"
 MAX_NEWS_ITEMS = 20
 MAX_CONTENT_CHARS = 20_000
 _HKEY_DICT = "JKMNPQRTX1234OABCDFG56789H"
+XiaoheiheSection = Literal["news", "discount", "topic"]
+XiaoheihePlatform = Literal["pc", "switch", "psn", "xbox"]
+PLATFORM_LABELS: dict[str, str] = {
+    "pc": "PC",
+    "switch": "Switch",
+    "psn": "PSN",
+    "xbox": "Xbox",
+}
+PLATFORM_FILTERS: dict[str, str] = {"pc": "pc", "switch": "switch", "psn": "ps4", "xbox": "xbox"}
 
 
 class NormalizedEntry(TypedDict):
@@ -117,7 +127,7 @@ def _checksum(values: list[int]) -> int:
 
 
 def build_signed_url(url: str, timestamp: int, nonce: str) -> str:
-    """为小黑盒 Web 新闻接口生成请求参数，算法来源见同目录第三方声明。"""
+    """为小黑盒 Web 接口生成请求参数，算法来源见同目录第三方声明。"""
     parsed = urlsplit(url)
     path = "/" + "/".join(segment for segment in parsed.path.split("/") if segment) + "/"
     nonce_digits = re.sub(r"\D", "", nonce + _HKEY_DICT)
@@ -154,9 +164,9 @@ async def _request_json(client: httpx.AsyncClient, url: str) -> dict[str, Any]:
     try:
         payload = response.json()
     except ValueError as error:
-        raise ValueError("小黑盒新闻接口返回了无法识别的数据") from error
+        raise ValueError("小黑盒接口返回了无法识别的数据") from error
     if not isinstance(payload, dict):
-        raise ValueError("小黑盒新闻接口返回的数据格式有变化")
+        raise ValueError("小黑盒接口返回的数据格式有变化")
     return payload
 
 
@@ -314,4 +324,141 @@ async def fetch_news_list(client: httpx.AsyncClient) -> list[NewsCandidate]:
             seen_ids.add(candidate["link_id"])
             candidates.append(candidate)
     return candidates
+
+
+def build_source_url(section: XiaoheiheSection, platform: XiaoheihePlatform = "pc") -> str:
+    """构造唯一来源键；折扣平台通过本地查询参数区分。"""
+    if section == "news":
+        return HOMEPAGE_URL
+    if section != "discount" or platform not in PLATFORM_LABELS:
+        raise ValueError("不支持的小黑盒区块或游戏平台")
+    return f"{HOMEPAGE_URL}?tabkeep_section=discount&tabkeep_platform={platform}"
+
+
+def source_config(source_url: str) -> tuple[XiaoheiheSection, XiaoheihePlatform]:
+    """从本地来源键解析采集区块，兼容旧版仅保存首页的新闻源。"""
+    query = dict(parse_qsl(urlsplit(source_url).query, keep_blank_values=True))
+    section = query.get("tabkeep_section", "news")
+    platform = query.get("tabkeep_platform", "pc")
+    if section == "topic":
+        topic_id = query.get("tabkeep_topic_id", "")
+        if not topic_id.isdigit() or len(topic_id) > 32:
+            raise ValueError("小黑盒话题订阅配置无效，请删除后重新添加")
+    elif section not in {"news", "discount"} or platform not in PLATFORM_LABELS:
+        raise ValueError("小黑盒订阅配置无效，请删除后重新添加")
+    return section, platform  # type: ignore[return-value]
+
+
+def build_topic_source_url(topic_id: str) -> str:
+    """构造包含稳定话题 ID 的本地小黑盒来源键。"""
+    normalized_id = topic_id.strip()
+    if not normalized_id.isdigit() or len(normalized_id) > 32:
+        raise ValueError("小黑盒话题 ID 无效")
+    return f"{HOMEPAGE_URL}?tabkeep_section=topic&tabkeep_topic_id={quote(normalized_id, safe='')}"
+
+
+def topic_id_from_source_url(source_url: str) -> str:
+    """从本地小黑盒来源键解析话题 ID。"""
+    query = dict(parse_qsl(urlsplit(source_url).query, keep_blank_values=True))
+    topic_id = query.get("tabkeep_topic_id", "")
+    if not topic_id.isdigit() or len(topic_id) > 32:
+        raise ValueError("小黑盒话题订阅配置无效，请删除后重新添加")
+    return topic_id
+
+
+def source_title(section: XiaoheiheSection, platform: XiaoheihePlatform = "pc") -> str:
+    if section == "news":
+        return "小黑盒游戏新闻"
+    return f"小黑盒游戏折扣（{PLATFORM_LABELS[platform]}）"
+
+
+def _normalize_game_candidate(
+    item: Mapping[str, Any],
+    platform: XiaoheihePlatform,
+) -> NewsCandidate | None:
+    app_id = item.get("appid") or item.get("steam_appid")
+    if not isinstance(app_id, (str, int)) or not str(app_id).strip():
+        return None
+    normalized_id = str(app_id).strip()
+    title = _clean_text(str(item.get("name") or "小黑盒游戏折扣")) or "小黑盒游戏折扣"
+    english_name = _clean_text(str(item.get("name_en") or ""))
+    if english_name and english_name.casefold() not in title.casefold():
+        title = f"{title} / {english_name}"
+
+    price = item.get("price")
+    price_info = price if isinstance(price, Mapping) else {}
+    content_parts = [f"平台：{PLATFORM_LABELS[platform]}"]
+    current = price_info.get("current")
+    initial = price_info.get("initial")
+    discount = price_info.get("discount")
+    if current not in (None, ""):
+        content_parts.append(f"当前价格：{current}")
+    if initial not in (None, "") and str(initial) != str(current):
+        content_parts.append(f"原价：{initial}")
+    if isinstance(discount, (int, float)) and discount > 0:
+        content_parts.append(f"折扣：{(100 - discount) / 10:g} 折")
+    deadline = price_info.get("deadline_date")
+    if isinstance(deadline, str) and deadline.strip():
+        content_parts.append(f"截止时间：{deadline.strip()}")
+    if price_info.get("is_lowest") == 1:
+        content_parts.append("历史低价")
+
+    steam_app_id = item.get("steam_appid") or (normalized_id if platform == "pc" else None)
+    if platform == "pc" and isinstance(steam_app_id, (str, int)) and str(steam_app_id).isdigit():
+        link = f"https://store.steampowered.com/app/{steam_app_id}"
+    else:
+        link = f"https://api.xiaoheihe.cn/game/share_game_detail?appid={quote(normalized_id, safe='')}"
+
+    entry: NormalizedEntry = {
+        "id": uuid.uuid4().hex,
+        "dedupe_key": f"xiaoheihe:discount:{platform}:{normalized_id}",
+        "title": title[:500],
+        "url": link,
+        "content": "\n".join(content_parts)[:MAX_CONTENT_CHARS],
+        "image_url": _image_url(item),
+        "image_asset": None,
+        "author": None,
+        "published_at": None,
+    }
+    return {"link_id": normalized_id, "entry": entry}
+
+
+async def fetch_discount_list(
+    client: httpx.AsyncClient,
+    platform: XiaoheihePlatform,
+) -> list[NewsCandidate]:
+    """读取小黑盒公开游戏价格列表，按平台生成本地资讯条目。"""
+    params = urlencode(
+        (
+            ("filter_head", PLATFORM_FILTERS[platform]),
+            ("offset", "0"),
+            ("limit", str(MAX_NEWS_ITEMS)),
+            ("os_type", "web"),
+            ("app", "heybox"),
+            ("client_type", "mobile"),
+            ("version", "999.0.3"),
+            ("x_client_type", "web"),
+            ("x_os_type", "Mac"),
+            ("x_app", "heybox"),
+            ("heybox_id", "-1"),
+            ("include_filter", "-1"),
+        )
+    )
+    payload = await _request_json(client, f"{API_BASE_URL}{DISCOUNT_LIST_PATH}?{params}")
+    if payload.get("status") not in (None, "ok", "success", 0, 1):
+        raise ValueError("小黑盒游戏折扣接口暂时无法读取，请稍后重试")
+    result = payload.get("result")
+    games = result.get("games") if isinstance(result, Mapping) else None
+    if not isinstance(games, list):
+        raise ValueError("小黑盒游戏折扣接口返回的数据格式有变化")
+    candidates: list[NewsCandidate] = []
+    seen_ids: set[str] = set()
+    for item in games:
+        if not isinstance(item, Mapping):
+            continue
+        candidate = _normalize_game_candidate(item, platform)
+        if candidate and candidate["link_id"] not in seen_ids:
+            seen_ids.add(candidate["link_id"])
+            candidates.append(candidate)
+    return candidates[:MAX_NEWS_ITEMS]
 

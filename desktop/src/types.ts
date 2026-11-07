@@ -1196,6 +1196,9 @@ export interface NewsSource {
   title: string
   iconUrl?: string | null
   sourceType: "rss" | "tieba" | "xiaoheihe"
+  xiaoheiheSection?: "news" | "discount" | "topic" | null
+  xiaoheihePlatform?: "pc" | "switch" | "psn" | "xbox" | null
+  xiaoheiheTopicId?: string | null
   isActive: boolean
   createdAt: string
   lastCheckedAt?: string | null
@@ -1216,6 +1219,10 @@ export interface NewsItem {
   author?: string | null
   publishedAt?: string | null
   fetchedAt: string
+  recommendationReason?: string | null
+  lastOpenedAt?: string | null
+  openCount?: number
+  userFeedback?: "like" | "not_interested" | null
 }
 
 export interface NewsSourceListResponse {
@@ -1224,6 +1231,15 @@ export interface NewsSourceListResponse {
 }
 
 export interface NewsItemListResponse {
+  items: NewsItem[]
+  total: number
+  limit: number
+  offset: number
+  view: "latest" | "recommended"
+  recommendationState: "not_applicable" | "ready" | "warming_up" | "no_matches" | "keyword_fallback"
+}
+
+export interface NewsReadingHistoryResponse {
   items: NewsItem[]
   total: number
   limit: number

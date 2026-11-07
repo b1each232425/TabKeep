@@ -32,7 +32,7 @@ from routers.news import router as news_router  # /news —— 本地资讯订�
 from services import storage
 from services.news import collector as news_collector
 from services.news import db as news_db
-from services.news import web_sessions
+from services.news import topic_search, web_sessions, xiaoheihe_auth
 
 
 # ─────────────────────────────────────────────────────────────
@@ -50,6 +50,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await news_task
     news_collector.clear_source_locks()
     web_sessions.clear_sessions()
+    await topic_search.close()
+    await xiaoheihe_auth.auth_service.close()
     # 关闭:loguru 自动 flush,SQLite 由连接上下文提交
 
 
@@ -75,6 +77,18 @@ def backend_port() -> int:
 
 app = FastAPI(title="TabKeep API", version=APP_VERSION, lifespan=lifespan)
 
+
+def register_news_evaluation_router(application: FastAPI) -> bool:
+    """仅为明确关闭鉴权的本机开发后端注册评估路由。"""
+    evaluation_enabled = os.getenv("TABKEEP_ENABLE_NEWS_EVALUATION", "").strip() == "1"
+    auth_disabled = os.getenv("TABKEEP_DISABLE_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+    if not evaluation_enabled or not auth_disabled:
+        return False
+    from routers.news_recommendation_evaluation import router as news_evaluation_router
+
+    application.include_router(news_evaluation_router)
+    return True
+
 # 开发环境允许所有来源跨域;生产部署应该收紧
 app.add_middleware(
     CORSMiddleware,
@@ -92,6 +106,7 @@ app.include_router(knowledge_router)
 app.include_router(ocr_router)
 app.include_router(tab_groups_router)
 app.include_router(news_router)
+register_news_evaluation_router(app)
 app.mount(
     "/reader",
     StaticFiles(directory=Path(__file__).parent / "web_static", html=True, check_dir=False),

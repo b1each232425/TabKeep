@@ -19,7 +19,16 @@ if str(ROOT) not in sys.path:
 
 from main import app
 from services import storage
-from services.news import collector, db, images, tieba, web_sessions, xiaoheihe
+from services.news import (
+    collector,
+    db,
+    images,
+    tieba,
+    web_sessions,
+    xiaoheihe,
+    xiaoheihe_auth,
+    xiaoheihe_auth_signing,
+)
 from services.news.tieba import parse_forum_name
 from tests.helpers import IsolatedBackendState
 
@@ -735,6 +744,387 @@ class NewsTestCase(unittest.TestCase):
         self.assertEqual(params.get("hkey"), "XNMJP66")
         self.assertTrue(xiaoheihe.is_xiaoheihe_url("https://www.xiaoheihe.cn/"))
         self.assertFalse(xiaoheihe.is_xiaoheihe_url("https://www.xiaoheihe.cn/app/bbs/link/post-1"))
+
+    def test_xiaoheihe_auth_signer_matches_astrbot_request_vector(self) -> None:
+        signed = xiaoheihe_auth_signing.build_signed_params(
+            "/account/get_qrcode_url/",
+            {"app": "web", "os_type": "web"},
+            device_id="0123456789abcdef0123456789abcdef",
+            now=1_700_000_000,
+            nonce="0123456789ABCDEF0123456789ABCDEF",
+        )
+
+        self.assertEqual(signed["hkey"], "UV77P62")
+        self.assertEqual(signed["_time"], "1700000000")
+        self.assertEqual(signed["nonce"], "0123456789ABCDEF0123456789ABCDEF")
+        self.assertEqual(signed["device_id"], "0123456789abcdef0123456789abcdef")
+        self.assertEqual(signed["app"], "web")
+        self.assertEqual(signed["os_type"], "web")
+
+    def test_xiaoheihe_qr_create_and_poll_use_astrbot_signature(self) -> None:
+        class MemoryVault:
+            def save(self, credentials: xiaoheihe_auth.XiaoheiheCredentials) -> None:
+                del credentials
+
+            def load(self) -> xiaoheihe_auth.XiaoheiheCredentials | None:
+                return None
+
+            def delete(self) -> None:
+                return None
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            params = request.url.params
+            self.assertTrue(params.get("hkey"))
+            self.assertTrue(params.get("_time", "").isdigit())
+            self.assertTrue(params.get("nonce"))
+            self.assertEqual(len(params.get("device_id", "")), 32)
+            self.assertEqual(request.headers.get("referer"), "https://www.xiaoheihe.cn/")
+            self.assertEqual(
+                request.headers.get("user-agent"), "TabKeep/1.0 (+local news reader)"
+            )
+            if request.url.path == xiaoheihe_auth.QR_CREATE_PATH:
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "ok",
+                        "result": {
+                            "qrcode": "https://www.xiaoheihe.cn/login/scan?qr=qr-session",
+                            "expires_in": 180,
+                        },
+                    },
+                )
+            if request.url.path == xiaoheihe_auth.QR_STATE_PATH:
+                self.assertEqual(params.get("qr"), "qr-session")
+                return httpx.Response(200, json={"status": "ok", "result": {"state": "0"}})
+            self.fail(f"unexpected request path: {request.url.path}")
+            return httpx.Response(500)
+
+        service = xiaoheihe_auth.XiaoheiheAuthService(MemoryVault())
+        with self.patch_transport(handler):
+            login = asyncio.run(service.create_qr())
+            checked = asyncio.run(service.check_qr(str(login["loginId"])))
+        asyncio.run(service.close())
+
+        self.assertEqual(checked["state"], "waiting_scan")
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(
+            requests[0].url.params.get("device_id"),
+            requests[1].url.params.get("device_id"),
+        )
+        self.assertNotEqual(
+            requests[0].url.params.get("nonce"),
+            requests[1].url.params.get("nonce"),
+        )
+
+    def test_xiaoheihe_topic_requests_use_saved_device_signature(self) -> None:
+        class MemoryVault:
+            def __init__(self) -> None:
+                self.credentials = xiaoheihe_auth.XiaoheiheCredentials(
+                    uid="user-42",
+                    nickname="测试账号",
+                    cookies={},
+                    access_token="private-access-token",
+                    refresh_token="",
+                    device_id="",
+                    signing_key="",
+                    logged_in_at="2026-10-16T00:00:00Z",
+                )
+
+            def save(self, credentials: xiaoheihe_auth.XiaoheiheCredentials) -> None:
+                self.credentials = credentials
+
+            def load(self) -> xiaoheihe_auth.XiaoheiheCredentials | None:
+                return self.credentials
+
+            def delete(self) -> None:
+                self.credentials = None
+
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            params = request.url.params
+            self.assertTrue(params.get("hkey"))
+            self.assertTrue(params.get("nonce"))
+            self.assertTrue(params.get("_time", "").isdigit())
+            self.assertEqual(request.headers.get("authorization"), "Bearer private-access-token")
+            if request.url.path == xiaoheihe_auth.TOPICS_PATH:
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "ok",
+                        "result": {"topics_list": [{"topic_id": "12001", "name": "独立游戏"}]},
+                    },
+                )
+            if request.url.path == xiaoheihe_auth.TOPIC_FEEDS_PATH:
+                self.assertEqual(params.get("topic_id"), "12001")
+                return httpx.Response(200, json={"status": "ok", "result": {"links": []}})
+            self.fail(f"unexpected request path: {request.url.path}")
+            return httpx.Response(500)
+
+        vault = MemoryVault()
+        service = xiaoheihe_auth.XiaoheiheAuthService(vault)
+        with self.patch_transport(handler):
+            topics = asyncio.run(service.list_topics())
+            posts = asyncio.run(service.fetch_topic("12001"))
+
+        self.assertEqual(topics, [{"id": "12001", "name": "独立游戏", "group": ""}])
+        self.assertEqual(posts, [])
+        self.assertEqual(len(requests), 2)
+        self.assertEqual(
+            requests[0].url.params.get("device_id"),
+            requests[1].url.params.get("device_id"),
+        )
+        self.assertEqual(vault.credentials.device_id, requests[0].url.params.get("device_id"))
+
+    def test_xiaoheihe_topic_source_keys_keep_topic_ids_distinct(self) -> None:
+        first_url = xiaoheihe.build_topic_source_url("12001")
+        second_url = xiaoheihe.build_topic_source_url("12002")
+
+        self.assertNotEqual(first_url, second_url)
+        self.assertEqual(xiaoheihe.source_config(first_url), ("topic", "pc"))
+        self.assertEqual(xiaoheihe.topic_id_from_source_url(first_url), "12001")
+        with self.assertRaises(ValueError):
+            xiaoheihe.build_topic_source_url("../../1")
+
+    def test_xiaoheihe_qr_login_keeps_credentials_private_and_expires_cleanly(self) -> None:
+        class MemoryVault:
+            def __init__(self) -> None:
+                self.credentials: xiaoheihe_auth.XiaoheiheCredentials | None = None
+
+            def save(self, credentials: xiaoheihe_auth.XiaoheiheCredentials) -> None:
+                self.credentials = credentials
+
+            def load(self) -> xiaoheihe_auth.XiaoheiheCredentials | None:
+                return self.credentials
+
+            def delete(self) -> None:
+                self.credentials = None
+
+        vault = MemoryVault()
+        service = xiaoheihe_auth.XiaoheiheAuthService(vault)
+        qr_payload = {
+            "status": "ok",
+            "result": {
+                "qrcode": "https://www.xiaoheihe.cn/login/scan?token=private-qr-token",
+                "expires_in": 180,
+            },
+        }
+        success_payload = {
+            "status": "ok",
+            "result": {
+                "state": "2",
+                "uid": "user-42",
+                "nickname": "测试账号",
+                "token": "private-access-token",
+            },
+        }
+        with patch("services.news.xiaoheihe_auth._auth_request_json", new=AsyncMock(side_effect=[qr_payload, success_payload])), patch(
+            "services.news.xiaoheihe_auth._verify_credentials", new=AsyncMock()
+        ):
+            login = asyncio.run(service.create_qr())
+            public_json = str(login)
+            self.assertEqual(login["state"], "waiting_scan")
+            self.assertTrue(str(login["qrImage"]).startswith("data:image/png;base64,"))
+            self.assertNotIn("private-access-token", public_json)
+            self.assertNotIn("private-qr-token", public_json)
+            completed = asyncio.run(service.check_qr(str(login["loginId"])))
+
+        self.assertEqual(completed["state"], "success")
+        self.assertEqual(completed["uid"], "user-42")
+        self.assertNotIn("access_token", completed)
+        self.assertNotIn("cookies", completed)
+        self.assertEqual(vault.credentials.access_token, "private-access-token")
+        asyncio.run(service.close())
+
+        expired = asyncio.run(service.check_qr(str(login["loginId"])))
+        self.assertEqual(expired["state"], "expired")
+        self.assertIsNotNone(expired["expiresAt"])
+
+    def test_xiaoheihe_topic_subscriptions_use_independent_sources_and_deduplicate(self) -> None:
+        storage._state["apiToken"] = "xiaoheihe-topic-test-token"
+        headers = {"X-TabKeep-Token": "xiaoheihe-topic-test-token"}
+        topics = [
+            {"id": "12001", "name": "独立游戏", "group": "游戏"},
+            {"id": "12002", "name": "主机游戏", "group": "游戏"},
+        ]
+        refresh = AsyncMock(return_value={"newItems": 2, "notModified": False})
+        with patch.object(xiaoheihe_auth.auth_service, "list_topics", new=AsyncMock(return_value=topics)), patch(
+            "routers.news.collector.refresh_source", new=refresh
+        ), TestClient(app) as client:
+            denied = client.post("/news/xiaoheihe/subscriptions", json={"topicIds": ["12001"]})
+            added = client.post(
+                "/news/xiaoheihe/subscriptions",
+                headers=headers,
+                json={"topicIds": ["12001", "12002"]},
+            )
+            duplicate = client.post(
+                "/news/xiaoheihe/subscriptions",
+                headers=headers,
+                json={"topicIds": ["12001", "12002"]},
+            )
+            duplicate_ids = client.post(
+                "/news/xiaoheihe/subscriptions",
+                headers=headers,
+                json={"topicIds": ["12001", "12001"]},
+            )
+
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(added.status_code, 200, added.text)
+        self.assertEqual(len(added.json()["sources"]), 2)
+        self.assertEqual(
+            [source["xiaoheiheTopicId"] for source in added.json()["sources"]],
+            ["12001", "12002"],
+        )
+        self.assertEqual(added.json()["sources"][0]["url"], xiaoheihe.HOMEPAGE_URL)
+        self.assertEqual(duplicate.status_code, 200, duplicate.text)
+        self.assertEqual(len(db.list_sources()), 2)
+        self.assertEqual(refresh.await_count, 2)
+        self.assertEqual(duplicate_ids.status_code, 422)
+
+    def test_xiaoheihe_qr_api_is_protected_and_never_returns_credentials(self) -> None:
+        storage._state["apiToken"] = "xiaoheihe-qr-api-test-token"
+        headers = {"X-TabKeep-Token": "xiaoheihe-qr-api-test-token"}
+        safe_response = {
+            "loginId": "opaque-login-id",
+            "state": "waiting_scan",
+            "message": "请扫码",
+            "expiresAt": "2026-10-16T12:00:00Z",
+            "qrImage": "data:image/png;base64,c2FmZS1xci1pbWFnZQ==",
+            "uid": None,
+            "nickname": None,
+        }
+        with patch.object(xiaoheihe_auth.auth_service, "create_qr", new=AsyncMock(return_value=safe_response)), TestClient(app) as client:
+            denied = client.post("/news/xiaoheihe/login/qr")
+            allowed = client.post("/news/xiaoheihe/login/qr", headers=headers, json={})
+
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertEqual(allowed.headers["cache-control"], "no-store")
+        self.assertNotIn("access_token", allowed.text)
+        self.assertNotIn("cookies", allowed.text)
+
+    def test_xiaoheihe_topic_refresh_saves_normalized_post_entries(self) -> None:
+        source_url = xiaoheihe.build_topic_source_url("12003")
+        source_id = "xhh-topic-refresh"
+        db.create_source(source_id, source_url, "小黑盒 · 游戏 · 测试话题", "2026-10-13T00:00:00Z", "xiaoheihe")
+        post = xiaoheihe._normalize_candidate(
+            {
+                "linkid": "topic-post-01",
+                "title": "话题里的新帖子",
+                "description": "帖子摘要",
+                "create_time": 1_792_000_000,
+            }
+        )
+        self.assertIsNotNone(post)
+        fetch_topic = AsyncMock(return_value=[post])
+        with patch.object(xiaoheihe_auth.auth_service, "fetch_topic", new=fetch_topic), patch(
+            "services.news.collector._cache_source_icon", new=AsyncMock()
+        ):
+            result = asyncio.run(collector.refresh_source(source_id))
+
+        rows, total = db.list_items(source_id, 10, 0)
+        self.assertEqual(fetch_topic.await_args.args, ("12003",))
+        self.assertEqual(result["newItems"], 1)
+        self.assertEqual(total, 1)
+        self.assertEqual(rows[0]["title"], "话题里的新帖子")
+        self.assertEqual(rows[0]["dedupe_key"], "xiaoheihe:link:topic-post-01")
+
+    def test_xiaoheihe_discount_section_can_be_selected_and_collected_by_platform(self) -> None:
+        storage._state["apiToken"] = "xiaoheihe-discount-test-token"
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            self.assertTrue(request.url.params.get("hkey"))
+            if request.url.path == xiaoheihe.DISCOUNT_LIST_PATH:
+                self.assertEqual(request.url.params.get("filter_head"), "xbox")
+                return httpx.Response(
+                    200,
+                    json={
+                        "status": "ok",
+                        "result": {
+                            "games": [
+                                {
+                                    "appid": 12345,
+                                    "steam_appid": 12345,
+                                    "name": "示例游戏",
+                                    "image": "https://images.example.test/game.png",
+                                    "price": {
+                                        "current": "68",
+                                        "initial": "128",
+                                        "discount": 50,
+                                        "deadline_date": "2026-10-20",
+                                        "is_lowest": 1,
+                                    },
+                                }
+                            ]
+                        },
+                    },
+                )
+            if request.url.path == xiaoheihe.NEWS_LIST_PATH:
+                return httpx.Response(200, json={"status": "ok", "result": {"links": []}})
+            self.fail(f"unexpected request: {request.url}")
+            return httpx.Response(500)
+
+        with (
+            self.patch_transport(handler),
+            patch("services.news.collector._cache_source_icon", new_callable=AsyncMock),
+            patch("services.news.images.cache_image", new_callable=AsyncMock, return_value="cached-game.jpg"),
+            TestClient(app) as client,
+        ):
+            news_source = client.post(
+                "/news/sources",
+                headers={"X-TabKeep-Token": "xiaoheihe-discount-test-token"},
+                json={"url": "https://www.xiaoheihe.cn/", "xiaoheiheSection": "news"},
+            )
+            added = client.post(
+                "/news/sources",
+                headers={"X-TabKeep-Token": "xiaoheihe-discount-test-token"},
+                json={
+                    "url": "https://www.xiaoheihe.cn/",
+                    "xiaoheiheSection": "discount",
+                    "xiaoheihePlatform": "xbox",
+                },
+            )
+            duplicate = client.post(
+                "/news/sources",
+                headers={"X-TabKeep-Token": "xiaoheihe-discount-test-token"},
+                json={
+                    "url": "https://xiaoheihe.cn",
+                    "xiaoheiheSection": "discount",
+                    "xiaoheihePlatform": "xbox",
+                },
+            )
+
+        self.assertEqual(added.status_code, 201, added.text)
+        source = added.json()["source"]
+        self.assertEqual(source["sourceType"], "xiaoheihe")
+        self.assertEqual(source["xiaoheiheSection"], "discount")
+        self.assertEqual(source["xiaoheihePlatform"], "xbox")
+        self.assertEqual(source["title"], "小黑盒游戏折扣（Xbox）")
+        self.assertEqual(source["url"], xiaoheihe.HOMEPAGE_URL)
+        self.assertEqual(added.json()["newItems"], 1)
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(news_source.status_code, 201, news_source.text)
+        self.assertEqual(news_source.json()["source"]["xiaoheiheSection"], "news")
+        self.assertNotEqual(news_source.json()["source"]["id"], source["id"])
+        self.assertEqual(len(requests), 2)
+
+        rows, total = db.list_items(source["id"], 10, 0)
+        self.assertEqual(total, 1)
+        self.assertEqual(rows[0]["dedupe_key"], "xiaoheihe:discount:xbox:12345")
+        self.assertEqual(rows[0]["title"], "示例游戏")
+        self.assertIn("当前价格：68", rows[0]["content"])
+        self.assertIn("折扣：5 折", rows[0]["content"])
+        self.assertIn("历史低价", rows[0]["content"])
+        self.assertEqual(
+            rows[0]["url"],
+            "https://api.xiaoheihe.cn/game/share_game_detail?appid=12345",
+        )
 
     def test_api_requires_token_and_deleting_source_keeps_history(self) -> None:
         storage._state["apiToken"] = "news-test-token"

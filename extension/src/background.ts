@@ -24,6 +24,13 @@ import {
   markTabKeepManagedGroup,
   registerTabGroupArchiveBridge,
 } from "./services/tabGroupArchive"
+import {
+  disableBrowserHistorySync,
+  enableBrowserHistorySync,
+  getBrowserHistorySyncStatus,
+  restoreBrowserHistorySyncAlarm,
+  runBrowserHistorySync,
+} from "./services/browserHistorySync"
 
 
 // ─────────────────────────────────────────────────────────────
@@ -305,7 +312,26 @@ async function createTabGroups(style: Partial<TabGroupStyleOptions> = {}) {
 //    - async handler → return true + .then(sendResponse)(保持通道)
 // ─────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type === "CREATE_TAB_GROUPS") {
+  if (msg.type === "GET_BROWSER_HISTORY_SYNC_STATUS") {
+    getBrowserHistorySyncStatus().then(sendResponse)
+    return true
+  } else if (msg.type === "ENABLE_BROWSER_HISTORY_SYNC") {
+    enableBrowserHistorySync()
+      .then((status) => sendResponse({ ok: true, status }))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : "启用浏览历史同步失败",
+      }))
+    return true
+  } else if (msg.type === "DISABLE_BROWSER_HISTORY_SYNC") {
+    disableBrowserHistorySync()
+      .then((status) => sendResponse({ ok: true, status }))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: error instanceof Error ? error.message : "停止浏览历史同步失败",
+      }))
+    return true
+  } else if (msg.type === "CREATE_TAB_GROUPS") {
     createTabGroups(msg.style)
     sendResponse({ success: true })
   } else if (msg.type === "CLASSIFY_TABS") {
@@ -798,6 +824,11 @@ chrome.tabs.onUpdated.addListener(() => { saveTabsData(); syncToBackend() })
 chrome.alarms.create("syncTabs", { periodInMinutes: SYNC_INTERVAL_MINUTES })
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "syncTabs") syncToBackend()
+  if (alarm.name === "syncBrowserHistory") void runBrowserHistorySync()
+})
+
+chrome.runtime.onStartup.addListener(() => {
+  void restoreBrowserHistorySyncAlarm()
 })
 
 

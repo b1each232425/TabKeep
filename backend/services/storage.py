@@ -44,6 +44,14 @@ _state: dict = {
     "noteAdapter": None,
     "knowledgeConfig": None,
     "apiToken": None,
+    "newsSearchPreferences": {
+        "tieba": False,
+        "zhihu": False,
+        "weibo": False,
+        "douyin": False,
+        "bilibili": False,
+        "kuaishou": False,
+    },
 }
 
 
@@ -68,6 +76,15 @@ def init() -> None:
         _state["noteAdapter"] = data.get("noteAdapter")
         _state["knowledgeConfig"] = data.get("knowledgeConfig")
         _state["apiToken"] = data.get("apiToken")
+        preferences = data.get("newsSearchPreferences")
+        _state["newsSearchPreferences"] = {
+            "tieba": bool(preferences.get("tieba", False)) if isinstance(preferences, dict) else False,
+            "zhihu": bool(preferences.get("zhihu", False)) if isinstance(preferences, dict) else False,
+            "weibo": bool(preferences.get("weibo", False)) if isinstance(preferences, dict) else False,
+            "douyin": bool(preferences.get("douyin", False)) if isinstance(preferences, dict) else False,
+            "bilibili": bool(preferences.get("bilibili", False)) if isinstance(preferences, dict) else False,
+            "kuaishou": bool(preferences.get("kuaishou", False)) if isinstance(preferences, dict) else False,
+        }
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"config.json 损坏或读取失败 ({e}),回退到空状态")
         _state["modelConfig"] = None
@@ -75,6 +92,14 @@ def init() -> None:
         _state["noteAdapter"] = None
         _state["knowledgeConfig"] = None
         _state["apiToken"] = None
+        _state["newsSearchPreferences"] = {
+            "tieba": False,
+            "zhihu": False,
+            "weibo": False,
+            "douyin": False,
+            "bilibili": False,
+            "kuaishou": False,
+        }
 
 
 # ─────────────────────────────────────────────────────────────
@@ -110,6 +135,40 @@ def get_api_token() -> str | None:
     """返回当前本地 API token。"""
     token = _state.get("apiToken")
     return str(token) if token else None
+
+
+def get_news_search_preferences() -> dict[str, bool]:
+    """读取话题搜索的逐平台授权搜索偏好，默认均关闭。"""
+    preferences = _state.get("newsSearchPreferences")
+    if not isinstance(preferences, dict):
+        return {
+            "tieba": False,
+            "zhihu": False,
+            "weibo": False,
+            "douyin": False,
+            "bilibili": False,
+            "kuaishou": False,
+        }
+    return {
+        "tieba": bool(preferences.get("tieba", False)),
+        "zhihu": bool(preferences.get("zhihu", False)),
+        "weibo": bool(preferences.get("weibo", False)),
+        "douyin": bool(preferences.get("douyin", False)),
+        "bilibili": bool(preferences.get("bilibili", False)),
+        "kuaishou": bool(preferences.get("kuaishou", False)),
+    }
+
+
+def set_news_search_preference(provider: str, use_authenticated: bool) -> dict[str, bool]:
+    """保存单个平台的授权搜索偏好，不接触登录凭据。"""
+    if provider not in {"tieba", "zhihu", "weibo", "douyin", "bilibili", "kuaishou"}:
+        raise ValueError("该平台不支持授权搜索偏好")
+    with _lock:
+        preferences = get_news_search_preferences()
+        preferences[provider] = bool(use_authenticated)
+        _state["newsSearchPreferences"] = preferences
+        _persist()
+        return dict(preferences)
 
 
 def get_knowledge_config() -> KnowledgeConfig:

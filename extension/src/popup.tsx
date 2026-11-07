@@ -13,6 +13,7 @@ import { groupTabsByDomain } from "./utils/tabUtils"
 import { loadFromIDB } from "./utils/indexedDB"
 import { Button } from "./components/ui/button"
 import { apiFetch, captureWithDesktop, checkBackendHealth, checkDesktopHealth, translateWithDesktop } from "./config/api"
+import type { BrowserHistorySyncStatus } from "./services/browserHistorySync"
 import "./style.css"
 
 
@@ -59,6 +60,9 @@ function IndexPopup() {
   const [translation, setTranslation] = useState<TranslationState>(null)
   const [translating, setTranslating] = useState(false)
   const [desktopOcrStatus, setDesktopOcrStatus] = useState<string | null>(null)
+  const [historySyncStatus, setHistorySyncStatus] = useState<BrowserHistorySyncStatus | null>(null)
+  const [historySyncBusy, setHistorySyncBusy] = useState(false)
+  const [historySyncMessage, setHistorySyncMessage] = useState<string | null>(null)
 
   // 启动:从 IDB 拉 tab 列表
   useEffect(() => {
@@ -69,6 +73,60 @@ function IndexPopup() {
       setLoading(false)
     })
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    chrome.runtime.sendMessage({ type: "GET_BROWSER_HISTORY_SYNC_STATUS" }).then((status) => {
+      if (!cancelled) setHistorySyncStatus(status as BrowserHistorySyncStatus)
+    }).catch(() => {
+      if (!cancelled) setHistorySyncMessage("无法读取浏览历史同步状态，请重新加载扩展")
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!historySyncStatus?.enabled) return
+    const timer = window.setInterval(() => {
+      chrome.runtime.sendMessage({ type: "GET_BROWSER_HISTORY_SYNC_STATUS" }).then((status) => {
+        setHistorySyncStatus(status as BrowserHistorySyncStatus)
+      }).catch(() => undefined)
+    }, 2000)
+    return () => window.clearInterval(timer)
+  }, [historySyncStatus?.enabled])
+
+  const handleBrowserHistorySync = async () => {
+    if (!historySyncStatus || historySyncBusy) return
+    setHistorySyncBusy(true)
+    setHistorySyncMessage(null)
+    try {
+      if (historySyncStatus.enabled && historySyncStatus.permissionGranted) {
+        const result = await chrome.runtime.sendMessage({ type: "DISABLE_BROWSER_HISTORY_SYNC" })
+        if (!result?.ok) throw new Error(result?.error ?? "停止浏览历史同步失败")
+        setHistorySyncMessage("已停止同步；此前导入的记录仍保存在本机兴趣数据中")
+        setHistorySyncStatus(result.status as BrowserHistorySyncStatus)
+        return
+      }
+
+      const granted = await chrome.permissions.request({ permissions: ["history"] })
+      if (!granted) {
+        setHistorySyncMessage("未授予浏览历史权限，TabKeep 没有读取任何浏览记录")
+        setHistorySyncStatus(await chrome.runtime.sendMessage({
+          type: "GET_BROWSER_HISTORY_SYNC_STATUS",
+        }) as BrowserHistorySyncStatus)
+        return
+      }
+      const result = await chrome.runtime.sendMessage({ type: "ENABLE_BROWSER_HISTORY_SYNC" })
+      if (!result?.ok) throw new Error(result?.error ?? "启用浏览历史同步失败")
+      setHistorySyncStatus(result.status as BrowserHistorySyncStatus)
+      setHistorySyncMessage("已授权；首次同步将在短时间内开始，读取最近 90 天并每 5 分钟增量同步")
+    } catch (error) {
+      setHistorySyncMessage(error instanceof Error ? error.message : "浏览历史同步设置失败")
+    } finally {
+      setHistorySyncBusy(false)
+    }
+  }
 
   // 打开 popup 时探测后端,给用户一个明确状态。
   useEffect(() => {
@@ -317,6 +375,42 @@ function IndexPopup() {
           )}
         </div>
       </div>
+
+      <section className="mb-3 rounded border border-gray-200 bg-gray-50 px-3 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-gray-800">浏览历史兴趣实验</div>
+            <div className="mt-0.5 text-xs text-gray-500">
+              {historySyncStatus?.enabled && !historySyncStatus.permissionGranted
+                ? "浏览历史权限已撤销；重新授权后会继续同步"
+                : historySyncStatus?.enabled
+                ? historySyncStatus.syncing
+                  ? `正在本机处理浏览记录（已检查 ${historySyncStatus.progressVisits} 条）`
+                  : historySyncStatus.lastError ?? (historySyncStatus.lastSyncedAt
+                    ? `最近同步 ${new Date(historySyncStatus.lastSyncedAt).toLocaleString()}，新增 ${historySyncStatus.lastImportedCount} 条`
+                    : "已授权，等待首次同步")
+                : "需授权读取浏览历史；TabKeep 只回填最近 90 天，并每 5 分钟同步新访问"}
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant={historySyncStatus?.enabled && historySyncStatus.permissionGranted ? "outline" : "default"}
+            disabled={!historySyncStatus || historySyncBusy}
+            onClick={handleBrowserHistorySync}>
+            {historySyncBusy
+              ? "处理中..."
+              : historySyncStatus?.enabled && historySyncStatus.permissionGranted
+                ? "停止同步"
+                : "授权并导入"}
+          </Button>
+        </div>
+        <div className="mt-1 text-[11px] text-gray-500">
+          只保存到本机 TabKeep，不发送给模型；停止同步会撤销扩展权限，但不会删除已导入记录。
+        </div>
+        {historySyncMessage && (
+          <div className="mt-1 text-xs text-blue-700" role="status">{historySyncMessage}</div>
+        )}
+      </section>
 
       {/* ── 图例 ── */}
       <div className="text-xs text-gray-500 mb-2 flex items-center gap-3">

@@ -23,7 +23,7 @@ $AllTargets = @(
     Id = "backend"
     Name = "TabKeep Backend :38471"
     WorkingDirectory = Join-Path $Root.Path "backend"
-    Command = 'Initialize-CondaTabKeep; $env:TABKEEP_DISABLE_AUTH = "1"; python main.py'
+    Command = 'Initialize-CondaTabKeep; $env:TABKEEP_DISABLE_AUTH = "1"; $env:TABKEEP_ENABLE_NEWS_EVALUATION = "1"; python main.py'
   },
   @{
     Id = "extension"
